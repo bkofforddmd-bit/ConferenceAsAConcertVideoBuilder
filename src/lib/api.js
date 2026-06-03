@@ -1,0 +1,25 @@
+// src/lib/api.js
+const BASE = "/.netlify/functions";
+
+async function post(fn, payload) {
+  const resp = await fetch(`${BASE}/${fn}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.error || `Request failed (${resp.status})` +
+      (data.detail ? `\n${truncate(data.detail)}` : ""));
+  }
+  return data;
+}
+
+function truncate(s, n = 400) {
+  s = String(s);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+export const generateLyrics = (payload) => post("generate-lyrics", payload);
+export const generateScenes = (payload) => post("generate-scenes", payload);
+export const generateImage = (payload) => post("generate-image", payload);
