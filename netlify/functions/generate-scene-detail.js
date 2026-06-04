@@ -50,7 +50,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 700,
+        max_tokens: 1000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
