@@ -1,6 +1,6 @@
 // netlify/functions/generate-scenes.js
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-opus-4-8";
+const MODEL = "claude-sonnet-4-6";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -66,7 +66,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4000,
+        max_tokens: 3000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
