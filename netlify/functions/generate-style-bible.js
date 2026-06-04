@@ -57,7 +57,7 @@ export default async (req) => {
         `adapted from. Use it to ground the imagery in accurate doctrine, ` +
         `specific people/places/scriptures, and concrete details that enrich the ` +
         `scenes — but do NOT add scenes for talk content that isn't in the song:\n` +
-        `${talkText.slice(0, 8000)}\n\n`
+        `${talkText.slice(0, 4000)}\n\n`
       : "") +
     `Return ONLY raw JSON (no code fences). Create as many scenes as the song ` +
     `needs (one per distinct lyrical moment). Keep every field to one short ` +
@@ -73,7 +73,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 5000,
+        max_tokens: 3000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
