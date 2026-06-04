@@ -68,15 +68,8 @@ export default async (req) => {
       .join("\n")
       .trim();
 
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return json({ error: "Model did not return valid JSON", raw }, 502);
-    }
-
+    const parsed = tryParse(raw);
+    if (!parsed) return json({ error: "Model did not return valid JSON", raw }, 502);
     return json(parsed);
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
