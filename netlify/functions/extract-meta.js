@@ -1,8 +1,4 @@
-// netlify/functions/extract-meta.js
-// Best-effort extraction of song title + talk attribution from the talk text
-// and finalized lyrics. Returns fields the user can edit. Never fails hard —
-// returns blanks for anything it can't find.
-
+// netlify/functions/generate-scene-detail.js
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
@@ -19,28 +15,32 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { talkText = "", lyrics = "" } = body;
+  const { styleBible = null, scene = null, styleReference = "" } = body;
+  if (!styleBible || !scene) {
+    return json({ error: "Provide styleBible and scene." }, 400);
+  }
 
   const system = [
-    "Extract attribution metadata for a Latter-day Saint conference talk and",
-    "a song adapted from it. Use only what is clearly present; if something is",
-    "not stated, return an empty string for that field. Do not invent names,",
-    "dates, or sessions. Suggest a short, evocative song title based on the",
-    "lyrics/talk themes if lyrics are provided.",
+    "You are an art director for a reverent Latter-day Saint music video.",
+    "Expand ONE scene into a vivid description and a single image-generation",
+    "prompt. The prompt MUST restate the art style, color palette, lighting,",
+    "and any characters present, so this frame matches the rest of the video.",
+    "Imagery: reverent, uplifting, doctrinally appropriate, wholesome, no",
+    "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
+    "the Savior are welcome and encouraged where fitting. Do NOT depict",
+    "God the Father; suggest His presence only indirectly (light, etc.).",
     "",
-    "Output ONLY raw JSON. No code fences. Schema:",
-    "{",
-    '  "songTitle": string,',
-    '  "speaker": string,',
-    '  "conferenceMonthYear": string,',
-    '  "session": string',
-    "}",
+    "Output ONLY raw JSON. No code fences, no commentary. Schema:",
+    '{ "sceneNumber": number, "lyricSection": string,',
+    '  "description": string, "imagePrompt": string }',
   ].join("\n");
 
   const userContent =
-    `TALK (may include a byline/title):\n${talkText.slice(0, 6000)}\n\n` +
-    (lyrics ? `LYRICS (for title inspiration):\n${lyrics.slice(0, 2000)}\n\n` : "") +
-    `Return ONLY raw JSON. Empty strings for anything not clearly present.`;
+    (styleReference ? `Visual/genre direction: ${styleReference}\n` : "") +
+    `STYLE BIBLE (reuse for consistency):\n${JSON.stringify(styleBible)}\n\n` +
+    `SCENE TO EXPAND:\n${JSON.stringify(scene)}\n\n` +
+    `Return ONLY raw JSON for this one scene. Keep description to 2-3 ` +
+    `sentences; make imagePrompt detailed and self-contained.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -52,7 +52,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 400,
+        max_tokens: 1200,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -70,22 +70,53 @@ export default async (req) => {
       .join("\n")
       .trim();
 
-    let s = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const f = s.indexOf("{"), l = s.lastIndexOf("}");
-    if (f !== -1 && l !== -1) s = s.slice(f, l + 1);
-    let parsed;
-    try { parsed = JSON.parse(s); } catch { parsed = {}; }
-
-    return json({
-      songTitle: parsed.songTitle || "",
-      speaker: parsed.speaker || "",
-      conferenceMonthYear: parsed.conferenceMonthYear || "",
-      session: parsed.session || "",
-    });
+    const parsed = salvageJSON(raw);
+    if (!parsed) return json({ error: "Model did not return valid JSON", raw }, 502);
+    return json(parsed);
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
   }
 };
+
+function salvageJSON(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  if (first > 0) s = s.slice(first);
+
+  try { return JSON.parse(s); } catch {}
+
+  let depth = 0, inStr = false, esc = false, lastGood = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") { depth--; if (depth >= 1) lastGood = i; }
+  }
+
+  let candidate = lastGood !== -1 ? s.slice(0, lastGood + 1) : s;
+  candidate = candidate.replace(/,\s*$/, "");
+
+  const st = [];
+  let inS = false, e = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const c = candidate[i];
+    if (inS) { if (e) e = false; else if (c === "\\") e = true; else if (c === '"') inS = false; continue; }
+    if (c === '"') { inS = true; continue; }
+    if (c === "{") st.push("}");
+    else if (c === "[") st.push("]");
+    else if (c === "}" || c === "]") st.pop();
+  }
+  while (st.length) candidate += st.pop();
+
+  try { return JSON.parse(candidate); } catch { return null; }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
