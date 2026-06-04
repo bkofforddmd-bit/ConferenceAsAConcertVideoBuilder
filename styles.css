@@ -285,3 +285,40 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   border-bottom: 1px solid var(--line);
 }
 .project-bar .btn { padding: 8px 16px; font-size: 14px; }
+
+/* Title/credits + intro/outro cards */
+.endcard-block {
+  background: rgba(8, 11, 28, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.endcard-h { margin: 0 0 6px; color: var(--gold); font-size: 16px; }
+.scene-card.endcard { border-color: var(--gold-soft); }
+.scene-card.endcard .scene-no { color: var(--gold); }
+
+/* Paste finalized lyrics */
+.paste-lyrics {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(8, 11, 28, 0.3);
+}
+.paste-lyrics .lbl {
+  display: block;
+  font-family: "Fraunces", serif;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+/* Insert transition scene button */
+.insert-scene {
+  font-size: 13px;
+  padding: 7px 16px;
+  border-style: dashed;
+  opacity: 0.85;
+}
+.insert-scene:hover { opacity: 1; border-color: var(--gold-soft); }

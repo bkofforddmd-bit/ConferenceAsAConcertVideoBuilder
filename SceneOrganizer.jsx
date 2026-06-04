@@ -58,7 +58,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
     try {
       setProgress("Designing the visual style…");
-      const bibleData = await generateStyleBible({ lyrics, styleReference });
+      const bibleData = await generateStyleBible({ lyrics, styleReference, talkText: talkText || "" });
       const bible = bibleData.styleBible || null;
       const outline = (bibleData.outline || [])
         .slice()
@@ -105,6 +105,66 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     setScenes((prev) =>
       prev.map((s) => (s.sceneNumber === sceneNumber ? { ...s, imagePrompt: value } : s))
     );
+  }
+
+  // Re-key an object whose keys are scene numbers, shifting any key > afterNum up by 1.
+  function shiftKeyedUp(obj, afterNum) {
+    const out = {};
+    Object.keys(obj).forEach((k) => {
+      const n = Number(k);
+      out[n > afterNum ? n + 1 : n] = obj[k];
+    });
+    return out;
+  }
+
+  async function insertSceneAfter(afterNum) {
+    setError("");
+    setPerSceneBusy((p) => ({ ...p, [`ins-${afterNum}`]: true }));
+    try {
+      const before = scenes.find((s) => s.sceneNumber === afterNum) || null;
+      const after = scenes.find((s) => s.sceneNumber === afterNum + 1) || null;
+
+      // Ask the detail generator for a bridging scene between the two neighbors.
+      const bridgeBeat = {
+        sceneNumber: afterNum + 1,
+        lyricSection: before ? `Transition after ${before.lyricSection}` : "Transition",
+        beat:
+          "A short TRANSITION scene that visually bridges these two moments" +
+          (before ? `, FROM: ${before.description || before.imagePrompt}` : "") +
+          (after ? `, TO: ${after.description || after.imagePrompt}` : "") +
+          ". Keep it a smooth connective shot consistent with the style bible.",
+      };
+
+      const detail = await generateSceneDetail({
+        styleBible,
+        scene: bridgeBeat,
+        styleReference,
+      });
+
+      const newScene = {
+        sceneNumber: afterNum + 1,
+        lyricSection: detail.lyricSection || bridgeBeat.lyricSection,
+        description: detail.description || "",
+        imagePrompt: detail.imagePrompt || "",
+        isTransition: true,
+      };
+
+      // Renumber scenes: bump everything after, insert the new one.
+      setScenes((prev) => {
+        const bumped = prev.map((s) =>
+          s.sceneNumber > afterNum ? { ...s, sceneNumber: s.sceneNumber + 1 } : s
+        );
+        return [...bumped, newScene].sort((a, b) => a.sceneNumber - b.sceneNumber);
+      });
+      // Shift keyed state so existing images/saved/notes stay attached to the right scenes.
+      setImages((p) => shiftKeyedUp(p, afterNum));
+      setSaved((p) => shiftKeyedUp(p, afterNum));
+      setEditNotes((p) => shiftKeyedUp(p, afterNum));
+    } catch (e) {
+      setError(`Add scene: ${e.message}`);
+    } finally {
+      setPerSceneBusy((p) => ({ ...p, [`ins-${afterNum}`]: false }));
+    }
   }
 
   function referenceFor(sceneNumber) {
@@ -527,6 +587,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
             <div className="scene-head">
               <span className="scene-no">
                 Scene {scene.sceneNumber}
+                {scene.isTransition && <span className="saved-badge" style={{ background: "rgba(91,120,226,0.18)" }}>transition</span>}
                 {isSaved && <span className="saved-badge">saved ✓</span>}
               </span>
               <span className="lyric-tag">{scene.lyricSection}</span>
@@ -623,6 +684,18 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
                 disabled={!working}
               >
                 Save to master folder
+              </button>
+            </div>
+
+            <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
+              <button
+                className="btn btn-ghost insert-scene"
+                onClick={() => insertSceneAfter(scene.sceneNumber)}
+                disabled={perSceneBusy[`ins-${scene.sceneNumber}`]}
+                title="Generate a connective scene right after this one"
+              >
+                {perSceneBusy[`ins-${scene.sceneNumber}`] && <span className="spinner" />}
+                + Add transition scene after Scene {scene.sceneNumber}
               </button>
             </div>
           </div>
