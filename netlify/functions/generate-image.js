@@ -16,7 +16,12 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { prompt = "", size = "1536x1024", referenceImageB64 = "" } = body;
+  const {
+    prompt = "",
+    size = "1024x1024",
+    quality = "low",
+    referenceImageB64 = "",
+  } = body;
   if (!prompt.trim()) return json({ error: "Provide a prompt." }, 400);
 
   try {
@@ -26,6 +31,7 @@ export default async (req) => {
       form.append("model", MODEL);
       form.append("prompt", prompt);
       form.append("size", size);
+      form.append("quality", quality);
       const b64 = referenceImageB64.includes(",")
         ? referenceImageB64.split(",")[1]
         : referenceImageB64;
@@ -40,7 +46,7 @@ export default async (req) => {
       resp = await fetch(GEN_URL, {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: MODEL, prompt, size }),
+        body: JSON.stringify({ model: MODEL, prompt, size, quality }),
       });
     }
 
