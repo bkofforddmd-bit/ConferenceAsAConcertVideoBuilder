@@ -21,11 +21,14 @@ export default async (req) => {
   const system = [
     "You are an art director for a reverent Latter-day Saint music video.",
     "Given song lyrics, output a compact STYLE BIBLE and a lightweight scene",
-    "OUTLINE only (no detailed prompts yet). Keep it short. Maximum 6 scenes.",
+    "OUTLINE only (no detailed prompts yet). Maximum 6 scenes.",
+    "Keep EACH style-bible field to one short sentence, and each character",
+    "description to one short sentence, so the whole JSON stays compact and",
+    "complete. Each 'beat' is a single sentence.",
     "Imagery: reverent, uplifting, doctrinally appropriate, wholesome, no",
     "copyrighted characters, no irreverent depictions of Deity.",
     "",
-    "Respond with STRICT JSON only — no markdown, no prose. Schema:",
+    "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     "{",
     '  "styleBible": {',
     '    "artStyle": string,',
@@ -38,13 +41,13 @@ export default async (req) => {
     '    { "sceneNumber": number, "lyricSection": string, "beat": string }',
     "  ]",
     "}",
-    "Each 'beat' is a one-line summary of what that scene shows.",
   ].join("\n");
 
   const userContent =
     (styleReference ? `Visual/genre direction: ${styleReference}\n` : "") +
     `Lyrics:\n${lyrics}\n\n` +
-    `Return STRICT JSON only. Max 6 scenes. Be concise.`;
+    `Return ONLY raw JSON (no code fences). Max 6 scenes. Keep every field to ` +
+    `one short sentence so the JSON is complete.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -56,7 +59,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 900,
+        max_tokens: 2000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -74,20 +77,26 @@ export default async (req) => {
       .join("\n")
       .trim();
 
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return json({ error: "Model did not return valid JSON", raw }, 502);
-    }
-
+    const parsed = tryParse(raw);
+    if (!parsed) return json({ error: "Model did not return valid JSON", raw }, 502);
     return json(parsed);
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
   }
 };
+
+function tryParse(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) s = s.slice(first, last + 1);
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
