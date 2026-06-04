@@ -21,5 +21,6 @@ function truncate(s, n = 400) {
 }
 
 export const generateLyrics = (payload) => post("generate-lyrics", payload);
-export const generateScenes = (payload) => post("generate-scenes", payload);
+export const generateStyleBible = (payload) => post("generate-style-bible", payload);
+export const generateSceneDetail = (payload) => post("generate-scene-detail", payload);
 export const generateImage = (payload) => post("generate-image", payload);
