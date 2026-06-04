@@ -7,3 +7,5 @@
   from = "/*"
   to = "/index.html"
   status = 200
+[functions."generate-image"]
+  timeout = 26
