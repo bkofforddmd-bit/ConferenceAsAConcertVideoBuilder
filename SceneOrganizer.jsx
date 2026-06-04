@@ -4,9 +4,10 @@ import {
   generateStyleBible,
   generateSceneDetail,
   generateImage,
+  extractMeta,
 } from "../lib/api.js";
 
-export default function SceneOrganizer({ lyrics, styleReference, restoreState, onStateChange }) {
+export default function SceneOrganizer({ talkText, lyrics, styleReference, restoreState, onStateChange }) {
   const [styleBible, setStyleBible] = useState(null);
   const [scenes, setScenes] = useState([]); // expanded scenes
   const [images, setImages] = useState({});
@@ -14,6 +15,16 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
   const [perSceneBusy, setPerSceneBusy] = useState({});
   const [editNotes, setEditNotes] = useState({}); // sceneNumber -> correction text
   const [lockReference, setLockReference] = useState(true);
+  const [meta, setMeta] = useState({
+    songTitle: "",
+    speaker: "",
+    conferenceMonthYear: "",
+    session: "",
+    scripture: "",
+  });
+  // endcards: { intro: {image, prompt}, outro: {image, prompt} }
+  const [endcards, setEndcards] = useState({ intro: {}, outro: {} });
+  const [cardBusy, setCardBusy] = useState({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -25,13 +36,15 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
       setScenes(Array.isArray(restoreState.scenes) ? restoreState.scenes : []);
       setImages(restoreState.images || {});
       setSaved(restoreState.saved || {});
+      if (restoreState.meta) setMeta(restoreState.meta);
+      if (restoreState.endcards) setEndcards(restoreState.endcards);
     }
   }, [restoreState]);
 
   // Report current state up so the project can be saved at any time.
   useEffect(() => {
-    if (onStateChange) onStateChange({ styleBible, scenes, images, saved });
-  }, [styleBible, scenes, images, saved, onStateChange]);
+    if (onStateChange) onStateChange({ styleBible, scenes, images, saved, meta, endcards });
+  }, [styleBible, scenes, images, saved, meta, endcards, onStateChange]);
 
   // Step 1: style bible + outline. Step 2: expand each scene one-by-one.
   async function buildScenes() {
@@ -101,6 +114,179 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
       .filter((n) => n < sceneNumber)
       .sort((a, b) => b - a);
     return earlier.length ? saved[earlier[0]] : "";
+  }
+
+  const DISCLAIMER =
+    "This music and video presentation is not an official production of " +
+    "The Church of Jesus Christ of Latter-day Saints and is not endorsed by " +
+    "the Church. The creators of this presentation fully and wholeheartedly " +
+    "sustain and support the Church, its leaders, doctrines, and teachings.";
+
+  async function autofillMeta() {
+    setError("");
+    try {
+      const m = await extractMeta({ talkText: talkText || "", lyrics });
+      setMeta((prev) => ({
+        songTitle: prev.songTitle || m.songTitle || "",
+        speaker: prev.speaker || m.speaker || "",
+        conferenceMonthYear: prev.conferenceMonthYear || m.conferenceMonthYear || "",
+        session: prev.session || m.session || "",
+        scripture: prev.scripture || "",
+      }));
+    } catch (e) {
+      setError(`Auto-fill: ${e.message}`);
+    }
+  }
+
+  function introText() {
+    const lines = [];
+    if (meta.songTitle) lines.push(`"${meta.songTitle}"`);
+    const adapted = [
+      meta.speaker ? `Adapted from a talk given by ${meta.speaker}` : "",
+      meta.conferenceMonthYear ? meta.conferenceMonthYear : "",
+      meta.session ? meta.session : "",
+    ].filter(Boolean);
+    if (adapted.length) lines.push(adapted.join(" · "));
+    lines.push("General Conference of The Church of Jesus Christ of Latter-day Saints");
+    lines.push("");
+    lines.push(DISCLAIMER);
+    return lines.join("\n");
+  }
+
+  function outroText() {
+    const lines = [];
+    if (meta.songTitle) lines.push(`"${meta.songTitle}"`);
+    if (meta.speaker) lines.push(`A song inspired by ${meta.speaker}`);
+    lines.push("");
+    lines.push("If this message touched your heart, please share this video with someone who may need hope.");
+    lines.push("");
+    lines.push("• Like the video");
+    lines.push("• Subscribe to the channel");
+    lines.push("• Turn on notifications");
+    if (meta.scripture) {
+      lines.push("");
+      lines.push(meta.scripture);
+    }
+    lines.push("");
+    lines.push(DISCLAIMER);
+    return lines.join("\n");
+  }
+
+  function cardBackgroundPrompt(kind) {
+    const sb = styleBible || {};
+    const styleBits = [
+      sb.artStyle ? `Art style: ${sb.artStyle}.` : "",
+      sb.colorPalette ? `Color palette: ${sb.colorPalette}.` : "",
+      sb.lighting ? `Lighting: ${sb.lighting}.` : "",
+    ].filter(Boolean).join(" ");
+
+    // Quote helper so the model treats text as exact strings to render.
+    const q = (s) => `"${(s || "").replace(/"/g, "'")}"`;
+
+    if (kind === "intro") {
+      const creditParts = [
+        meta.speaker ? `A song inspired by ${meta.speaker}` : "",
+        meta.conferenceMonthYear ? `Based on a message from ${meta.conferenceMonthYear} General Conference` : "",
+        meta.session ? `${meta.session}` : "",
+        "of The Church of Jesus Christ of Latter-day Saints",
+      ].filter(Boolean);
+
+      return [
+        "A cinematic, reverent TITLE CARD for a Latter-day Saint music video,",
+        "wide 3:2 landscape, golden-hour atmosphere.",
+        styleBits,
+        "Render the following text cleanly and legibly, baked into the image,",
+        "spelled EXACTLY as written, in an elegant serif typeface:",
+        `Large title at top: ${q(meta.songTitle || "Untitled")}.`,
+        creditParts.length
+          ? `Centered credit lines below the title: ${creditParts.map(q).join(", then ")}.`
+          : "",
+        "A small disclaimer in a subtle band across the bottom, smaller text,",
+        `reading exactly: ${q(DISCLAIMER)}.`,
+        "Spelling must be perfect. Keep text crisp, high-contrast, and readable.",
+        "Tasteful, uplifting, doctrinally appropriate imagery; no Church logo.",
+      ].filter(Boolean).join(" ");
+    }
+
+    // outro
+    const outroScripture = meta.scripture
+      ? `Near the bottom left, an italic scripture quote rendered exactly: ${q(meta.scripture)}.`
+      : "";
+    return [
+      "A cinematic, reverent CLOSING CARD for a Latter-day Saint music video,",
+      "wide 3:2 landscape, warm golden-hour atmosphere.",
+      styleBits,
+      "Render all text cleanly and legibly, baked into the image, spelled",
+      "EXACTLY as written, in an elegant serif typeface:",
+      `Large title at top: ${q(meta.songTitle || "Untitled")}.`,
+      meta.speaker ? `Italic credit line below the title: ${q("A song inspired by " + meta.speaker)}.` : "",
+      `An upper-left invitation in a few lines, reading exactly: ${q("If this message touched your heart, please share this video with someone who may need hope.")}`,
+      "Below that, a vertical stack of three call-to-action rows on the left,",
+      "each with a small gold circular icon and a label, reading exactly:",
+      `a thumbs-up icon with ${q("LIKE THE VIDEO")}, a play-button icon with ${q("SUBSCRIBE TO THE CHANNEL")}, and a bell icon with ${q("TURN ON NOTIFICATIONS")}.`,
+      outroScripture,
+      "A small disclaimer in a subtle band across the very bottom, smaller text,",
+      `reading exactly: ${q(DISCLAIMER)}.`,
+      "Spelling must be perfect. Keep all text crisp, high-contrast, readable.",
+      "Tasteful, uplifting, doctrinally appropriate imagery; no Church logo.",
+    ].filter(Boolean).join(" ");
+  }
+
+  async function genCard(kind) {
+    setError("");
+    setCardBusy((p) => ({ ...p, [kind]: true }));
+    try {
+      const prompt = endcards[kind]?.prompt?.trim() || cardBackgroundPrompt(kind);
+      const { imageDataUrl } = await generateImage({ prompt, size: "1536x1024" });
+      setEndcards((p) => ({
+        ...p,
+        [kind]: { ...p[kind], image: imageDataUrl, prompt },
+      }));
+    } catch (e) {
+      setError(`${kind === "intro" ? "Intro" : "Outro"} card: ${e.message}`);
+    } finally {
+      setCardBusy((p) => ({ ...p, [kind]: false }));
+    }
+  }
+
+  function setCardImage(kind, dataUrl) {
+    setEndcards((p) => ({ ...p, [kind]: { ...p[kind], image: dataUrl } }));
+  }
+
+  async function handleCardUpload(kind, e) {
+    setError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+    try {
+      setCardImage(kind, await fileToDataUrl(file));
+    } catch {
+      setError("Couldn't read that file.");
+    }
+    e.target.value = "";
+  }
+
+  function downloadCardText(kind) {
+    const text = kind === "intro" ? introText() : outroText();
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${kind === "intro" ? "Intro" : "Outro"}_text.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadCardImage(kind) {
+    const img = endcards[kind]?.image;
+    if (!img) return;
+    const a = document.createElement("a");
+    a.href = img;
+    a.download = `${kind === "intro" ? "00_Intro" : "99_Outro"}.png`;
+    a.click();
   }
 
   async function genImage(scene) {
@@ -274,6 +460,64 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
         </div>
       )}
 
+      {scenes.length > 0 && (
+        <div className="endcard-block">
+          <h3 className="endcard-h">Title &amp; Credits</h3>
+          <p className="note" style={{ marginTop: 0 }}>
+            Used on the intro and outro cards. Auto-fill pulls what it can from
+            the talk; edit anything.
+          </p>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <button className="btn btn-ghost" onClick={autofillMeta}>
+              Auto-fill from talk
+            </button>
+          </div>
+          <label className="field">
+            <span className="lbl">Song title</span>
+            <input type="text" value={meta.songTitle}
+              onChange={(e) => setMeta((m) => ({ ...m, songTitle: e.target.value }))} />
+          </label>
+          <label className="field">
+            <span className="lbl">Speaker / General Authority</span>
+            <input type="text" placeholder="e.g. Elder ..."
+              value={meta.speaker}
+              onChange={(e) => setMeta((m) => ({ ...m, speaker: e.target.value }))} />
+          </label>
+          <label className="field">
+            <span className="lbl">Conference month &amp; year</span>
+            <input type="text" placeholder="e.g. April 2026"
+              value={meta.conferenceMonthYear}
+              onChange={(e) => setMeta((m) => ({ ...m, conferenceMonthYear: e.target.value }))} />
+          </label>
+          <label className="field">
+            <span className="lbl">Session</span>
+            <input type="text" placeholder="e.g. Sunday Morning Session"
+              value={meta.session}
+              onChange={(e) => setMeta((m) => ({ ...m, session: e.target.value }))} />
+          </label>
+          <label className="field">
+            <span className="lbl">Closing scripture (shown on the outro)</span>
+            <input type="text" placeholder={'e.g. "I will give away all my sins to know thee." — Alma 22:18'}
+              value={meta.scripture}
+              onChange={(e) => setMeta((m) => ({ ...m, scripture: e.target.value }))} />
+          </label>
+        </div>
+      )}
+
+      {scenes.length > 0 && (
+        <EndCard
+          kind="intro"
+          label="Intro / Title Card"
+          text={introText()}
+          card={endcards.intro}
+          busy={cardBusy.intro}
+          onGenerate={() => genCard("intro")}
+          onUpload={(e) => handleCardUpload("intro", e)}
+          onDownloadImage={() => downloadCardImage("intro")}
+          onDownloadText={() => downloadCardText("intro")}
+        />
+      )}
+
       {scenes.map((scene) => {
         const working = images[scene.sceneNumber];
         const isSaved = saved[scene.sceneNumber];
@@ -385,6 +629,20 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
         );
       })}
 
+      {scenes.length > 0 && (
+        <EndCard
+          kind="outro"
+          label="Outro / Closing Card"
+          text={outroText()}
+          card={endcards.outro}
+          busy={cardBusy.outro}
+          onGenerate={() => genCard("outro")}
+          onUpload={(e) => handleCardUpload("outro", e)}
+          onDownloadImage={() => downloadCardImage("outro")}
+          onDownloadText={() => downloadCardText("outro")}
+        />
+      )}
+
       {savedCount > 0 && (
         <div style={{ marginTop: 28 }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
@@ -409,5 +667,55 @@ export default function SceneOrganizer({ lyrics, styleReference, restoreState, o
         </div>
       )}
     </section>
+  );
+}
+
+function EndCard({ kind, label, text, card, busy, onGenerate, onUpload, onDownloadImage, onDownloadText }) {
+  const img = card?.image;
+  return (
+    <div className="scene-card endcard">
+      <div className="scene-head">
+        <span className="scene-no">{label}</span>
+        <span className="lyric-tag">{kind === "intro" ? "before Scene 1" : "after last scene"}</span>
+      </div>
+
+      <label className="field">
+        <span className="lbl">Exact text (copy/overlay this in your video editor)</span>
+        <textarea value={text} readOnly style={{ minHeight: 130 }} />
+      </label>
+
+      {img ? (
+        <img className="scene-image" src={img} alt={label} />
+      ) : (
+        <div className="scene-image placeholder">
+          No background yet — generate a styled background, or upload your own card
+        </div>
+      )}
+
+      <div className="byo-image">
+        <label className="byo-row">
+          <span className="byo-label">Upload your own card image</span>
+          <input type="file" accept="image/*" onChange={onUpload} />
+        </label>
+        <span className="note" style={{ margin: "4px 0 0" }}>
+          The generated card bakes the text in. If a word is misspelled on a
+          given try, just regenerate — or upload your own finished card. The
+          exact text is shown above so you can verify or overlay it yourself.
+        </span>
+      </div>
+
+      <div className="row end">
+        <button className="btn btn-ghost" onClick={onGenerate} disabled={busy}>
+          {busy && <span className="spinner" />}
+          {img ? "Regenerate background" : "Generate background"}
+        </button>
+        <button className="btn btn-ghost" onClick={onDownloadText}>
+          Download text
+        </button>
+        <button className="btn btn-ghost" onClick={onDownloadImage} disabled={!img}>
+          Download image
+        </button>
+      </div>
+    </div>
   );
 }
