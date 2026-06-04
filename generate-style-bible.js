@@ -20,11 +20,13 @@ export default async (req) => {
 
   const system = [
     "You are an art director for a reverent Latter-day Saint music video.",
-    "Given song lyrics, output a compact STYLE BIBLE and a lightweight scene",
-    "OUTLINE only (no detailed prompts yet). Maximum 6 scenes.",
-    "Keep EACH style-bible field to one short sentence, and each character",
-    "description to one short sentence, so the whole JSON stays compact and",
-    "complete. Each 'beat' is a single sentence.",
+    "Given song lyrics, output a compact STYLE BIBLE and a scene OUTLINE.",
+    "Let the SONG decide how many scenes there are: create one scene for each",
+    "distinct moment, image, or shift in the lyrics. Most songs land between 6",
+    "and 14 scenes — use as many as the story genuinely needs, no artificial cap.",
+    "To keep the JSON complete, keep EACH style-bible field to one short",
+    "sentence, each character description to one short sentence, and each scene",
+    "'beat' to a single concise sentence.",
     "Imagery: reverent, uplifting, doctrinally appropriate, wholesome, no",
     "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
     "the Savior are welcome and encouraged where fitting. Do NOT depict",
@@ -43,13 +45,15 @@ export default async (req) => {
     '    { "sceneNumber": number, "lyricSection": string, "beat": string }',
     "  ]",
     "}",
+    "Number scenes sequentially starting at 1.",
   ].join("\n");
 
   const userContent =
     (styleReference ? `Visual/genre direction: ${styleReference}\n` : "") +
     `Lyrics:\n${lyrics}\n\n` +
-    `Return ONLY raw JSON (no code fences). Max 6 scenes. Keep every field to ` +
-    `one short sentence so the JSON is complete.`;
+    `Return ONLY raw JSON (no code fences). Create as many scenes as the song ` +
+    `needs (one per distinct lyrical moment). Keep every field to one short ` +
+    `sentence so the JSON stays complete.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -61,7 +65,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 3000,
+        max_tokens: 5000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
