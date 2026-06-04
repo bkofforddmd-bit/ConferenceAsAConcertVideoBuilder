@@ -236,6 +236,202 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     return lines.join("\n");
   }
 
+  function exportPptx() {
+    setError("");
+    const Pptx = window.PptxGenJS;
+    if (!Pptx) {
+      setError("PowerPoint library not loaded yet. Wait a moment and try again.");
+      return;
+    }
+    try {
+      const pptx = new Pptx();
+      pptx.defineLayout({ name: "WIDE", width: 13.333, height: 7.5 });
+      pptx.layout = "WIDE";
+
+      const NAVY = "0E1330";
+      const PANEL = "161D44";
+      const GOLD = "D9B45B";
+      const INK = "F4ECDC";
+      const SOFT = "C9BDA4";
+
+      const titleText = meta.songTitle || "Untitled Song";
+
+      // Helper: a full-bleed image slide (image fit within frame on navy).
+      const addImageSlide = (dataUrl, captionTop) => {
+        const s = pptx.addSlide();
+        s.background = { color: NAVY };
+        if (captionTop) {
+          s.addText(captionTop, {
+            x: 0.5, y: 0.2, w: 12.33, h: 0.5, align: "center",
+            fontFace: "Georgia", fontSize: 16, color: GOLD, italic: true,
+          });
+        }
+        if (dataUrl) {
+          // Fit image into a 12.3 x 6.2 area, centered.
+          s.addImage({
+            data: dataUrl,
+            x: 0.5, y: 0.8, w: 12.33, h: 6.2,
+            sizing: { type: "contain", w: 12.33, h: 6.2 },
+          });
+        } else {
+          s.addText("(no image yet — generate or upload this scene)", {
+            x: 1, y: 3.2, w: 11.33, h: 1, align: "center",
+            fontFace: "Calibri", fontSize: 18, color: SOFT, italic: true,
+          });
+        }
+        return s;
+      };
+
+      // Helper: a lyric divider slide.
+      const addDivider = (heading, lyric) => {
+        const s = pptx.addSlide();
+        s.background = { color: PANEL };
+        s.addText(heading || "", {
+          x: 0.8, y: 0.6, w: 11.7, h: 0.8,
+          fontFace: "Georgia", fontSize: 24, bold: true, color: GOLD,
+        });
+        s.addText(lyric || "", {
+          x: 0.8, y: 1.6, w: 11.7, h: 5.3, valign: "top",
+          fontFace: "Georgia", fontSize: 30, color: INK, lineSpacingMultiple: 1.2,
+        });
+        return s;
+      };
+
+      // 1) Intro slide
+      {
+        const s = pptx.addSlide();
+        s.background = { color: NAVY };
+        if (endcards.intro?.image) {
+          s.addImage({
+            data: endcards.intro.image,
+            x: 0.5, y: 0.5, w: 12.33, h: 6.5,
+            sizing: { type: "contain", w: 12.33, h: 6.5 },
+          });
+        } else {
+          s.addText(titleText, {
+            x: 1, y: 2.4, w: 11.33, h: 1.5, align: "center",
+            fontFace: "Georgia", fontSize: 44, bold: true, color: GOLD,
+          });
+          const creditLines = [
+            meta.speaker ? `A song inspired by ${meta.speaker}` : "",
+            meta.conferenceMonthYear || "",
+            meta.session || "",
+            "The Church of Jesus Christ of Latter-day Saints",
+          ].filter(Boolean).join("\n");
+          s.addText(creditLines, {
+            x: 1, y: 4, w: 11.33, h: 2, align: "center",
+            fontFace: "Calibri", fontSize: 18, color: INK,
+          });
+        }
+      }
+
+      // 1b) Full lyrics slide (for pasting into MelodyCraft / a music tool)
+      if (lyrics && lyrics.trim()) {
+        const s = pptx.addSlide();
+        s.background = { color: PANEL };
+        s.addText("Full Lyrics", {
+          x: 0.8, y: 0.4, w: 11.7, h: 0.7,
+          fontFace: "Georgia", fontSize: 24, bold: true, color: GOLD,
+        });
+        s.addText("Copy these lyrics into your music generator (e.g. MelodyCraft).", {
+          x: 0.8, y: 1.05, w: 11.7, h: 0.4,
+          fontFace: "Calibri", fontSize: 12, italic: true, color: SOFT,
+        });
+        // Auto-size font to roughly fit the lyric length on one slide.
+        const len = lyrics.length;
+        const lyricFont = len > 1800 ? 11 : len > 1200 ? 13 : len > 700 ? 16 : 20;
+        s.addText(lyrics, {
+          x: 0.8, y: 1.6, w: 11.7, h: 5.4, valign: "top",
+          fontFace: "Calibri", fontSize: lyricFont, color: INK,
+          lineSpacingMultiple: 1.05,
+        });
+      }
+
+      // 2) Each scene: lyric divider, then image slide
+      scenes
+        .slice()
+        .sort((a, b) => a.sceneNumber - b.sceneNumber)
+        .forEach((scene) => {
+          const n = scene.sceneNumber;
+          const img = saved[n] || images[n] || "";
+          const heading = `Scene ${n}${scene.isTransition ? " (transition)" : ""}`;
+          // Divider shows the lyric section/lines this scene illustrates.
+          addDivider(heading, scene.lyricSection || "");
+          // Image slide carries the visual description as a caption on top.
+          addImageSlide(
+            img,
+            scene.description ? `Scene ${n}: ${truncateCaption(scene.description)}` : heading
+          );
+        });
+
+      // 3) Outro slide
+      {
+        const s = pptx.addSlide();
+        s.background = { color: NAVY };
+        if (endcards.outro?.image) {
+          s.addImage({
+            data: endcards.outro.image,
+            x: 0.5, y: 0.5, w: 12.33, h: 6.5,
+            sizing: { type: "contain", w: 12.33, h: 6.5 },
+          });
+        } else {
+          s.addText(titleText, {
+            x: 1, y: 2, w: 11.33, h: 1.2, align: "center",
+            fontFace: "Georgia", fontSize: 40, bold: true, color: GOLD,
+          });
+          s.addText(
+            "If this message touched your heart, please like, share, subscribe, and turn on notifications." +
+            (meta.scripture ? `\n\n${meta.scripture}` : ""),
+            { x: 1, y: 3.4, w: 11.33, h: 2.5, align: "center", fontFace: "Calibri", fontSize: 18, color: INK }
+          );
+        }
+      }
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeTitle = (titleText || "music-video").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+      pptx.writeFile({ fileName: `${safeTitle}-storyboard-${stamp}.pptx` });
+    } catch (e) {
+      setError(`PowerPoint export failed: ${e.message}`);
+    }
+  }
+
+  function truncateCaption(s, n = 140) {
+    s = String(s);
+    return s.length > n ? s.slice(0, n) + "…" : s;
+  }
+
+  async function genCardDescription(kind) {
+    setError("");
+    setCardBusy((p) => ({ ...p, [`desc-${kind}`]: true }));
+    try {
+      const sceneHint =
+        kind === "intro"
+          ? "the OPENING title card — an establishing, inviting image that sets the song's reverent mood before the story begins"
+          : "the CLOSING card — a resolving, hopeful image that leaves the viewer uplifted after the story ends";
+      const beat = {
+        sceneNumber: 0,
+        lyricSection: kind === "intro" ? "Intro / Title Card" : "Outro / Closing Card",
+        beat:
+          `Background art for ${sceneHint}. It should fit the song's overall ` +
+          `style and themes, leave room for text overlay, and feel cinematic ` +
+          `and reverent. Song themes from the lyrics: ${(lyrics || "").slice(0, 800)}`,
+      };
+      const detail = await generateSceneDetail({ styleBible, scene: beat, styleReference });
+      setEndcards((p) => ({
+        ...p,
+        [kind]: {
+          ...p[kind],
+          description: detail.description || "",
+          bgPrompt: detail.imagePrompt || "",
+        },
+      }));
+    } catch (e) {
+      setError(`${kind === "intro" ? "Intro" : "Outro"} description: ${e.message}`);
+    } finally {
+      setCardBusy((p) => ({ ...p, [`desc-${kind}`]: false }));
+    }
+  }
+
   function cardBackgroundPrompt(kind) {
     const sb = styleBible || {};
     const styleBits = [
@@ -246,6 +442,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
     // Quote helper so the model treats text as exact strings to render.
     const q = (s) => `"${(s || "").replace(/"/g, "'")}"`;
+    const bg = endcards[kind]?.bgPrompt
+      ? `BACKGROUND SCENE: ${endcards[kind].bgPrompt} `
+      : "";
 
     if (kind === "intro") {
       const creditParts = [
@@ -258,6 +457,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
       return [
         "A cinematic, reverent TITLE CARD for a Latter-day Saint music video,",
         "wide 3:2 landscape, golden-hour atmosphere.",
+        bg,
         styleBits,
         "Render the following text cleanly and legibly, baked into the image,",
         "spelled EXACTLY as written, in an elegant serif typeface:",
@@ -279,6 +479,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     return [
       "A cinematic, reverent CLOSING CARD for a Latter-day Saint music video,",
       "wide 3:2 landscape, warm golden-hour atmosphere.",
+      bg,
       styleBits,
       "Render all text cleanly and legibly, baked into the image, spelled",
       "EXACTLY as written, in an elegant serif typeface:",
@@ -492,6 +693,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
             Lock consistency (feed previous saved scene as reference)
           </span>
         </label>
+        {scenes.length > 0 && (
+          <button className="btn btn-ghost" onClick={exportPptx} title="Download a PowerPoint storyboard: intro, lyric dividers + scene images, outro">
+            Export PowerPoint
+          </button>
+        )}
       </div>
 
       {busy && progress && (
@@ -573,9 +779,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
           kind="intro"
           label="Intro / Title Card"
           text={introText()}
+          fullPrompt={cardBackgroundPrompt("intro")}
           card={endcards.intro}
           busy={cardBusy.intro}
+          descBusy={cardBusy["desc-intro"]}
           onGenerate={() => genCard("intro")}
+          onDescribe={() => genCardDescription("intro")}
           onUpload={(e) => handleCardUpload("intro", e)}
           onDownloadImage={() => downloadCardImage("intro")}
           onDownloadText={() => downloadCardText("intro")}
@@ -711,9 +920,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
           kind="outro"
           label="Outro / Closing Card"
           text={outroText()}
+          fullPrompt={cardBackgroundPrompt("outro")}
           card={endcards.outro}
           busy={cardBusy.outro}
+          descBusy={cardBusy["desc-outro"]}
           onGenerate={() => genCard("outro")}
+          onDescribe={() => genCardDescription("outro")}
           onUpload={(e) => handleCardUpload("outro", e)}
           onDownloadImage={() => downloadCardImage("outro")}
           onDownloadText={() => downloadCardText("outro")}
@@ -747,8 +959,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   );
 }
 
-function EndCard({ kind, label, text, card, busy, onGenerate, onUpload, onDownloadImage, onDownloadText }) {
+function EndCard({ kind, label, text, fullPrompt, card, busy, descBusy, onGenerate, onDescribe, onUpload, onDownloadImage, onDownloadText }) {
   const img = card?.image;
+  const description = card?.description || "";
   return (
     <div className="scene-card endcard">
       <div className="scene-head">
@@ -757,40 +970,63 @@ function EndCard({ kind, label, text, card, busy, onGenerate, onUpload, onDownlo
       </div>
 
       <label className="field">
-        <span className="lbl">Exact text (copy/overlay this in your video editor)</span>
-        <textarea value={text} readOnly style={{ minHeight: 130 }} />
+        <span className="lbl">Exact text (title, credits, disclaimer)</span>
+        <textarea value={text} readOnly style={{ minHeight: 110 }} />
+      </label>
+
+      {description && (
+        <label className="field">
+          <span className="lbl">Background scene</span>
+          <textarea value={description} readOnly style={{ minHeight: 80 }} />
+        </label>
+      )}
+
+      <label className="field">
+        <span className="lbl">Full image prompt (copy into ChatGPT to make the card)</span>
+        <textarea value={fullPrompt} readOnly style={{ minHeight: 120 }} />
+        <button
+          className="btn btn-ghost"
+          style={{ marginTop: 8, alignSelf: "flex-start" }}
+          onClick={() => navigator.clipboard && navigator.clipboard.writeText(fullPrompt)}
+        >
+          Copy prompt
+        </button>
       </label>
 
       {img ? (
         <img className="scene-image" src={img} alt={label} />
       ) : (
         <div className="scene-image placeholder">
-          No background yet — generate a styled background, or upload your own card
+          No image yet — copy the prompt into ChatGPT, make the card there, then upload it below
         </div>
       )}
 
       <div className="byo-image">
         <label className="byo-row">
-          <span className="byo-label">Upload your own card image</span>
+          <span className="byo-label">Upload the finished card image</span>
           <input type="file" accept="image/*" onChange={onUpload} />
         </label>
         <span className="note" style={{ margin: "4px 0 0" }}>
-          The generated card bakes the text in. If a word is misspelled on a
-          given try, just regenerate — or upload your own finished card. The
-          exact text is shown above so you can verify or overlay it yourself.
+          Recommended: copy the full prompt above into ChatGPT (or your image
+          tool), generate the card with text baked in, then upload it here. This
+          is the most reliable way and gives the cleanest text.
         </span>
       </div>
 
-      <div className="row end">
-        <button className="btn btn-ghost" onClick={onGenerate} disabled={busy}>
-          {busy && <span className="spinner" />}
-          {img ? "Regenerate background" : "Generate background"}
+      <div className="row end" style={{ flexWrap: "wrap" }}>
+        <button className="btn btn-ghost" onClick={onDescribe} disabled={descBusy}>
+          {descBusy && <span className="spinner" />}
+          {description ? "Redescribe background" : "Describe background"}
         </button>
         <button className="btn btn-ghost" onClick={onDownloadText}>
           Download text
         </button>
         <button className="btn btn-ghost" onClick={onDownloadImage} disabled={!img}>
           Download image
+        </button>
+        <button className="btn btn-ghost" onClick={onGenerate} disabled={busy} title="Image generation can be slow and may time out; copy+upload is more reliable">
+          {busy && <span className="spinner" />}
+          Try generating here
         </button>
       </div>
     </div>
