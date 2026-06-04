@@ -18,12 +18,11 @@ export default async (req) => {
   if (!lyrics.trim()) return json({ error: "Provide finalized lyrics." }, 400);
 
   const system = [
-    "You are a music-video director. Given song lyrics (and a style bible for",
-    "tone), output ONLY a scene OUTLINE as raw JSON. Let the SONG decide how",
-    "many scenes — one per distinct lyrical moment, image, or shift. Most songs",
-    "land between 6 and 14 scenes; use as many as the story needs, no cap.",
-    "Keep each 'beat' to a single concise sentence so the JSON stays complete.",
-    "Reverent, uplifting, doctrinally appropriate imagery.",
+    "You are a music-video director. Given song lyrics, output ONLY a scene",
+    "OUTLINE as raw JSON. One scene per distinct lyrical moment, image, or",
+    "shift. Most songs land between 6 and 14 scenes; use as many as needed.",
+    "Keep each 'beat' to a SHORT phrase (under 12 words) — just enough to name",
+    "the moment. Detail is added later, so stay brief to keep the list complete.",
     "",
     "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     "{",
@@ -35,18 +34,13 @@ export default async (req) => {
   ].join("\n");
 
   const sbText = styleBible
-    ? `STYLE BIBLE (for tone/consistency):\n${JSON.stringify(styleBible).slice(0, 1500)}\n\n`
+    ? `STYLE (for tone): ${JSON.stringify(styleBible).slice(0, 600)}\n\n`
     : "";
 
   const userContent =
     sbText +
-    `SONG LYRICS (drive the scene structure — one scene per distinct moment):\n${lyrics}\n\n` +
-    (talkText.trim()
-      ? `SUPPORTING CONTEXT — talk the song was adapted from (for accurate ` +
-        `detail; do NOT add scenes for talk content absent from the song):\n` +
-        `${talkText.slice(0, 3000)}\n\n`
-      : "") +
-    `Return ONLY the outline as raw JSON per the schema.`;
+    `SONG LYRICS (one scene per distinct moment):\n${lyrics}\n\n` +
+    `Return ONLY the outline as raw JSON. Keep each beat a short phrase.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -58,7 +52,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: 1200,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
