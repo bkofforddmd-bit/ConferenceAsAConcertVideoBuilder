@@ -12,6 +12,7 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
   const [images, setImages] = useState({});
   const [saved, setSaved] = useState({});
   const [perSceneBusy, setPerSceneBusy] = useState({});
+  const [editNotes, setEditNotes] = useState({}); // sceneNumber -> correction text
   const [lockReference, setLockReference] = useState(true);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -91,8 +92,12 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
     setError("");
     setPerSceneBusy((p) => ({ ...p, [scene.sceneNumber]: true }));
     try {
+      const notes = (editNotes[scene.sceneNumber] || "").trim();
+      const prompt = notes
+        ? `${scene.imagePrompt}\n\nIMPORTANT CORRECTIONS — apply these changes: ${notes}`
+        : scene.imagePrompt;
       const { imageDataUrl } = await generateImage({
-        prompt: scene.imagePrompt,
+        prompt,
         referenceImageB64: referenceFor(scene.sceneNumber),
       });
       setImages((p) => ({ ...p, [scene.sceneNumber]: imageDataUrl }));
@@ -319,6 +324,20 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
               </span>
             </div>
 
+            <label className="field" style={{ marginTop: 4 }}>
+              <span className="lbl">
+                Revision notes (optional — applied when you regenerate)
+              </span>
+              <input
+                type="text"
+                placeholder="e.g. 'turn the list of names right-side up' or 'fewer light streaks'"
+                value={editNotes[scene.sceneNumber] || ""}
+                onChange={(e) =>
+                  setEditNotes((p) => ({ ...p, [scene.sceneNumber]: e.target.value }))
+                }
+              />
+            </label>
+
             <div className="row end">
               <button
                 className="btn btn-ghost"
@@ -326,7 +345,11 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
                 disabled={sceneBusy || !scene.imagePrompt}
               >
                 {sceneBusy && <span className="spinner" />}
-                {working ? "Regenerate here" : "Generate image here"}
+                {working
+                  ? (editNotes[scene.sceneNumber] || "").trim()
+                    ? "Regenerate with notes"
+                    : "Regenerate here"
+                  : "Generate image here"}
               </button>
               <button
                 className="btn btn-ghost"
