@@ -76,7 +76,18 @@ export default async (req) => {
   }
 };
 
-function json(obj, status = 200) {
+function tryParse(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) s = s.slice(first, last + 1);
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
     headers: { "content-type": "application/json" },
