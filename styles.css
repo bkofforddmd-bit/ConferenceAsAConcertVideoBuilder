@@ -272,3 +272,16 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 }
 .scene-image.placeholder { cursor: text; text-align: center; padding: 0 16px; }
 .scene-image.placeholder:focus { outline: 1px solid var(--gold-soft); }
+
+/* Save/Load project bar */
+.project-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.project-bar .btn { padding: 8px 16px; font-size: 14px; }

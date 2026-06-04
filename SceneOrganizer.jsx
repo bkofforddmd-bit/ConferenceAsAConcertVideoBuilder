@@ -1,12 +1,12 @@
 // src/components/SceneOrganizer.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   generateStyleBible,
   generateSceneDetail,
   generateImage,
 } from "../lib/api.js";
 
-export default function SceneOrganizer({ lyrics, styleReference }) {
+export default function SceneOrganizer({ lyrics, styleReference, restoreState, onStateChange }) {
   const [styleBible, setStyleBible] = useState(null);
   const [scenes, setScenes] = useState([]); // expanded scenes
   const [images, setImages] = useState({});
@@ -17,6 +17,21 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+
+  // Restore from a loaded project file.
+  useEffect(() => {
+    if (restoreState) {
+      setStyleBible(restoreState.styleBible || null);
+      setScenes(Array.isArray(restoreState.scenes) ? restoreState.scenes : []);
+      setImages(restoreState.images || {});
+      setSaved(restoreState.saved || {});
+    }
+  }, [restoreState]);
+
+  // Report current state up so the project can be saved at any time.
+  useEffect(() => {
+    if (onStateChange) onStateChange({ styleBible, scenes, images, saved });
+  }, [styleBible, scenes, images, saved, onStateChange]);
 
   // Step 1: style bible + outline. Step 2: expand each scene one-by-one.
   async function buildScenes() {
