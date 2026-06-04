@@ -1,5 +1,6 @@
-// netlify/functions/generate-style-bible.js
-// Returns ONLY the style bible (no scene outline) so the call stays small/fast.
+// netlify/functions/generate-outline.js
+// Returns ONLY the scene outline (list of beats), using the lyrics and the
+// already-generated style bible for context. Kept small/fast.
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
@@ -13,39 +14,39 @@ export default async (req) => {
   try { body = await req.json(); }
   catch { return json({ error: "Invalid JSON body" }, 400); }
 
-  const { lyrics = "", styleReference = "", talkText = "" } = body;
+  const { lyrics = "", styleBible = null, talkText = "" } = body;
   if (!lyrics.trim()) return json({ error: "Provide finalized lyrics." }, 400);
 
   const system = [
-    "You are an art director for a reverent Latter-day Saint music video.",
-    "Given song lyrics, output ONLY a compact STYLE BIBLE (no scene list).",
-    "Keep each field to one short sentence; each character description to one",
-    "short sentence. Imagery: reverent, uplifting, doctrinally appropriate,",
-    "wholesome, no copyrighted characters. Tasteful, reverent depictions of",
-    "Jesus Christ the Savior are welcome where fitting. Do NOT depict God the",
-    "Father; suggest His presence only indirectly (light, etc.).",
+    "You are a music-video director. Given song lyrics (and a style bible for",
+    "tone), output ONLY a scene OUTLINE as raw JSON. Let the SONG decide how",
+    "many scenes — one per distinct lyrical moment, image, or shift. Most songs",
+    "land between 6 and 14 scenes; use as many as the story needs, no cap.",
+    "Keep each 'beat' to a single concise sentence so the JSON stays complete.",
+    "Reverent, uplifting, doctrinally appropriate imagery.",
     "",
     "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     "{",
-    '  "styleBible": {',
-    '    "artStyle": string,',
-    '    "colorPalette": string,',
-    '    "lighting": string,',
-    '    "characters": [ { "name": string, "description": string } ],',
-    '    "recurringMotifs": string',
-    "  }",
+    '  "outline": [',
+    '    { "sceneNumber": number, "lyricSection": string, "beat": string }',
+    "  ]",
     "}",
+    "Number scenes sequentially starting at 1.",
   ].join("\n");
 
+  const sbText = styleBible
+    ? `STYLE BIBLE (for tone/consistency):\n${JSON.stringify(styleBible).slice(0, 1500)}\n\n`
+    : "";
+
   const userContent =
-    (styleReference ? `Visual/genre direction: ${styleReference}\n\n` : "") +
-    `SONG LYRICS:\n${lyrics}\n\n` +
+    sbText +
+    `SONG LYRICS (drive the scene structure — one scene per distinct moment):\n${lyrics}\n\n` +
     (talkText.trim()
-      ? `SUPPORTING CONTEXT — the talk the song was adapted from (for accurate ` +
-        `doctrine and concrete detail):\n${talkText.slice(0, 4000)}\n\n`
+      ? `SUPPORTING CONTEXT — talk the song was adapted from (for accurate ` +
+        `detail; do NOT add scenes for talk content absent from the song):\n` +
+        `${talkText.slice(0, 3000)}\n\n`
       : "") +
-    `Return ONLY the style bible as raw JSON per the schema. One short ` +
-    `sentence per field.`;
+    `Return ONLY the outline as raw JSON per the schema.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -57,7 +58,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1200,
+        max_tokens: 2000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import {
   generateStyleBible,
+  generateOutline,
   generateSceneDetail,
   generateImage,
   extractMeta,
@@ -60,10 +61,13 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
       setProgress("Designing the visual style…");
       const bibleData = await generateStyleBible({ lyrics, styleReference, talkText: talkText || "" });
       const bible = bibleData.styleBible || null;
-      const outline = (bibleData.outline || [])
+      setStyleBible(bible);
+
+      setProgress("Outlining the scenes…");
+      const outlineData = await generateOutline({ lyrics, styleBible: bible, talkText: talkText || "" });
+      const outline = (outlineData.outline || [])
         .slice()
         .sort((a, b) => a.sceneNumber - b.sceneNumber);
-      setStyleBible(bible);
 
       // Expand scenes sequentially so each request stays small and fast.
       const expanded = [];
