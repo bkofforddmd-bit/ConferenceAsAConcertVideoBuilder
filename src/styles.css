@@ -247,4 +247,25 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 @media (max-width: 560px) {
   .style-bible dl { grid-template-columns: 1fr; }
   .style-bible dt { margin-top: 6px; }
+}/* Bring-your-own-image controls */
+.byo-image {
+  margin: 12px 0 4px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(8, 11, 28, 0.3);
 }
+.byo-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.byo-row:last-of-type { margin-bottom: 0; }
+.byo-label {
+  font-family: "Fraunces", serif;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.scene-image.placeholder { cursor: text; text-align: center; padding: 0 16px; }
+.scene-image.placeholder:focus { outline: 1px solid var(--gold-soft); }
