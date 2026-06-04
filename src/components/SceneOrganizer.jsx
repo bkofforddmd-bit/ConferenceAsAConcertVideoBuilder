@@ -100,6 +100,66 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
     }
   }
 
+  // --- Manual image input: upload, URL, paste ---
+
+  function setSceneImage(sceneNumber, dataUrl) {
+    setImages((p) => ({ ...p, [sceneNumber]: dataUrl }));
+  }
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleUpload(sceneNumber, e) {
+    setError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError(`Scene ${sceneNumber}: please choose an image file.`);
+      return;
+    }
+    try {
+      setSceneImage(sceneNumber, await fileToDataUrl(file));
+    } catch {
+      setError(`Scene ${sceneNumber}: couldn't read that file.`);
+    }
+    e.target.value = "";
+  }
+
+  async function handlePaste(sceneNumber, e) {
+    const items = e.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          try {
+            setSceneImage(sceneNumber, await fileToDataUrl(file));
+          } catch {
+            setError(`Scene ${sceneNumber}: couldn't read the pasted image.`);
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  function handleUrlConfirm(sceneNumber, url) {
+    setError("");
+    const u = (url || "").trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u) && !/^data:image\//i.test(u)) {
+      setError(`Scene ${sceneNumber}: that doesn't look like an image URL.`);
+      return;
+    }
+    setSceneImage(sceneNumber, u);
+  }
+
   function saveImage(sceneNumber) {
     const img = images[sceneNumber];
     if (!img) return;
@@ -207,7 +267,7 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
             <p className="desc">{scene.description}</p>
 
             <label className="field">
-              <span className="lbl">Image prompt (editable)</span>
+              <span className="lbl">Image prompt (copy into ChatGPT, or generate below)</span>
               <textarea
                 value={scene.imagePrompt}
                 onChange={(e) => updatePrompt(scene.sceneNumber, e.target.value)}
@@ -218,8 +278,43 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
             {working ? (
               <img className="scene-image" src={working} alt={`Scene ${scene.sceneNumber}`} />
             ) : (
-              <div className="scene-image placeholder">No image yet</div>
+              <div
+                className="scene-image placeholder"
+                tabIndex={0}
+                onPaste={(e) => handlePaste(scene.sceneNumber, e)}
+                title="Click here, then paste an image (Ctrl/Cmd+V)"
+              >
+                No image yet — generate, upload, paste a URL, or click here & paste an image
+              </div>
             )}
+
+            <div className="byo-image">
+              <label className="byo-row">
+                <span className="byo-label">Upload image file</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleUpload(scene.sceneNumber, e)}
+                />
+              </label>
+              <label className="byo-row">
+                <span className="byo-label">…or paste an image URL</span>
+                <input
+                  type="text"
+                  placeholder="https://… (then press Enter)"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleUrlConfirm(scene.sceneNumber, e.target.value);
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value.trim()) handleUrlConfirm(scene.sceneNumber, e.target.value);
+                  }}
+                />
+              </label>
+              <span className="note" style={{ margin: "4px 0 0" }}>
+                Tip: copy this scene's prompt into ChatGPT, make the image there,
+                then upload or paste it back here.
+              </span>
+            </div>
 
             <div className="row end">
               <button
@@ -228,7 +323,7 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
                 disabled={sceneBusy || !scene.imagePrompt}
               >
                 {sceneBusy && <span className="spinner" />}
-                {working ? "Regenerate" : "Generate image"}
+                {working ? "Regenerate here" : "Generate image here"}
               </button>
               <button
                 className="btn btn-ghost"
