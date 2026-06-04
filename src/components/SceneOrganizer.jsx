@@ -1,6 +1,10 @@
 // src/components/SceneOrganizer.jsx
 import React, { useState } from "react";
-import { generateScenes, generateImage } from "../lib/api.js";
+import {
+  generateStyleBible,
+  generateSceneDetail,
+  generateImage,
+} from "../lib/api.js";
 
 export default function SceneOrganizer({ lyrics, styleReference }) {
   const [styleBible, setStyleBible] = useState(null);
@@ -10,17 +14,54 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
   const [perSceneBusy, setPerSceneBusy] = useState({});
   const [lockReference, setLockReference] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
   async function buildScenes() {
     setError("");
+    setProgress("");
     setBusy(true);
+    setScenes([]);
+    setImages({});
+    setSaved({});
+    setStyleBible(null);
+
     try {
-      const data = await generateScenes({ lyrics, styleReference });
-      setStyleBible(data.styleBible || null);
-      setScenes((data.scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber));
-      setImages({});
-      setSaved({});
+      setProgress("Designing the visual style…");
+      const bibleData = await generateStyleBible({ lyrics, styleReference });
+      const bible = bibleData.styleBible || null;
+      const outline = (bibleData.outline || [])
+        .slice()
+        .sort((a, b) => a.sceneNumber - b.sceneNumber);
+      setStyleBible(bible);
+
+      const expanded = [];
+      for (let i = 0; i < outline.length; i++) {
+        const beat = outline[i];
+        setProgress(`Writing scene ${i + 1} of ${outline.length}…`);
+        try {
+          const detail = await generateSceneDetail({
+            styleBible: bible,
+            scene: beat,
+            styleReference,
+          });
+          expanded.push({
+            sceneNumber: detail.sceneNumber ?? beat.sceneNumber,
+            lyricSection: detail.lyricSection ?? beat.lyricSection,
+            description: detail.description ?? beat.beat ?? "",
+            imagePrompt: detail.imagePrompt ?? "",
+          });
+        } catch (e) {
+          expanded.push({
+            sceneNumber: beat.sceneNumber,
+            lyricSection: beat.lyricSection,
+            description: beat.beat || "",
+            imagePrompt: "",
+          });
+        }
+        setScenes(expanded.slice());
+      }
+      setProgress("");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -120,6 +161,10 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
         </label>
       </div>
 
+      {busy && progress && (
+        <p className="note" style={{ marginTop: 12 }}>{progress}</p>
+      )}
+
       {error && <div className="error">{error}</div>}
 
       {styleBible && (
@@ -180,7 +225,7 @@ export default function SceneOrganizer({ lyrics, styleReference }) {
               <button
                 className="btn btn-ghost"
                 onClick={() => genImage(scene)}
-                disabled={sceneBusy}
+                disabled={sceneBusy || !scene.imagePrompt}
               >
                 {sceneBusy && <span className="spinner" />}
                 {working ? "Regenerate" : "Generate image"}
