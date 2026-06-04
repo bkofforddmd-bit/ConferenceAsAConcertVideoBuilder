@@ -1,57 +1,27 @@
-// src/App.jsx
-import React, { useState } from "react";
-import LyricCreator from "./components/LyricCreator.jsx";
-import SceneOrganizer from "./components/SceneOrganizer.jsx";
+// src/lib/api.js
+const BASE = "/.netlify/functions";
 
-export default function App() {
-  const [tab, setTab] = useState("lyrics");
-  const [lyrics, setLyrics] = useState("");
-  const [finalLyrics, setFinalLyrics] = useState(""); // what the organizer consumes
-  const [styleReference, setStyleReference] = useState("");
-
-  function finalize() {
-    setFinalLyrics(lyrics);
-    setTab("scenes");
+async function post(fn, payload) {
+  const resp = await fetch(`${BASE}/${fn}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.error || `Request failed (${resp.status})` +
+      (data.detail ? `\n${truncate(data.detail)}` : ""));
   }
-
-  return (
-    <div className="app-shell">
-      <header className="masthead">
-        <h1>
-          Conference <span className="accent">Music Video</span> Studio
-        </h1>
-        <p>From talk, to song, to a consistent visual story.</p>
-      </header>
-
-      <nav className="tabs">
-        <button
-          className={`tab ${tab === "lyrics" ? "active" : ""}`}
-          onClick={() => setTab("lyrics")}
-        >
-          1 · Lyric Creator
-        </button>
-        <button
-          className={`tab ${tab === "scenes" ? "active" : ""}`}
-          onClick={() => setTab("scenes")}
-          disabled={!finalLyrics}
-          title={!finalLyrics ? "Finalize lyrics first" : ""}
-        >
-          2 · Movie Scene Organizer
-        </button>
-      </nav>
-
-      {tab === "lyrics" ? (
-        <LyricCreator
-          lyrics={lyrics}
-          setLyrics={setLyrics}
-          styleReference={styleReference}
-          setStyleReference={setStyleReference}
-          onFinalize={finalize}
-          finalized={Boolean(finalLyrics) && finalLyrics === lyrics}
-        />
-      ) : (
-        <SceneOrganizer lyrics={finalLyrics} styleReference={styleReference} />
-      )}
-    </div>
-  );
+  return data;
 }
+
+function truncate(s, n = 400) {
+  s = String(s);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+export const generateLyrics = (payload) => post("generate-lyrics", payload);
+export const generateStyleBible = (payload) => post("generate-style-bible", payload);
+export const generateSceneDetail = (payload) => post("generate-scene-detail", payload);
+export const extractMeta = (payload) => post("extract-meta", payload);
+export const generateImage = (payload) => post("generate-image", payload);

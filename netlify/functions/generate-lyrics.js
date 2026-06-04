@@ -1,16 +1,20 @@
-// netlify/functions/extract-meta.js
-// Best-effort extraction of song title + talk attribution from the talk text
-// and finalized lyrics. Returns fields the user can edit. Never fails hard —
-// returns blanks for anything it can't find.
+// netlify/functions/generate-lyrics.js
+//
+// Generates or revises song lyrics from a General Conference talk using Claude.
+// The ANTHROPIC_API_KEY stays server-side and is never exposed to the browser.
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-opus-4-8";
 
 export default async (req) => {
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (req.method !== "POST") {
+    return json({ error: "Method not allowed" }, 405);
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
+  if (!apiKey) {
+    return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
+  }
 
   let body;
   try {
@@ -19,28 +23,54 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { talkText = "", lyrics = "" } = body;
+  const {
+    talkText = "",
+    styleReference = "",
+    currentLyrics = "",
+    revisionRequest = "",
+  } = body;
+
+  if (!talkText.trim() && !currentLyrics.trim()) {
+    return json({ error: "Provide talkText (first draft) or currentLyrics (revision)." }, 400);
+  }
+
+  const isRevision = Boolean(currentLyrics.trim() && revisionRequest.trim());
 
   const system = [
-    "Extract attribution metadata for a Latter-day Saint conference talk and",
-    "a song adapted from it. Use only what is clearly present; if something is",
-    "not stated, return an empty string for that field. Do not invent names,",
-    "dates, or sessions. Suggest a short, evocative song title based on the",
-    "lyrics/talk themes if lyrics are provided.",
-    "",
-    "Output ONLY raw JSON. No code fences. Schema:",
-    "{",
-    '  "songTitle": string,',
-    '  "speaker": string,',
-    '  "conferenceMonthYear": string,',
-    '  "session": string',
-    "}",
+    "You are a hymn and Christian-music lyricist who writes original song lyrics",
+    "based on talks from General Conference of The Church of Jesus Christ of",
+    "Latter-day Saints. Your lyrics must:",
+    "- Faithfully teach the doctrines and principles taught in the talk.",
+    "- Stay true to Latter-day Saint culture, scripture, and reverent tone.",
+    "- Be ORIGINAL words. Do NOT copy sentences from the talk verbatim;",
+    "  paraphrase and set the ideas to verse. Do NOT reproduce existing",
+    "  copyrighted song lyrics or hymn text.",
+    "- Use a clear song structure with labeled sections:",
+    "  [Verse 1], [Chorus], [Verse 2], [Bridge], etc.",
+    "- Be singable: consistent meter, natural rhyme where it serves the line.",
+    "When a style reference is given, match its GENRE, mood, instrumentation feel,",
+    "and energy — never imitate a specific artist's actual copyrighted lyrics or",
+    "reproduce their songs. Treat the reference purely as a stylistic direction.",
   ].join("\n");
 
-  const userContent =
-    `TALK (may include a byline/title):\n${talkText.slice(0, 6000)}\n\n` +
-    (lyrics ? `LYRICS (for title inspiration):\n${lyrics.slice(0, 2000)}\n\n` : "") +
-    `Return ONLY raw JSON. Empty strings for anything not clearly present.`;
+  let userContent;
+  if (isRevision) {
+    userContent =
+      `Here are the current lyrics:\n\n${currentLyrics}\n\n` +
+      (styleReference ? `Style direction: ${styleReference}\n\n` : "") +
+      `Please revise them per this request:\n${revisionRequest}\n\n` +
+      `Return ONLY the full revised lyrics with section labels, nothing else.`;
+  } else {
+    userContent =
+      `Create original song lyrics that teach the principles of this General ` +
+      `Conference talk, staying true to Latter-day Saint doctrine and culture.\n\n` +
+      (styleReference
+        ? `Match the genre/style/mood of: ${styleReference} ` +
+          `(stylistic direction only — original words).\n\n`
+        : "") +
+      `TALK:\n${talkText}\n\n` +
+      `Return ONLY the lyrics with clear section labels, nothing else.`;
+  }
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -52,7 +82,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 400,
+        max_tokens: 2000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -64,24 +94,13 @@ export default async (req) => {
     }
 
     const data = await resp.json();
-    const raw = (data.content || [])
+    const lyrics = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
 
-    let s = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const f = s.indexOf("{"), l = s.lastIndexOf("}");
-    if (f !== -1 && l !== -1) s = s.slice(f, l + 1);
-    let parsed;
-    try { parsed = JSON.parse(s); } catch { parsed = {}; }
-
-    return json({
-      songTitle: parsed.songTitle || "",
-      speaker: parsed.speaker || "",
-      conferenceMonthYear: parsed.conferenceMonthYear || "",
-      session: parsed.session || "",
-    });
+    return json({ lyrics });
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
   }

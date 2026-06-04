@@ -1,20 +1,12 @@
-// netlify/functions/generate-lyrics.js
-//
-// Generates or revises song lyrics from a General Conference talk using Claude.
-// The ANTHROPIC_API_KEY stays server-side and is never exposed to the browser.
-
+// netlify/functions/generate-style-bible.js
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-opus-4-8";
+const MODEL = "claude-sonnet-4-6";
 
 export default async (req) => {
-  if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
-  }
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
-  }
+  if (!apiKey) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
 
   let body;
   try {
@@ -23,54 +15,53 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const {
-    talkText = "",
-    styleReference = "",
-    currentLyrics = "",
-    revisionRequest = "",
-  } = body;
-
-  if (!talkText.trim() && !currentLyrics.trim()) {
-    return json({ error: "Provide talkText (first draft) or currentLyrics (revision)." }, 400);
-  }
-
-  const isRevision = Boolean(currentLyrics.trim() && revisionRequest.trim());
+  const { lyrics = "", styleReference = "", talkText = "" } = body;
+  if (!lyrics.trim()) return json({ error: "Provide finalized lyrics." }, 400);
 
   const system = [
-    "You are a hymn and Christian-music lyricist who writes original song lyrics",
-    "based on talks from General Conference of The Church of Jesus Christ of",
-    "Latter-day Saints. Your lyrics must:",
-    "- Faithfully teach the doctrines and principles taught in the talk.",
-    "- Stay true to Latter-day Saint culture, scripture, and reverent tone.",
-    "- Be ORIGINAL words. Do NOT copy sentences from the talk verbatim;",
-    "  paraphrase and set the ideas to verse. Do NOT reproduce existing",
-    "  copyrighted song lyrics or hymn text.",
-    "- Use a clear song structure with labeled sections:",
-    "  [Verse 1], [Chorus], [Verse 2], [Bridge], etc.",
-    "- Be singable: consistent meter, natural rhyme where it serves the line.",
-    "When a style reference is given, match its GENRE, mood, instrumentation feel,",
-    "and energy — never imitate a specific artist's actual copyrighted lyrics or",
-    "reproduce their songs. Treat the reference purely as a stylistic direction.",
+    "You are an art director for a reverent Latter-day Saint music video.",
+    "Given song lyrics, output a compact STYLE BIBLE and a scene OUTLINE.",
+    "Let the SONG decide how many scenes there are: create one scene for each",
+    "distinct moment, image, or shift in the lyrics. Most songs land between 6",
+    "and 14 scenes — use as many as the story genuinely needs, no artificial cap.",
+    "To keep the JSON complete, keep EACH style-bible field to one short",
+    "sentence, each character description to one short sentence, and each scene",
+    "'beat' to a single concise sentence.",
+    "Imagery: reverent, uplifting, doctrinally appropriate, wholesome, no",
+    "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
+    "the Savior are welcome and encouraged where fitting. Do NOT depict",
+    "God the Father; suggest His presence only indirectly (light, etc.).",
+    "",
+    "Output ONLY raw JSON. No code fences, no commentary. Schema:",
+    "{",
+    '  "styleBible": {',
+    '    "artStyle": string,',
+    '    "colorPalette": string,',
+    '    "lighting": string,',
+    '    "characters": [ { "name": string, "description": string } ],',
+    '    "recurringMotifs": string',
+    "  },",
+    '  "outline": [',
+    '    { "sceneNumber": number, "lyricSection": string, "beat": string }',
+    "  ]",
+    "}",
+    "Number scenes sequentially starting at 1.",
   ].join("\n");
 
-  let userContent;
-  if (isRevision) {
-    userContent =
-      `Here are the current lyrics:\n\n${currentLyrics}\n\n` +
-      (styleReference ? `Style direction: ${styleReference}\n\n` : "") +
-      `Please revise them per this request:\n${revisionRequest}\n\n` +
-      `Return ONLY the full revised lyrics with section labels, nothing else.`;
-  } else {
-    userContent =
-      `Create original song lyrics that teach the principles of this General ` +
-      `Conference talk, staying true to Latter-day Saint doctrine and culture.\n\n` +
-      (styleReference
-        ? `Match the genre/style/mood of: ${styleReference} ` +
-          `(stylistic direction only — original words).\n\n`
-        : "") +
-      `TALK:\n${talkText}\n\n` +
-      `Return ONLY the lyrics with clear section labels, nothing else.`;
-  }
+  const userContent =
+    (styleReference ? `Visual/genre direction: ${styleReference}\n\n` : "") +
+    `PRIMARY SOURCE — the SONG LYRICS drive the scene structure (one scene per ` +
+    `distinct lyrical moment):\n${lyrics}\n\n` +
+    (talkText.trim()
+      ? `SUPPORTING CONTEXT — the original General Conference talk the song was ` +
+        `adapted from. Use it to ground the imagery in accurate doctrine, ` +
+        `specific people/places/scriptures, and concrete details that enrich the ` +
+        `scenes — but do NOT add scenes for talk content that isn't in the song:\n` +
+        `${talkText.slice(0, 8000)}\n\n`
+      : "") +
+    `Return ONLY raw JSON (no code fences). Create as many scenes as the song ` +
+    `needs (one per distinct lyrical moment). Keep every field to one short ` +
+    `sentence so the JSON stays complete.`;
 
   try {
     const resp = await fetch(ANTHROPIC_URL, {
@@ -82,7 +73,7 @@ export default async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: 5000,
         system,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -94,17 +85,59 @@ export default async (req) => {
     }
 
     const data = await resp.json();
-    const lyrics = (data.content || [])
+    const raw = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
 
-    return json({ lyrics });
+    const parsed = salvageJSON(raw);
+    if (!parsed) return json({ error: "Model did not return valid JSON", raw }, 502);
+    return json(parsed);
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
   }
 };
+
+function salvageJSON(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  if (first > 0) s = s.slice(first);
+
+  try { return JSON.parse(s); } catch {}
+
+  let depth = 0, inStr = false, esc = false, lastGood = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") { depth--; if (depth >= 1) lastGood = i; }
+  }
+
+  let candidate = lastGood !== -1 ? s.slice(0, lastGood + 1) : s;
+  candidate = candidate.replace(/,\s*$/, "");
+
+  const st = [];
+  let inS = false, e = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const c = candidate[i];
+    if (inS) { if (e) e = false; else if (c === "\\") e = true; else if (c === '"') inS = false; continue; }
+    if (c === '"') { inS = true; continue; }
+    if (c === "{") st.push("}");
+    else if (c === "[") st.push("]");
+    else if (c === "}" || c === "]") st.pop();
+  }
+  while (st.length) candidate += st.pop();
+
+  try { return JSON.parse(candidate); } catch { return null; }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {

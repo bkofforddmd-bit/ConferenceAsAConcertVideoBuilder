@@ -1,23 +1,12 @@
-// netlify/functions/generate-image.js
-//
-// Generates a scene image with OpenAI gpt-image-2.
-//
-// Two modes:
-//   - Generation: prompt only -> /v1/images/generations
-//   - Reference-locked: prompt + a previous scene image -> /v1/images/edits
-//     Passing a reference frame keeps characters/style consistent across scenes.
-//
-// Returns a base64 data URL the frontend can display, save, and download.
-
-const GEN_URL = "https://api.openai.com/v1/images/generations";
-const EDIT_URL = "https://api.openai.com/v1/images/edits";
-const MODEL = "gpt-image-2";
+// netlify/functions/generate-scene-detail.js
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const MODEL = "claude-sonnet-4-6";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return json({ error: "Server missing OPENAI_API_KEY" }, 500);
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
 
   let body;
   try {
@@ -26,60 +15,108 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const {
-    prompt = "",
-    size = "1536x1024", // landscape, good for video frames
-    referenceImageB64 = "", // optional: data URL or raw base64 of prior scene
-  } = body;
+  const { styleBible = null, scene = null, styleReference = "" } = body;
+  if (!styleBible || !scene) {
+    return json({ error: "Provide styleBible and scene." }, 400);
+  }
 
-  if (!prompt.trim()) return json({ error: "Provide a prompt." }, 400);
+  const system = [
+    "You are an art director for a reverent Latter-day Saint music video.",
+    "Expand ONE scene into a vivid description and a single image-generation",
+    "prompt. The prompt MUST restate the art style, color palette, lighting,",
+    "and any characters present, so this frame matches the rest of the video.",
+    "Imagery: reverent, uplifting, doctrinally appropriate, wholesome, no",
+    "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
+    "the Savior are welcome and encouraged where fitting. Do NOT depict",
+    "God the Father; suggest His presence only indirectly (light, etc.).",
+    "",
+    "Output ONLY raw JSON. No code fences, no commentary. Schema:",
+    '{ "sceneNumber": number, "lyricSection": string,',
+    '  "description": string, "imagePrompt": string }',
+  ].join("\n");
+
+  const userContent =
+    (styleReference ? `Visual/genre direction: ${styleReference}\n` : "") +
+    `STYLE BIBLE (reuse for consistency):\n${JSON.stringify(styleBible)}\n\n` +
+    `SCENE TO EXPAND:\n${JSON.stringify(scene)}\n\n` +
+    `Return ONLY raw JSON for this one scene. Keep description to 2-3 ` +
+    `sentences; make imagePrompt detailed and self-contained.`;
 
   try {
-    let resp;
-
-    if (referenceImageB64) {
-      // Reference-locked edit for cross-scene consistency.
-      const form = new FormData();
-      form.append("model", MODEL);
-      form.append("prompt", prompt);
-      form.append("size", size);
-
-      const b64 = referenceImageB64.includes(",")
-        ? referenceImageB64.split(",")[1]
-        : referenceImageB64;
-      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      form.append("image", new Blob([bytes], { type: "image/png" }), "reference.png");
-
-      resp = await fetch(EDIT_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-      });
-    } else {
-      resp = await fetch(GEN_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ model: MODEL, prompt, size }),
-      });
-    }
+    const resp = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1200,
+        system,
+        messages: [{ role: "user", content: userContent }],
+      }),
+    });
 
     if (!resp.ok) {
       const detail = await resp.text();
-      return json({ error: "OpenAI image API error", detail }, resp.status);
+      return json({ error: "Anthropic API error", detail }, resp.status);
     }
 
     const data = await resp.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) return json({ error: "No image returned", data }, 502);
+    const raw = (data.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
 
-    return json({ imageDataUrl: `data:image/png;base64,${b64}` });
+    const parsed = salvageJSON(raw);
+    if (!parsed) return json({ error: "Model did not return valid JSON", raw }, 502);
+    return json(parsed);
   } catch (err) {
     return json({ error: "Request failed", detail: String(err) }, 500);
   }
 };
+
+function salvageJSON(raw) {
+  let s = String(raw).trim();
+  s = s.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const first = s.indexOf("{");
+  if (first > 0) s = s.slice(first);
+
+  try { return JSON.parse(s); } catch {}
+
+  let depth = 0, inStr = false, esc = false, lastGood = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") { depth--; if (depth >= 1) lastGood = i; }
+  }
+
+  let candidate = lastGood !== -1 ? s.slice(0, lastGood + 1) : s;
+  candidate = candidate.replace(/,\s*$/, "");
+
+  const st = [];
+  let inS = false, e = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const c = candidate[i];
+    if (inS) { if (e) e = false; else if (c === "\\") e = true; else if (c === '"') inS = false; continue; }
+    if (c === '"') { inS = true; continue; }
+    if (c === "{") st.push("}");
+    else if (c === "[") st.push("]");
+    else if (c === "}" || c === "]") st.pop();
+  }
+  while (st.length) candidate += st.pop();
+
+  try { return JSON.parse(candidate); } catch { return null; }
+}
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {

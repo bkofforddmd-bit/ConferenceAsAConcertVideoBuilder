@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import { generateLyrics } from "../lib/api.js";
 
 export default function LyricCreator({
+  talkText,
+  setTalkText,
   lyrics,
   setLyrics,
   styleReference,
@@ -10,10 +12,20 @@ export default function LyricCreator({
   onFinalize,
   finalized,
 }) {
-  const [talkText, setTalkText] = useState("");
   const [revisionRequest, setRevisionRequest] = useState("");
+  const [pastedLyrics, setPastedLyrics] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  function handleUsePasted() {
+    setError("");
+    if (!pastedLyrics.trim()) {
+      setError("Paste your finalized lyrics first.");
+      return;
+    }
+    setLyrics(pastedLyrics.trim());
+    setPastedLyrics("");
+  }
 
   async function handleCreate() {
     setError("");
@@ -106,6 +118,26 @@ export default function LyricCreator({
           {busy && <span className="spinner" />}
           {lyrics ? "Regenerate from talk" : "Create song lyrics"}
         </button>
+      </div>
+
+      <div className="paste-lyrics">
+        <span className="lbl">Already have finished lyrics? Paste them here</span>
+        <textarea
+          placeholder="Paste finalized lyrics to skip generation. Include section labels like [Verse 1], [Chorus]…"
+          value={pastedLyrics}
+          onChange={(e) => setPastedLyrics(e.target.value)}
+          style={{ minHeight: 140 }}
+        />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn btn-ghost" onClick={handleUsePasted}>
+            Use these lyrics
+          </button>
+          <span className="note" style={{ margin: 0 }}>
+            Loads them into the editable box below, ready to finalize. Tip: if
+            you also paste the talk above, the Scene Organizer uses both for
+            richer, more accurate scenes.
+          </span>
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
