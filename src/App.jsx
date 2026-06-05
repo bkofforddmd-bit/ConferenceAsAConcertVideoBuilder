@@ -1,9 +1,10 @@
 // src/App.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import LyricCreator from "./components/LyricCreator.jsx";
 import SceneOrganizer from "./components/SceneOrganizer.jsx";
 
 const PROJECT_VERSION = 2;
+const AUTOSAVE_KEY = "cmvs-autosave-v1";
 
 export default function App() {
   const [tab, setTab] = useState("lyrics");
@@ -14,8 +15,49 @@ export default function App() {
 
   const sceneStateRef = useRef({ styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} });
   const [restoreState, setRestoreState] = useState(null);
+  const [restoredNote, setRestoredNote] = useState(false);
 
   const fileInputRef = useRef(null);
+
+  // On first load, offer to restore the last auto-saved session (if any).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved && saved.app === "conference-music-video-studio") {
+        setTalkText(saved.talkText || "");
+        setLyrics(saved.lyrics || "");
+        setFinalLyrics(saved.finalLyrics || "");
+        setStyleReference(saved.styleReference || "");
+        const sc = saved.scene || sceneStateRef.current;
+        sceneStateRef.current = sc;
+        setRestoreState({ ...sc, _loadedAt: Date.now() });
+        if (saved.finalLyrics) setTab("scenes");
+        setRestoredNote(true);
+      }
+    } catch {}
+  }, []);
+
+  // Auto-save to the browser periodically and on changes, so an accidental
+  // reload or closed tab doesn't lose work. This is local to the browser only.
+  useEffect(() => {
+    const save = () => {
+      try {
+        const payload = {
+          app: "conference-music-video-studio",
+          version: PROJECT_VERSION,
+          savedAt: new Date().toISOString(),
+          talkText, lyrics, finalLyrics, styleReference,
+          scene: sceneStateRef.current,
+        };
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+      } catch {}
+    };
+    const id = setInterval(save, 5000);
+    window.addEventListener("beforeunload", save);
+    return () => { clearInterval(id); window.removeEventListener("beforeunload", save); };
+  }, [talkText, lyrics, finalLyrics, styleReference]);
 
   function finalize() {
     setFinalLyrics(lyrics);
@@ -101,6 +143,19 @@ export default function App() {
         </span>
       </div>
 
+      {restoredNote && (
+        <div className="note" style={{ textAlign: "center", marginBottom: 12 }}>
+          Restored your last session automatically.{" "}
+          <button
+            className="btn btn-ghost"
+            style={{ padding: "2px 10px", fontSize: 13 }}
+            onClick={() => setRestoredNote(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <nav className="tabs">
         <button
           className={`tab ${tab === "lyrics" ? "active" : ""}`}
@@ -118,7 +173,7 @@ export default function App() {
         </button>
       </nav>
 
-      {tab === "lyrics" ? (
+      <div style={{ display: tab === "lyrics" ? "block" : "none" }}>
         <LyricCreator
           talkText={talkText}
           setTalkText={setTalkText}
@@ -129,7 +184,9 @@ export default function App() {
           onFinalize={finalize}
           finalized={Boolean(finalLyrics) && finalLyrics === lyrics}
         />
-      ) : (
+      </div>
+
+      <div style={{ display: tab === "scenes" ? "block" : "none" }}>
         <SceneOrganizer
           talkText={talkText}
           lyrics={finalLyrics}
@@ -137,7 +194,7 @@ export default function App() {
           restoreState={restoreState}
           onStateChange={(s) => { sceneStateRef.current = s; }}
         />
-      )}
+      </div>
     </div>
   );
 }
