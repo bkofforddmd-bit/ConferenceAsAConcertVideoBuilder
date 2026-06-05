@@ -6,6 +6,9 @@ import {
   generateSceneDetail,
   generateImage,
   extractMeta,
+  describeImage,
+  matchImages,
+  outlineFromImages,
 } from "../lib/api.js";
 
 export default function SceneOrganizer({ talkText, lyrics, styleReference, restoreState, onStateChange }) {
@@ -28,6 +31,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   const [cardBusy, setCardBusy] = useState({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
+  const [unmatched, setUnmatched] = useState([]); // data URLs not auto-placed
   const [error, setError] = useState("");
 
   // Restore from a loaded project file.
@@ -48,6 +52,91 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   }, [styleBible, scenes, images, saved, meta, endcards, onStateChange]);
 
   // Step 1: style bible + outline. Step 2: expand each scene one-by-one.
+  async function buildOutlineFromImages(fileList) {
+    setError("");
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) { setError("Choose one or more image files."); return; }
+    if (!lyrics || !lyrics.trim()) {
+      setError("Finalize your lyrics first — the outline is built from the lyrics and your images.");
+      return;
+    }
+    setBusy(true);
+    setProgress("");
+    try {
+      // 1) Read files to data URLs (keep upload order as the original index).
+      setProgress(`Reading ${files.length} images…`);
+      const dataUrls = await Promise.all(files.map(fileToDataUrl));
+
+      // 2) Describe each image with vision.
+      const descriptions = [];
+      for (let i = 0; i < dataUrls.length; i++) {
+        setProgress(`Describing image ${i + 1} of ${dataUrls.length}…`);
+        try {
+          const { description } = await describeImage({ imageDataUrl: dataUrls[i] });
+          descriptions.push(description || `Image ${i}`);
+        } catch {
+          descriptions.push(`Image ${i}`);
+        }
+      }
+
+      // 3) Build the outline FROM lyrics + images: one scene per image,
+      //    AI decides order and the lyric pairing.
+      setProgress("Building the scene outline from your lyrics and images…");
+      const { outline } = await outlineFromImages({ lyrics, images: descriptions });
+      if (!outline || !outline.length) throw new Error("No outline returned.");
+
+      // 4) Make a style bible too (nice to have for consistency / prompts),
+      //    but don't block on it.
+      let bible = null;
+      try {
+        setProgress("Designing the visual style…");
+        const bibleData = await generateStyleBible({ lyrics, styleReference, talkText: talkText || "" });
+        bible = bibleData.styleBible || null;
+      } catch { /* optional */ }
+      setStyleBible(bible);
+
+      // 5) Turn the outline into scenes, attach each image, fill detail.
+      const sorted = outline.slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+      const newScenes = [];
+      const newImages = {};
+      for (let idx = 0; idx < sorted.length; idx++) {
+        const o = sorted[idx];
+        const n = idx + 1; // renumber sequentially for safety
+        setProgress(`Writing scene ${n} of ${sorted.length}…`);
+        let detail = { description: "", imagePrompt: "" };
+        try {
+          detail = await generateSceneDetail({
+            styleBible: bible,
+            scene: { sceneNumber: n, lyricSection: o.lyricSection, beat: o.beat },
+            styleReference,
+          });
+        } catch { /* keep going even if one detail call fails */ }
+        newScenes.push({
+          sceneNumber: n,
+          lyricSection: o.lyricSection || detail.lyricSection || "",
+          description: detail.description || "",
+          imagePrompt: detail.imagePrompt || "",
+        });
+        if (o.imageIndex != null && dataUrls[o.imageIndex]) {
+          newImages[n] = dataUrls[o.imageIndex];
+        }
+      }
+
+      setScenes(newScenes);
+      setImages(newImages);
+      setSaved({});
+      // Any images the model didn't assign land in the tray for manual placing.
+      const used = new Set(sorted.map((o) => o.imageIndex).filter((x) => x != null));
+      setUnmatched(dataUrls.filter((_, i) => !used.has(i)));
+
+      setProgress(`Built ${newScenes.length} scenes from your images. Review, reorder, or reassign as needed.`);
+    } catch (e) {
+      setError(`Build from images: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function buildScenes() {
     setError("");
     setProgress("");
@@ -693,6 +782,16 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
             Lock consistency (feed previous saved scene as reference)
           </span>
         </label>
+        <label className="btn btn-ghost" style={{ cursor: "pointer" }} title="Upload finished images; AI builds the scene outline from your lyrics + images (one scene per image)">
+          Build outline from images
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => { buildOutlineFromImages(e.target.files); e.target.value = ""; }}
+          />
+        </label>
         {scenes.length > 0 && (
           <button className="btn btn-ghost" onClick={exportPptx} title="Download a PowerPoint storyboard: intro, lyric dividers + scene images, outro">
             Export PowerPoint
@@ -789,6 +888,38 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
           onDownloadImage={() => downloadCardImage("intro")}
           onDownloadText={() => downloadCardText("intro")}
         />
+      )}
+
+      {unmatched.length > 0 && (
+        <div className="endcard-block" style={{ marginTop: 16 }}>
+          <h3 className="endcard-h">Unmatched images ({unmatched.length})</h3>
+          <p className="note" style={{ marginTop: 0 }}>
+            These weren't auto-placed. Pick a scene for each, or leave them out.
+          </p>
+          <div className="unmatched-grid">
+            {unmatched.map((url, i) => (
+              <div key={i} className="unmatched-item">
+                <img src={url} alt={`Unmatched ${i + 1}`} />
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!n) return;
+                    setImages((p) => ({ ...p, [n]: url }));
+                    setUnmatched((prev) => prev.filter((_, idx) => idx !== i));
+                  }}
+                >
+                  <option value="">Place in scene…</option>
+                  {scenes.map((s) => (
+                    <option key={s.sceneNumber} value={s.sceneNumber}>
+                      Scene {s.sceneNumber} · {(s.lyricSection || "").slice(0, 30)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {scenes.map((scene) => {

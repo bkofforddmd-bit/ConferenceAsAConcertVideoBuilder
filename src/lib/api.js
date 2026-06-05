@@ -26,3 +26,6 @@ export const generateOutline = (payload) => post("generate-outline", payload);
 export const generateSceneDetail = (payload) => post("generate-scene-detail", payload);
 export const extractMeta = (payload) => post("extract-meta", payload);
 export const generateImage = (payload) => post("generate-image", payload);
+export const describeImage = (payload) => post("describe-image", payload);
+export const matchImages = (payload) => post("match-images", payload);
+export const outlineFromImages = (payload) => post("outline-from-images", payload);

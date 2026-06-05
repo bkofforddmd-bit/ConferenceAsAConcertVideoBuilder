@@ -322,3 +322,31 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   opacity: 0.85;
 }
 .insert-scene:hover { opacity: 1; border-color: var(--gold-soft); }
+
+/* Unmatched images tray */
+.unmatched-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.unmatched-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.unmatched-item img {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.unmatched-item select {
+  width: 100%;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
