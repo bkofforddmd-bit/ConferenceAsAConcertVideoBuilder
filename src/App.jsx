@@ -64,6 +64,24 @@ export default function App() {
     setTab("scenes");
   }
 
+  function startNewProject() {
+    const ok = window.confirm(
+      "Start a new project? This clears the current talk, lyrics, scenes, and images from the app. " +
+      "Make sure you've saved anything you want to keep (Save project)."
+    );
+    if (!ok) return;
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch {}
+    setTalkText("");
+    setLyrics("");
+    setFinalLyrics("");
+    setStyleReference("");
+    const empty = { styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} };
+    sceneStateRef.current = empty;
+    setRestoreState({ ...empty, _loadedAt: Date.now() });
+    setRestoredNote(false);
+    setTab("lyrics");
+  }
+
   function saveProject() {
     const project = {
       app: "conference-music-video-studio",
@@ -124,6 +142,9 @@ export default function App() {
       <div className="project-bar">
         <button className="btn btn-ghost" onClick={saveProject}>
           Save project
+        </button>
+        <button className="btn btn-ghost" onClick={startNewProject} title="Clear everything and begin a fresh project">
+          Start new
         </button>
         <button
           className="btn btn-ghost"
