@@ -3,31 +3,12 @@
   publish = "dist"
   functions = "netlify/functions"
 
-# Give the AI functions more time (Pro plan allows up to 26s).
-[functions]
-  node_bundler = "esbuild"
-
-[functions."generate-style-bible"]
-  timeout = 26
-
-[functions."generate-scene-detail"]
-  timeout = 26
-
-[functions."generate-lyrics"]
-  timeout = 26
-
-[functions."generate-image"]
-  timeout = 26
-
-[functions."extract-meta"]
-  timeout = 26
-
 [dev]
   command = "npm run dev"
   targetPort = 5173
   port = 8888
 
-# SPA fallback so client-side routing works
+# SPA fallback so client-side routing works (Netlify excludes /.netlify/functions/* automatically)
 [[redirects]]
   from = "/*"
   to = "/index.html"
