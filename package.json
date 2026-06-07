@@ -10,6 +10,8 @@
     "netlify-dev": "netlify dev"
   },
   "dependencies": {
+    "esbuild": "^0.28.0",
+    "pptxgenjs": "^3.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

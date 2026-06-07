@@ -325,26 +325,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     return lines.join("\n");
   }
 
-  function loadPptxLib() {
-    return new Promise((resolve, reject) => {
-      if (window.PptxGenJS) { resolve(window.PptxGenJS); return; }
-      // Try loading from CDN on demand.
-      const existing = document.getElementById("pptxgenjs-cdn");
-      if (existing) {
-        existing.addEventListener("load", () => resolve(window.PptxGenJS));
-        existing.addEventListener("error", () => reject(new Error("CDN load failed")));
-        return;
-      }
-      const s = document.createElement("script");
-      s.id = "pptxgenjs-cdn";
-      s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
-      s.onload = () => {
-        if (window.PptxGenJS) resolve(window.PptxGenJS);
-        else reject(new Error("Library loaded but PptxGenJS missing"));
-      };
-      s.onerror = () => reject(new Error("Could not load the PowerPoint library (network/CDN blocked)"));
-      document.body.appendChild(s);
-    });
+  async function loadPptxLib() {
+    if (window.PptxGenJS) return window.PptxGenJS;
+    // Bundled with the app (no external CDN dependency).
+    const mod = await import("pptxgenjs");
+    return mod.default || mod;
   }
 
   async function exportPptx() {
