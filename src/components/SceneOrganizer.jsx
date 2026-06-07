@@ -669,6 +669,55 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     a.click();
   }
 
+  async function reviseScene(scene) {
+    setError("");
+    const notes = (editNotes[scene.sceneNumber] || "").trim();
+    if (!notes) {
+      setError(`Scene ${scene.sceneNumber}: add a revision note first (what to change).`);
+      return;
+    }
+    setPerSceneBusy((p) => ({ ...p, [`rev-${scene.sceneNumber}`]: true }));
+    try {
+      const sorted = scenes.slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+      const idx = sorted.findIndex((s) => s.sceneNumber === scene.sceneNumber);
+      const prevScene = idx > 0
+        ? { lyricSection: sorted[idx - 1].lyricSection, description: sorted[idx - 1].description }
+        : null;
+      const nextScene = idx < sorted.length - 1
+        ? { lyricSection: sorted[idx + 1].lyricSection, description: sorted[idx + 1].description }
+        : null;
+
+      const detail = await generateSceneDetail({
+        styleBible,
+        scene: {
+          sceneNumber: scene.sceneNumber,
+          lyricSection: scene.lyricSection,
+          beat: scene.description || scene.lyricSection,
+        },
+        styleReference,
+        revisionNotes: notes,
+        prevScene,
+        nextScene,
+      });
+
+      setScenes((prev) => prev.map((s) =>
+        s.sceneNumber === scene.sceneNumber
+          ? {
+              ...s,
+              description: detail.description || s.description,
+              imagePrompt: detail.imagePrompt || s.imagePrompt,
+            }
+          : s
+      ));
+      // Clear the note once applied.
+      setEditNotes((p) => ({ ...p, [scene.sceneNumber]: "" }));
+    } catch (e) {
+      setError(`Revise scene ${scene.sceneNumber}: ${e.message}`);
+    } finally {
+      setPerSceneBusy((p) => ({ ...p, [`rev-${scene.sceneNumber}`]: false }));
+    }
+  }
+
   async function genImage(scene) {
     setError("");
     setPerSceneBusy((p) => ({ ...p, [scene.sceneNumber]: true }));
@@ -1016,11 +1065,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
             <label className="field" style={{ marginTop: 4 }}>
               <span className="lbl">
-                Revision notes (optional — applied when you regenerate)
+                Revision notes — used to revise the scene text or regenerate the image
               </span>
               <input
                 type="text"
-                placeholder="e.g. 'turn the list of names right-side up' or 'fewer light streaks'"
+                placeholder="e.g. 'make this less like scene 3' or 'show resolve, not despair'"
                 value={editNotes[scene.sceneNumber] || ""}
                 onChange={(e) =>
                   setEditNotes((p) => ({ ...p, [scene.sceneNumber]: e.target.value }))
@@ -1029,6 +1078,15 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
             </label>
 
             <div className="row end">
+              <button
+                className="btn btn-ghost"
+                onClick={() => reviseScene(scene)}
+                disabled={perSceneBusy[`rev-${scene.sceneNumber}`] || !(editNotes[scene.sceneNumber] || "").trim()}
+                title="Rewrite this scene's description and image prompt using your notes"
+              >
+                {perSceneBusy[`rev-${scene.sceneNumber}`] && <span className="spinner" />}
+                Revise scene text
+              </button>
               <button
                 className="btn btn-ghost"
                 onClick={() => genImage(scene)}

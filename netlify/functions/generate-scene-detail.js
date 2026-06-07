@@ -15,7 +15,14 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { styleBible = null, scene = null, styleReference = "" } = body;
+  const {
+    styleBible = null,
+    scene = null,
+    styleReference = "",
+    revisionNotes = "",
+    prevScene = null,
+    nextScene = null,
+  } = body;
   if (!styleBible || !scene) {
     return json({ error: "Provide styleBible and scene." }, 400);
   }
@@ -29,16 +36,27 @@ export default async (req) => {
     "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
     "the Savior are welcome and encouraged where fitting. Do NOT depict",
     "God the Father; suggest His presence only indirectly (light, etc.).",
+    revisionNotes
+      ? "You are REVISING this scene per the director's notes. Honor the notes, " +
+        "keep the same lyric section, and make sure this scene is distinct from " +
+        "its neighbors and clearly moves the story forward (avoid redundancy)."
+      : "",
     "",
     "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     '{ "sceneNumber": number, "lyricSection": string,',
     '  "description": string, "imagePrompt": string }',
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+
+  const neighborContext =
+    (prevScene ? `PREVIOUS SCENE (for flow, do not duplicate): ${JSON.stringify(prevScene)}\n` : "") +
+    (nextScene ? `NEXT SCENE (for flow, do not duplicate): ${JSON.stringify(nextScene)}\n` : "");
 
   const userContent =
     (styleReference ? `Visual/genre direction: ${styleReference}\n` : "") +
     `STYLE BIBLE (reuse for consistency):\n${JSON.stringify(styleBible)}\n\n` +
-    `SCENE TO EXPAND:\n${JSON.stringify(scene)}\n\n` +
+    neighborContext +
+    `SCENE TO ${revisionNotes ? "REVISE" : "EXPAND"}:\n${JSON.stringify(scene)}\n\n` +
+    (revisionNotes ? `DIRECTOR'S REVISION NOTES:\n${revisionNotes}\n\n` : "") +
     `Return ONLY raw JSON for this one scene. Keep description to 2-3 ` +
     `sentences; make imagePrompt detailed and self-contained.`;
 
