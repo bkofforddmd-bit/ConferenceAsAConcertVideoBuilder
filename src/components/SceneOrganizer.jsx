@@ -357,7 +357,26 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
       const titleText = meta.songTitle || "Untitled Song";
 
       // Helper: a full-bleed image slide (image fit within frame on navy).
-      const addImageSlide = (dataUrl, captionTop) => {
+      // Read an image's natural dimensions from its data URL.
+      const imgSize = (dataUrl) => new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
+        im.onerror = () => resolve(null);
+        im.src = dataUrl;
+      });
+
+      // Fit (w,h) into a box, preserving aspect ratio; return centered x,y,w,h.
+      const fitBox = (natW, natH, boxX, boxY, boxW, boxH) => {
+        if (!natW || !natH) return { x: boxX, y: boxY, w: boxW, h: boxH };
+        const scale = Math.min(boxW / natW, boxH / natH);
+        const w = natW * scale;
+        const h = natH * scale;
+        const x = boxX + (boxW - w) / 2;
+        const y = boxY + (boxH - h) / 2;
+        return { x, y, w, h };
+      };
+
+      const addImageSlide = async (dataUrl, captionTop) => {
         const s = pptx.addSlide();
         s.background = { color: NAVY };
         if (captionTop) {
@@ -367,12 +386,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
           });
         }
         if (dataUrl) {
-          // Fit image into a 12.3 x 6.2 area, centered.
-          s.addImage({
-            data: dataUrl,
-            x: 0.5, y: 0.8, w: 12.33, h: 6.2,
-            sizing: { type: "contain", w: 12.33, h: 6.2 },
-          });
+          const dim = await imgSize(dataUrl);
+          const box = fitBox(dim?.w, dim?.h, 0.5, 0.8, 12.33, 6.2);
+          s.addImage({ data: dataUrl, x: box.x, y: box.y, w: box.w, h: box.h });
         } else {
           s.addText("(no image yet — generate or upload this scene)", {
             x: 1, y: 3.2, w: 11.33, h: 1, align: "center",
@@ -402,11 +418,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
         const s = pptx.addSlide();
         s.background = { color: NAVY };
         if (endcards.intro?.image) {
-          s.addImage({
-            data: endcards.intro.image,
-            x: 0.5, y: 0.5, w: 12.33, h: 6.5,
-            sizing: { type: "contain", w: 12.33, h: 6.5 },
-          });
+          const dim = await imgSize(endcards.intro.image);
+          const box = fitBox(dim?.w, dim?.h, 0.5, 0.5, 12.33, 6.5);
+          s.addImage({ data: endcards.intro.image, x: box.x, y: box.y, w: box.w, h: box.h });
         } else {
           s.addText(titleText, {
             x: 1, y: 2.4, w: 11.33, h: 1.5, align: "center",
@@ -448,32 +462,30 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
       }
 
       // 2) Each scene: lyric divider, then image slide
-      scenes
+      const orderedScenes = scenes
         .slice()
-        .sort((a, b) => a.sceneNumber - b.sceneNumber)
-        .forEach((scene) => {
-          const n = scene.sceneNumber;
-          const img = saved[n] || images[n] || "";
-          const heading = `Scene ${n}${scene.isTransition ? " (transition)" : ""}`;
-          // Divider shows the lyric section/lines this scene illustrates.
-          addDivider(heading, scene.lyricSection || "");
-          // Image slide carries the visual description as a caption on top.
-          addImageSlide(
-            img,
-            scene.description ? `Scene ${n}: ${truncateCaption(scene.description)}` : heading
-          );
-        });
+        .sort((a, b) => a.sceneNumber - b.sceneNumber);
+      for (const scene of orderedScenes) {
+        const n = scene.sceneNumber;
+        const img = saved[n] || images[n] || "";
+        const heading = `Scene ${n}${scene.isTransition ? " (transition)" : ""}`;
+        // Divider shows the lyric section/lines this scene illustrates.
+        addDivider(heading, scene.lyricSection || "");
+        // Image slide carries the visual description as a caption on top.
+        await addImageSlide(
+          img,
+          scene.description ? `Scene ${n}: ${truncateCaption(scene.description)}` : heading
+        );
+      }
 
       // 3) Outro slide
       {
         const s = pptx.addSlide();
         s.background = { color: NAVY };
         if (endcards.outro?.image) {
-          s.addImage({
-            data: endcards.outro.image,
-            x: 0.5, y: 0.5, w: 12.33, h: 6.5,
-            sizing: { type: "contain", w: 12.33, h: 6.5 },
-          });
+          const dim = await imgSize(endcards.outro.image);
+          const box = fitBox(dim?.w, dim?.h, 0.5, 0.5, 12.33, 6.5);
+          s.addImage({ data: endcards.outro.image, x: box.x, y: box.y, w: box.w, h: box.h });
         } else {
           s.addText(titleText, {
             x: 1, y: 2, w: 11.33, h: 1.2, align: "center",
