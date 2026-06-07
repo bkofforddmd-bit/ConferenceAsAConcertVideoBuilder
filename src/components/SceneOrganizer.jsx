@@ -325,11 +325,37 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     return lines.join("\n");
   }
 
-  function exportPptx() {
+  function loadPptxLib() {
+    return new Promise((resolve, reject) => {
+      if (window.PptxGenJS) { resolve(window.PptxGenJS); return; }
+      // Try loading from CDN on demand.
+      const existing = document.getElementById("pptxgenjs-cdn");
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.PptxGenJS));
+        existing.addEventListener("error", () => reject(new Error("CDN load failed")));
+        return;
+      }
+      const s = document.createElement("script");
+      s.id = "pptxgenjs-cdn";
+      s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+      s.onload = () => {
+        if (window.PptxGenJS) resolve(window.PptxGenJS);
+        else reject(new Error("Library loaded but PptxGenJS missing"));
+      };
+      s.onerror = () => reject(new Error("Could not load the PowerPoint library (network/CDN blocked)"));
+      document.body.appendChild(s);
+    });
+  }
+
+  async function exportPptx() {
     setError("");
-    const Pptx = window.PptxGenJS;
-    if (!Pptx) {
-      setError("PowerPoint library not loaded yet. Wait a moment and try again.");
+    setProgress("Preparing PowerPoint…");
+    let Pptx;
+    try {
+      Pptx = await loadPptxLib();
+    } catch (e) {
+      setProgress("");
+      setError(`PowerPoint export: ${e.message}. Try again, or check your connection.`);
       return;
     }
     try {
@@ -478,8 +504,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
       const stamp = new Date().toISOString().slice(0, 10);
       const safeTitle = (titleText || "music-video").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-      pptx.writeFile({ fileName: `${safeTitle}-storyboard-${stamp}.pptx` });
+      setProgress("Building slides…");
+      await pptx.writeFile({ fileName: `${safeTitle}-storyboard-${stamp}.pptx` });
+      setProgress("PowerPoint downloaded.");
     } catch (e) {
+      setProgress("");
       setError(`PowerPoint export failed: ${e.message}`);
     }
   }
