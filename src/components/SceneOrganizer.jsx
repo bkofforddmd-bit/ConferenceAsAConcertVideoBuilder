@@ -9,6 +9,8 @@ import {
   describeImage,
   matchImages,
   outlineFromImages,
+  generateStoryboard,
+  storyboardAvailable,
 } from "../lib/api.js";
 
 export default function SceneOrganizer({ talkText, lyrics, styleReference, restoreState, onStateChange }) {
@@ -19,6 +21,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   const [perSceneBusy, setPerSceneBusy] = useState({});
   const [editNotes, setEditNotes] = useState({}); // sceneNumber -> correction text
   const [lockReference, setLockReference] = useState(true);
+  const [autoGenEnabled, setAutoGenEnabled] = useState(true);
   const [meta, setMeta] = useState({
     songTitle: "",
     speaker: "",
@@ -148,6 +151,28 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     setStyleBible(null);
 
     try {
+      // Fast path: one call returns the whole storyboard (no per-scene loop).
+      if (storyboardAvailable()) {
+        setProgress("Building the full storyboard… (one fast pass)");
+        try {
+          const sb = await generateStoryboard({ lyrics, styleReference, talkText: talkText || "" });
+          if (sb && Array.isArray(sb.scenes) && sb.scenes.length) {
+            setStyleBible(sb.styleBible || null);
+            setScenes(sb.scenes);
+            setProgress("");
+            setBusy(false);
+            // Fully hands-off: start generating all images right away, in order.
+            if (autoGenEnabled) autoGenerateAll(sb.scenes);
+            return;
+          }
+          // If it came back empty/malformed, fall through to the reliable flow.
+          setProgress("Storyboard pass incomplete — using detailed flow…");
+        } catch (e) {
+          // Service hiccup — fall back to the multi-call flow rather than fail.
+          setProgress("Falling back to detailed scene flow…");
+        }
+      }
+
       setProgress("Designing the visual style…");
       const bibleData = await generateStyleBible({ lyrics, styleReference, talkText: talkText || "" });
       const bible = bibleData.styleBible || null;
@@ -190,6 +215,10 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
         setScenes(expanded.slice()); // show progress as scenes arrive
       }
       setProgress("");
+      // Hands-off image generation for the fallback flow too.
+      if (autoGenEnabled && expanded.some((s) => s.imagePrompt)) {
+        autoGenerateAll(expanded);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -210,6 +239,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   }
 
   const [copiedScene, setCopiedScene] = useState(null);
+  const [genElapsed, setGenElapsed] = useState({});
   function copyScenePrompt(sceneNumber, text) {
     if (navigator.clipboard) navigator.clipboard.writeText(text || "");
     setCopiedScene(sceneNumber);
@@ -285,8 +315,75 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     return earlier.length ? saved[earlier[0]] : "";
   }
 
-  const DISCLAIMER =
-    "This music and video presentation is not an official production of " +
+  const [autoGenRunning, setAutoGenRunning] = useState(false);
+  const [autoGenStatus, setAutoGenStatus] = useState("");
+  const autoGenStopRef = React.useRef(false);
+
+  // Generate every scene's image automatically, in order, each one using the
+  // previous generated image as a reference so characters/style stay consistent.
+  async function autoGenerateAll(sceneList) {
+    const list = (sceneList || scenes)
+      .slice()
+      .sort((a, b) => a.sceneNumber - b.sceneNumber)
+      .filter((s) => s.imagePrompt && !images[s.sceneNumber] && !saved[s.sceneNumber]);
+    if (!list.length) return;
+
+    setAutoGenRunning(true);
+    autoGenStopRef.current = false;
+    setError("");
+
+    // Thread the most recent successful image as the next reference (local,
+    // so it doesn't depend on async React state settling between scenes).
+    let prevImage = "";
+    // Seed from any already-saved image before the first to-generate scene.
+    const firstNum = list[0].sceneNumber;
+    const priorSaved = Object.keys(saved).map(Number).filter((n) => n < firstNum).sort((a, b) => b - a);
+    if (priorSaved.length) prevImage = saved[priorSaved[0]];
+
+    let done = 0;
+    const failures = [];
+    for (const scene of list) {
+      if (autoGenStopRef.current) break;
+      const n = scene.sceneNumber;
+      setAutoGenStatus(`Generating image ${done + 1} of ${list.length} (Scene ${n})…`);
+      setPerSceneBusy((p) => ({ ...p, [n]: true }));
+      setGenElapsed((p) => ({ ...p, [n]: 0 }));
+      const startedAt = Date.now();
+      const ticker = setInterval(() => {
+        setGenElapsed((p) => ({ ...p, [n]: Math.round((Date.now() - startedAt) / 1000) }));
+      }, 1000);
+      try {
+        const { imageDataUrl } = await generateImage({
+          prompt: scene.imagePrompt,
+          referenceImageB64: lockReference ? prevImage : "",
+        });
+        setImages((p) => ({ ...p, [n]: imageDataUrl }));
+        prevImage = imageDataUrl; // chain to next scene
+      } catch (e) {
+        failures.push(n);
+      } finally {
+        clearInterval(ticker);
+        setGenElapsed((p) => { const x = { ...p }; delete x[n]; return x; });
+        setPerSceneBusy((p) => ({ ...p, [n]: false }));
+      }
+      done++;
+    }
+
+    setAutoGenRunning(false);
+    setAutoGenStatus("");
+    if (autoGenStopRef.current) {
+      setError(`Auto-generation stopped. ${done} done${failures.length ? `, ${failures.length} failed` : ""}.`);
+    } else if (failures.length) {
+      setError(`Generated ${done - failures.length} of ${list.length}. Scenes ${failures.join(", ")} failed — use "Regenerate here" on those.`);
+    }
+  }
+
+  function stopAutoGen() {
+    autoGenStopRef.current = true;
+    setAutoGenStatus("Stopping after the current image…");
+  }
+
+
     "The Church of Jesus Christ of Latter-day Saints and is not endorsed by " +
     "the Church. The creators of this presentation fully and wholeheartedly " +
     "sustain and support the Church, its leaders, doctrines, and teachings.";
@@ -748,6 +845,15 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
   async function genImage(scene) {
     setError("");
     setPerSceneBusy((p) => ({ ...p, [scene.sceneNumber]: true }));
+    // Track elapsed seconds so the button can reassure the user it's working.
+    setGenElapsed((p) => ({ ...p, [scene.sceneNumber]: 0 }));
+    const startedAt = Date.now();
+    const ticker = setInterval(() => {
+      setGenElapsed((p) => ({
+        ...p,
+        [scene.sceneNumber]: Math.round((Date.now() - startedAt) / 1000),
+      }));
+    }, 1000);
     try {
       const notes = (editNotes[scene.sceneNumber] || "").trim();
       const prompt = notes
@@ -761,6 +867,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     } catch (e) {
       setError(`Scene ${scene.sceneNumber}: ${e.message}`);
     } finally {
+      clearInterval(ticker);
+      setGenElapsed((p) => {
+        const next = { ...p };
+        delete next[scene.sceneNumber];
+        return next;
+      });
       setPerSceneBusy((p) => ({ ...p, [scene.sceneNumber]: false }));
     }
   }
@@ -884,6 +996,25 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
             Lock consistency (feed previous saved scene as reference)
           </span>
         </label>
+        <label className="row" style={{ gap: 6 }} title="After the breakdown is built, generate every scene image automatically, in order, for a consistent story">
+          <input
+            type="checkbox"
+            checked={autoGenEnabled}
+            onChange={(e) => setAutoGenEnabled(e.target.checked)}
+          />
+          <span className="note" style={{ margin: 0 }}>
+            Auto-generate all images
+          </span>
+        </label>
+        {scenes.length > 0 && !autoGenRunning && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => autoGenerateAll(scenes)}
+            title="Generate images for all scenes that don't have one yet, in order"
+          >
+            Generate all images
+          </button>
+        )}
         <label className="btn btn-ghost" style={{ cursor: "pointer" }} title="Upload finished images; AI builds the scene outline from your lyrics + images (one scene per image)">
           Build outline from images
           <input
@@ -903,6 +1034,14 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
       {busy && progress && (
         <p className="note" style={{ marginTop: 12 }}>{progress}</p>
+      )}
+
+      {autoGenRunning && (
+        <div className="note" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12, justifyContent: "center" }}>
+          <span className="spinner" />
+          <span>{autoGenStatus || "Generating images…"} Keep this tab open.</span>
+          <button className="btn btn-ghost" onClick={stopAutoGen}>Stop</button>
+        </div>
       )}
 
       {error && <div className="error">{error}</div>}
@@ -1102,6 +1241,13 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
 
             {working ? (
               <img className="scene-image" src={working} alt={`Scene ${scene.sceneNumber}`} />
+            ) : sceneBusy ? (
+              <div className="scene-image placeholder" style={{ textAlign: "center" }}>
+                <div><span className="spinner" /> Generating image… {genElapsed[scene.sceneNumber] || 0}s</div>
+                <div className="note" style={{ marginTop: 8 }}>
+                  This can take up to a minute. Please keep this tab open.
+                </div>
+              </div>
             ) : (
               <div
                 className="scene-image placeholder"
@@ -1171,7 +1317,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
                 disabled={sceneBusy || !scene.imagePrompt}
               >
                 {sceneBusy && <span className="spinner" />}
-                {working
+                {sceneBusy
+                  ? `Generating… ${genElapsed[scene.sceneNumber] || 0}s`
+                  : working
                   ? (editNotes[scene.sceneNumber] || "").trim()
                     ? "Regenerate with notes"
                     : "Regenerate here"
