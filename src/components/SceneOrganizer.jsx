@@ -383,7 +383,8 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, resto
     setAutoGenStatus("Stopping after the current image…");
   }
 
-
+  const DISCLAIMER =
+    "This music and video presentation is not an official production of " +
     "The Church of Jesus Christ of Latter-day Saints and is not endorsed by " +
     "the Church. The creators of this presentation fully and wholeheartedly " +
     "sustain and support the Church, its leaders, doctrines, and teachings.";
