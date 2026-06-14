@@ -1033,6 +1033,79 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     }
   }
 
+  // Build a minimal, valid .docx (Word document) entirely in the browser by
+  // assembling the OOXML parts and zipping them with buildZip — no library,
+  // no build dependency. Title, "Inspired by" line, then the lyric stanzas.
+  function downloadLyricsDocx() {
+    setError("");
+    const lyricText = (lyrics || "").trim();
+    if (!lyricText) {
+      setError("No finalized lyrics to export yet.");
+      return;
+    }
+    try {
+      const enc = new TextEncoder();
+      const esc = (s) => String(s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      const para = (text, { bold = false, size = 24, align = "left", italic = false, after = 120, color = null } = {}) => {
+        const runs = String(text).split("\n").map((line, i) => {
+          const br = i > 0 ? "<w:br/>" : "";
+          const rpr = `<w:rPr>${bold ? "<w:b/>" : ""}${italic ? "<w:i/>" : ""}${color ? `<w:color w:val="${color}"/>` : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>`;
+          return `<w:r>${rpr}${br}<w:t xml:space="preserve">${esc(line)}</w:t></w:r>`;
+        }).join("");
+        return `<w:p><w:pPr><w:spacing w:after="${after}"/><w:jc w:val="${align}"/></w:pPr>${runs}</w:p>`;
+      };
+
+      const title = meta.songTitle || "Untitled Song";
+      const speaker = meta.speaker || "";
+      const blocks = [];
+      blocks.push(para(title, { bold: true, size: 44, align: "center", after: 80 }));
+      if (speaker) {
+        blocks.push(para(`Inspired by ${speaker}`, { italic: true, size: 26, align: "center", after: 360, color: "5A3800" }));
+      }
+      // Split lyrics into stanzas on blank lines; each stanza is one paragraph
+      // with soft line breaks, preserving the structure the writer typed.
+      const stanzas = lyricText.replace(/\r\n/g, "\n").split(/\n\s*\n/);
+      for (const st of stanzas) {
+        const t = st.replace(/\n+$/, "");
+        if (!t.trim()) continue;
+        blocks.push(para(t, { size: 24, align: "left", after: 240 }));
+      }
+
+      const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${blocks.join("")}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+      const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+      const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+      const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+
+      const zipFiles = [
+        { name: "[Content_Types].xml", bytes: enc.encode(contentTypes) },
+        { name: "_rels/.rels", bytes: enc.encode(rels) },
+        { name: "word/document.xml", bytes: enc.encode(documentXml) },
+        { name: "word/_rels/document.xml.rels", bytes: enc.encode(docRels) },
+      ];
+      const docxBytes = buildZip(zipFiles);
+      const blob = new Blob([docxBytes], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      const url = URL.createObjectURL(blob);
+      const safeTitle = title.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "lyrics";
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeTitle}-lyrics.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      setError(`Lyrics download: ${e.message}`);
+    }
+  }
+
   async function reviseScene(scene) {
     setError("");
     const notes = (editNotes[scene.sceneNumber] || "").trim();
@@ -1291,6 +1364,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
         {scenes.length > 0 && (
           <button className="btn btn-ghost" onClick={downloadAllImages} title="Download all finalized images (intro, scenes in order, outro) as numbered JPGs in a .zip">
             Download Images (.zip)
+          </button>
+        )}
+        {lyrics && lyrics.trim() && (
+          <button className="btn btn-ghost" onClick={downloadLyricsDocx} title="Download the lyrics as a Word document with the song title and 'Inspired by' the speaker">
+            Download Lyrics (.docx)
           </button>
         )}
       </div>
