@@ -64,7 +64,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
   useEffect(() => {
     if (!talkMeta) return;
     setMeta((prev) => ({
-      songTitle: prev.songTitle || "",
+      songTitle: prev.songTitle || talkMeta.title || "",
       speaker: prev.speaker || talkMeta.speaker || "",
       conferenceMonthYear: prev.conferenceMonthYear || talkMeta.conferenceMonthYear || "",
       session: prev.session || talkMeta.session || "",
@@ -882,6 +882,157 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     a.click();
   }
 
+  // Convert any image data URL (PNG/JPEG/etc.) to JPEG bytes via canvas.
+  // Returns a Uint8Array of JPEG data, or null if the image couldn't be read.
+  function dataUrlToJpegBytes(dataUrl, quality = 0.92) {
+    return new Promise((resolve) => {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = im.naturalWidth || im.width;
+          canvas.height = im.naturalHeight || im.height;
+          const ctx = canvas.getContext("2d");
+          // JPEG has no transparency; lay down a white background first.
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(im, 0, 0);
+          const jpegUrl = canvas.toDataURL("image/jpeg", quality);
+          const b64 = jpegUrl.split(",")[1] || "";
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          resolve(bytes);
+        } catch {
+          resolve(null);
+        }
+      };
+      im.onerror = () => resolve(null);
+      im.src = dataUrl;
+    });
+  }
+
+  // Build a ZIP (stored, no compression) from {name, bytes} entries.
+  // JPEGs are already compressed, so "stored" is fine and keeps this
+  // dependency-free — no library to add to package.json or the build.
+  function buildZip(files) {
+    const enc = new TextEncoder();
+    // CRC-32 table
+    const table = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      return t;
+    })();
+    const crc32 = (bytes) => {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) c = table[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    };
+
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    const u16 = (n) => new Uint8Array([n & 0xFF, (n >>> 8) & 0xFF]);
+    const u32 = (n) => new Uint8Array([n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]);
+    const push = (arr, parts) => parts.forEach((p) => arr.push(p));
+
+    for (const f of files) {
+      const nameBytes = enc.encode(f.name);
+      const data = f.bytes;
+      const crc = crc32(data);
+      const local = [];
+      push(local, [u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0),
+        nameBytes, data]);
+      const localBuf = concatParts(local);
+      chunks.push(localBuf);
+
+      const cd = [];
+      push(cd, [u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length),
+        u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), nameBytes]);
+      central.push(concatParts(cd));
+      offset += localBuf.length;
+    }
+
+    const centralBuf = concatParts(central);
+    const end = [];
+    push(end, [u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(centralBuf.length), u32(offset), u16(0)]);
+    const endBuf = concatParts(end);
+    return concatParts([...chunks, centralBuf, endBuf]);
+
+    function concatParts(parts) {
+      let total = 0;
+      for (const p of parts) total += p.length;
+      const out = new Uint8Array(total);
+      let pos = 0;
+      for (const p of parts) { out.set(p, pos); pos += p.length; }
+      return out;
+    }
+  }
+
+  async function downloadAllImages() {
+    setError("");
+    try {
+      const ordered = scenes.slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+      // Collect in display order: intro, each scene, outro.
+      const queue = [];
+      if (endcards.intro?.image) queue.push({ label: "00_Intro", src: endcards.intro.image });
+      for (const sc of ordered) {
+        const n = sc.sceneNumber;
+        const img = saved[n] || images[n];
+        if (img) {
+          queue.push({ label: `${String(n).padStart(2, "0")}_Scene${n}`, src: img });
+        }
+      }
+      if (endcards.outro?.image) {
+        const maxN = ordered.length ? Math.max(...ordered.map((s) => s.sceneNumber)) : 0;
+        const outroPrefix = String(Math.max(99, maxN + 1)).padStart(2, "0");
+        queue.push({ label: `${outroPrefix}_Outro`, src: endcards.outro.image });
+      }
+
+      if (queue.length === 0) {
+        setError("No finalized images yet. Generate or approve scene images (and the intro/outro cards) first.");
+        return;
+      }
+
+      setProgress(`Packaging ${queue.length} image${queue.length === 1 ? "" : "s"} as JPG…`);
+      const files = [];
+      for (const item of queue) {
+        const bytes = await dataUrlToJpegBytes(item.src);
+        if (bytes) files.push({ name: `${item.label}.jpg`, bytes });
+      }
+      if (files.length === 0) {
+        setProgress("");
+        setError("Couldn't convert the images. Try regenerating them, then download again.");
+        return;
+      }
+
+      const zipBytes = buildZip(files);
+      const blob = new Blob([zipBytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const safeTitle = (meta.songTitle || "music-video")
+        .replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "music-video";
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeTitle}-images.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setProgress(`Downloaded ${files.length} image${files.length === 1 ? "" : "s"} as a .zip. Check your Downloads folder.`);
+      setTimeout(() => setProgress(""), 6000);
+    } catch (e) {
+      setProgress("");
+      setError(`Image download: ${e.message}`);
+    }
+  }
+
   async function reviseScene(scene) {
     setError("");
     const notes = (editNotes[scene.sceneNumber] || "").trim();
@@ -1137,6 +1288,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             Export PowerPoint
           </button>
         )}
+        {scenes.length > 0 && (
+          <button className="btn btn-ghost" onClick={downloadAllImages} title="Download all finalized images (intro, scenes in order, outro) as numbered JPGs in a .zip">
+            Download Images (.zip)
+          </button>
+        )}
       </div>
 
       {busy && progress && (
@@ -1157,6 +1313,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
         <div className="style-bible">
           <h3>Style Bible</h3>
           <dl>
+            {meta.songTitle && (<><dt>Title</dt><dd>{meta.songTitle}</dd></>)}
             <dt>Art style</dt><dd>{styleBible.artStyle}</dd>
             <dt>Palette</dt><dd>{styleBible.colorPalette}</dd>
             <dt>Lighting</dt><dd>{styleBible.lighting}</dd>
