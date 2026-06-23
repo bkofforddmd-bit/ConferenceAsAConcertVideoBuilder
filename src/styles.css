@@ -52,6 +52,12 @@ h1, h2, h3, .display {
   color: var(--ink);
 }
 .masthead h1 .accent { color: var(--gold); font-style: italic; }
+.masthead-logo {
+  display: block;
+  margin: 0 auto 10px;
+  width: clamp(240px, 60vw, 420px);
+  height: auto;
+}
 .masthead p { margin: 0; color: var(--ink-soft); font-size: 15px; }
 
 .tabs {
@@ -466,4 +472,6 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 @media (max-width: 560px) {
   .picker-controls { gap: 10px; }
   .picker-select { min-width: 110px; }
+}
+
 }
