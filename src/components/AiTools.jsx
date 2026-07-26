@@ -59,6 +59,14 @@ const APOSTLE_MAP = new Map(APOSTLES.map(([n, f, t]) => [n, [f, t]]));
 // claude-opus-5 rates) — shown before the user commits to an analysis.
 const NOTE_COST = 0.02;
 
+// When the essay hits the model's output ceiling, the server ends the stream
+// with this marker and the browser immediately requests a continuation.
+const CONTINUE_SENTINEL = "@@CONTINUE@@";
+const CONSTRUCTION_SAMPLE = 12; // most-recent talks read in full
+
+// Strip keep-alive pulses (zero-width spaces) and leading blank space.
+const cleanEssay = (s) => s.replace(/​/g, "").replace(/^\s+/, "");
+
 // Run `worker(item)` over items with limited concurrency; honors an
 // AbortController and reports progress.
 async function pool(items, limit, worker, onProgress, signal) {
@@ -534,7 +542,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   const targetTalks = useMemo(() => {
     if (!index) return [];
     let talks;
-    if (tab === "speaker") {
+    if (tab === "speaker" || tab === "construction") {
       if (!speaker) return [];
       talks = index.talks.filter((t) => t.speaker === speaker);
     } else {
@@ -553,9 +561,17 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
     return [...talks].sort((a, b) => confNum(a.year, a.month) - confNum(b.year, b.month));
   }, [index, tab, speaker, timeframe, scope]);
 
+  // Construction studies a manageable sample: the most recent talks, in full.
+  const constructionSample = useMemo(
+    () => (tab === "construction" ? targetTalks.slice(-CONSTRUCTION_SAMPLE) : []),
+    [tab, targetTalks]
+  );
+
   const analysisLabel =
     tab === "speaker"
       ? speaker || ""
+      : tab === "construction"
+      ? (speaker ? `${speaker} · talk construction` : "")
       : `${scope === "apostles" ? "The Apostles" : "All speakers"} · ${timeframe.label}`;
 
   function cancel() {
@@ -614,17 +630,88 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       const citeList = analyzed.map((t) => ({ ...t, when: whenOf(t) }));
       setItems(citeList);
       setPhase("writing");
+      const essayText = await streamEssay(
+        ctrl,
+        tab,
+        analysisLabel,
+        analyzed.map((t) => {
+          const n = notes.get(t.uri);
+          return { title: t.title, speaker: t.speaker, when: whenOf(t), summary: n.summary, themes: n.themes };
+        })
+      );
+      finishAnalysis(essayText, citeList);
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      setPhase("error");
+      setErrMsg(e.message || "Analysis failed.");
+    }
+  }
+
+  // Talk-construction analysis: read the most recent talks IN FULL (no note
+  // cache — structure lives in the actual prose) and stream the essay.
+  async function analyzeConstruction() {
+    if (constructionSample.length < 2 || phase === "notes" || phase === "writing") return;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setErrMsg("");
+    setEssay("");
+    setItems([]);
+    setLoaded(null);
+    setShareUrl("");
+    setShareState("idle");
+    setPhase("notes");
+
+    try {
+      const whenOf = (t) => `${monthName(t.month)} ${t.year}`;
+      const sample = constructionSample;
+      setProgress({ done: 0, total: sample.length, cached: 0, failed: 0 });
+      const texts = new Map();
+      const res = await pool(
+        sample,
+        3,
+        async (t) => {
+          const talkData = await postJson("/.netlify/functions/fetch-talk", { url: t.uri }, ctrl.signal);
+          texts.set(t.uri, (talkData.paragraphs || []).join("\n\n"));
+        },
+        (done, failed) => setProgress((p) => ({ ...p, done, failed })),
+        ctrl.signal
+      );
+      if (ctrl.signal.aborted) return;
+      const got = sample.filter((t) => texts.has(t.uri));
+      if (res.failed && got.length < 2) throw new Error("Couldn't read these talks.");
+
+      const citeList = got.map((t) => ({ ...t, when: whenOf(t) }));
+      setItems(citeList);
+      setPhase("writing");
+      const essayText = await streamEssay(
+        ctrl,
+        "construction",
+        analysisLabel,
+        got.map((t) => ({ title: t.title, speaker: t.speaker, when: whenOf(t), text: texts.get(t.uri) }))
+      );
+      finishAnalysis(essayText, citeList);
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      setPhase("error");
+      setErrMsg(e.message || "Analysis failed.");
+    }
+  }
+
+  // Stream the essay, automatically requesting continuations when a round
+  // ends at the model's output ceiling (each round is a fresh server call
+  // with its own time budget, so long essays always finish).
+  async function streamEssay(ctrl, kind, label, payloadItems) {
+    let acc = "";
+    for (let round = 0; round < 6; round++) {
       const res = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
         body: JSON.stringify({
-          kind: tab,
-          label: analysisLabel,
-          items: analyzed.map((t) => {
-            const n = notes.get(t.uri);
-            return { title: t.title, speaker: t.speaker, when: whenOf(t), summary: n.summary, themes: n.themes };
-          }),
+          kind,
+          label,
+          items: payloadItems,
+          continueFrom: round === 0 ? undefined : cleanEssay(acc),
         }),
       });
       if (!res.ok) {
@@ -633,33 +720,35 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let acc = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        // Leading whitespace / zero-width chars are keep-alive pulses — ignore.
-        setEssay(acc.replace(/^[\s​]+/, ""));
+        setEssay(cleanEssay(acc.split(CONTINUE_SENTINEL).join("")));
       }
-      setPhase("done");
-      // Keep the finished analysis on this device so it survives reloads.
-      const rec = {
-        localId: String(Date.now()),
-        kind: tab,
-        label: analysisLabel,
-        essay: acc.replace(/^[\s​]+/, ""),
-        items: citeList.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
-        at: new Date().toISOString(),
-      };
-      const nextList = [rec, ...loadMyAnalyses()].slice(0, 12);
-      setMyAnalyses(nextList);
-      persistMyAnalyses(nextList);
-      setLoaded(rec);
-    } catch (e) {
-      if (ctrl.signal.aborted) return;
-      setPhase("error");
-      setErrMsg(e.message || "Analysis failed.");
+      const cut = acc.lastIndexOf(CONTINUE_SENTINEL);
+      if (cut === -1) return cleanEssay(acc); // finished naturally
+      acc = acc.slice(0, cut); // trim the marker and go another round
     }
+    return cleanEssay(acc) + "\n\n*(The analysis reached its maximum length.)*";
+  }
+
+  // Persist a finished analysis on-device and mark it as the loaded one.
+  function finishAnalysis(essayText, citeList) {
+    setEssay(essayText);
+    setPhase("done");
+    const rec = {
+      localId: String(Date.now()),
+      kind: tab,
+      label: analysisLabel,
+      essay: essayText,
+      items: citeList.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
+      at: new Date().toISOString(),
+    };
+    const nextList = [rec, ...loadMyAnalyses()].slice(0, 12);
+    setMyAnalyses(nextList);
+    persistMyAnalyses(nextList);
+    setLoaded(rec);
   }
 
   const itemUris = useMemo(() => [...items].reverse().map((t) => t.uri), [items]); // newest-first for queues
@@ -708,6 +797,9 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         <button className={`picker-mode-btn ${tab === "speaker" ? "active" : ""}`} onClick={() => setTab("speaker")} disabled={busy}>
           Speaker journey
         </button>
+        <button className={`picker-mode-btn ${tab === "construction" ? "active" : ""}`} onClick={() => setTab("construction")} disabled={busy}>
+          Talk construction
+        </button>
         <button className={`picker-mode-btn ${tab === "era" ? "active" : ""}`} onClick={() => setTab("era")} disabled={busy}>
           Era focus
         </button>
@@ -743,7 +835,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </div>
       )}
 
-      {tab === "speaker" && !busy && (
+      {(tab === "speaker" || tab === "construction") && !busy && (
         <>
           {!speaker ? (
             <>
@@ -810,7 +902,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </div>
       )}
 
-      {!busy && targetTalks.length >= 2 && (tab === "era" || speaker) && (
+      {!busy && tab !== "construction" && targetTalks.length >= 2 && (tab === "era" || speaker) && (
         <div className="ins-launch">
           <button className="btn btn-primary" onClick={analyze}>
             ✨ Analyze {tab === "speaker" ? `${speaker}’s journey` : `this era`} ({targetTalks.length} talks)
@@ -821,6 +913,18 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
           </span>
         </div>
       )}
+      {!busy && tab === "construction" && speaker && constructionSample.length >= 2 && (
+        <div className="ins-launch">
+          <button className="btn btn-primary" onClick={analyzeConstruction}>
+            ✨ Analyze how {speaker.split(" ").slice(-1)[0]} builds a talk ({constructionSample.length} recent talks)
+          </button>
+          <span className="note" style={{ margin: 0 }}>
+            Reads their {constructionSample.length} most recent talks in full and maps the
+            architecture — openings, scaffolding, stories, testimony, closings — ending
+            with a reusable construction template. Typically $0.30–$0.70 per run.
+          </span>
+        </div>
+      )}
       {!busy && tab === "era" && targetTalks.length < 2 && (
         <p className="note">No talks match that timeframe and speaker scope.</p>
       )}
@@ -828,7 +932,8 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       {phase === "notes" && (
         <div className="ins-progress">
           <div className="ins-progress-text">
-            Preparing study notes… {progress.done} of {progress.total} new
+            {tab === "construction" ? "Reading talks" : "Preparing study notes"}…{" "}
+            {progress.done} of {progress.total}{tab === "construction" ? "" : " new"}
             {progress.cached ? ` (${progress.cached} already on file)` : ""}
             {progress.failed ? ` · ${progress.failed} failed` : ""}
           </div>

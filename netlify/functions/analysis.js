@@ -68,7 +68,7 @@ export default async (req) => {
       }
       if (essay.length > 200000) return json({ error: "Analysis too large to share." }, 413);
       const record = {
-        kind: a.kind === "era" ? "era" : "speaker",
+        kind: ["era", "construction"].includes(a.kind) ? a.kind : "speaker",
         label: String(a.label || "").slice(0, 200),
         essay,
         items: items.map((t) => ({
