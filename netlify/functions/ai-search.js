@@ -38,7 +38,9 @@ export default async (req) => {
     try {
       const data = await callClaude(apiKey, {
         model: MODEL,
-        max_tokens: 4000,
+        max_tokens: 1000,
+        // Keep well inside the function time limit — no extended thinking.
+        thinking: { type: "disabled" },
         output_config: {
           effort: "low",
           format: {
@@ -74,60 +76,75 @@ export default async (req) => {
   }
 
   if (body.action === "rerank") {
-    const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 80) : [];
+    const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 50) : [];
     if (!candidates.length) return json({ ranked: [] });
     if (!apiKey) {
       return json({ fallback: true, ranked: candidates.map((c) => ({ i: c.i, score: 0, why: "" })) });
     }
+    // The ranking can take longer than a buffered function is allowed, so the
+    // model's JSON is STREAMED through to the client, which accumulates the
+    // text and parses it when the stream ends.
     try {
       const list = candidates
         .map((c) => `${c.i}. "${c.title}" — ${c.speaker}, ${c.when}`)
         .join("\n");
-      const data = await callClaude(apiKey, {
-        model: MODEL,
-        max_tokens: 8000,
-        output_config: {
-          effort: "low",
-          format: {
-            type: "json_schema",
-            schema: {
-              type: "object",
-              properties: {
-                ranked: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      i: { type: "integer", description: "candidate number" },
-                      score: { type: "integer", description: "relevance 1-10" },
-                      why: { type: "string", description: "≤12 words on why it's relevant" },
+      const upstream = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 6000,
+          stream: true,
+          thinking: { type: "disabled" },
+          output_config: {
+            effort: "low",
+            format: {
+              type: "json_schema",
+              schema: {
+                type: "object",
+                properties: {
+                  ranked: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        i: { type: "integer", description: "candidate number" },
+                        score: { type: "integer", description: "relevance 1-10" },
+                        why: { type: "string", description: "≤10 words on why it's relevant" },
+                      },
+                      required: ["i", "score", "why"],
+                      additionalProperties: false,
                     },
-                    required: ["i", "score", "why"],
-                    additionalProperties: false,
                   },
                 },
+                required: ["ranked"],
+                additionalProperties: false,
               },
-              required: ["ranked"],
-              additionalProperties: false,
             },
           },
-        },
-        system:
-          "You rank General Conference talks by how directly they address a " +
-          "topic, using your knowledge of these talks (titles, speakers, and " +
-          "what they taught). Rank ALL candidates, most relevant first. Score " +
-          "10 = the talk is squarely about the topic; 1 = barely related. " +
-          "Keep 'why' to a short fragment, no period.",
-        messages: [
-          { role: "user", content: `Topic: ${query}\n\nCandidate talks:\n${list}` },
-        ],
+          system:
+            "You rank General Conference talks by how directly they address a " +
+            "topic, using your knowledge of these talks (titles, speakers, and " +
+            "what they taught). Rank ALL candidates, most relevant first. Score " +
+            "10 = the talk is squarely about the topic; 1 = barely related. " +
+            "Keep 'why' to a short fragment, no period.",
+          messages: [
+            { role: "user", content: `Topic: ${query}\n\nCandidate talks:\n${list}` },
+          ],
+        }),
       });
-      const parsed = JSON.parse(textOf(data));
-      const seen = new Set();
-      const ranked = (parsed.ranked || []).filter(
-        (r) => Number.isInteger(r.i) && !seen.has(r.i) && seen.add(r.i)
-      );
-      return json({ ranked });
+      if (!upstream.ok) {
+        const err = await upstream.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Claude responded ${upstream.status}`);
+      }
+      return new Response(pipeTextDeltas(upstream), {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      });
     } catch (e) {
       return json({
         fallback: true,
@@ -139,6 +156,39 @@ export default async (req) => {
 
   return json({ error: "Unknown action." }, 400);
 };
+
+// Re-emit an Anthropic SSE stream as plain text (just the text deltas).
+function pipeTextDeltas(upstream) {
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buf = "";
+  return new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split("\n\n");
+      buf = events.pop() || "";
+      for (const evt of events) {
+        const dataLine = evt.split("\n").find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        try {
+          const data = JSON.parse(dataLine.slice(6));
+          if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
+            controller.enqueue(encoder.encode(data.delta.text));
+          }
+        } catch {}
+      }
+    },
+    cancel() {
+      reader.cancel();
+    },
+  });
+}
 
 async function callClaude(apiKey, payload) {
   const res = await fetch(ANTHROPIC_URL, {

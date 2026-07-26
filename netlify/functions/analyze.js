@@ -84,66 +84,74 @@ export default async (req) => {
       ? `Speaker: ${label}\nTalks in chronological order:\n\n`
       : `Era: ${label}\nTalks (chronological):\n\n`) + lines.join("\n\n");
 
-  let upstream;
-  try {
-    upstream = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 16000,
-        stream: true,
-        system,
-        messages: [{ role: "user", content: userContent }],
-      }),
-    });
-  } catch (e) {
-    return json({ error: "Couldn't reach the AI service.", detail: String(e.message) }, 502);
-  }
-
-  if (!upstream.ok) {
-    const err = await upstream.json().catch(() => ({}));
-    return json(
-      { error: err?.error?.message || `The AI service responded ${upstream.status}.` },
-      502
-    );
-  }
-
-  // Re-emit the SSE stream as plain text: just the text deltas.
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
+  // The whole model call happens INSIDE the returned stream, so the response
+  // opens immediately (no gateway timeout waiting for first byte), and
+  // newline heartbeats keep the connection alive while the model is thinking
+  // before its first words — the essay renderer ignores blank lines.
   const encoder = new TextEncoder();
-  let buf = "";
+  let cancelled = false;
+  let upstreamReader = null;
 
   const stream = new ReadableStream({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
-      }
-      buf += decoder.decode(value, { stream: true });
-      const events = buf.split("\n\n");
-      buf = events.pop() || "";
-      for (const evt of events) {
-        const dataLine = evt.split("\n").find((l) => l.startsWith("data: "));
-        if (!dataLine) continue;
-        try {
-          const data = JSON.parse(dataLine.slice(6));
-          if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
-            controller.enqueue(encoder.encode(data.delta.text));
-          } else if (data.type === "message_delta" && data.delta?.stop_reason === "refusal") {
-            controller.enqueue(encoder.encode("\n\n*(The model declined to complete this analysis.)*"));
+    async start(controller) {
+      const send = (s) => { try { controller.enqueue(encoder.encode(s)); } catch {} };
+      let gotFirstDelta = false;
+      const heartbeat = setInterval(() => { if (!gotFirstDelta) send("\n"); }, 8000);
+      try {
+        const upstream = await fetch(ANTHROPIC_URL, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 16000,
+            stream: true,
+            output_config: { effort: "medium" },
+            system,
+            messages: [{ role: "user", content: userContent }],
+          }),
+        });
+        if (!upstream.ok) {
+          const err = await upstream.json().catch(() => ({}));
+          send(`\n\n*(Analysis failed: ${err?.error?.message || `the AI service responded ${upstream.status}`})*`);
+          return;
+        }
+        upstreamReader = upstream.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (!cancelled) {
+          const { done, value } = await upstreamReader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const events = buf.split("\n\n");
+          buf = events.pop() || "";
+          for (const evt of events) {
+            const dataLine = evt.split("\n").find((l) => l.startsWith("data: "));
+            if (!dataLine) continue;
+            try {
+              const data = JSON.parse(dataLine.slice(6));
+              if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
+                gotFirstDelta = true;
+                send(data.delta.text);
+              } else if (data.type === "message_delta" && data.delta?.stop_reason === "refusal") {
+                send("\n\n*(The model declined to complete this analysis.)*");
+              }
+            } catch {}
           }
-        } catch {}
+        }
+      } catch (e) {
+        send(`\n\n*(Analysis failed: ${String(e && e.message)})*`);
+      } finally {
+        clearInterval(heartbeat);
+        try { controller.close(); } catch {}
       }
     },
     cancel() {
-      reader.cancel();
+      cancelled = true;
+      try { upstreamReader?.cancel(); } catch {}
     },
   });
 

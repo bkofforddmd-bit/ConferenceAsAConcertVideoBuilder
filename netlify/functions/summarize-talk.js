@@ -97,7 +97,10 @@ export default async (req) => {
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 4000,
+          max_tokens: 2000,
+          // Netlify functions have ~10s to answer; skip extended thinking so
+          // the summary returns fast. (Allowed on claude-opus-5 at low effort.)
+          thinking: { type: "disabled" },
           output_config: {
             effort: "low",
             format: {
@@ -123,7 +126,8 @@ export default async (req) => {
           system:
             "You write compact study notes on General Conference talks for later " +
             "thematic analysis. Be specific to THIS talk — capture what made it " +
-            "distinct, not generic gospel phrasing.",
+            "distinct, not generic gospel phrasing. Do not include internal or " +
+            "system XML tags in your response.",
           messages: [
             {
               role: "user",
@@ -131,7 +135,7 @@ export default async (req) => {
                 `Talk: "${t.title || ""}" by ${t.speaker || ""}, ${t.when || ""}\n\n` +
                 // Very long talks are truncated to keep the call fast; the
                 // opening 3/4 carries the thesis and main development.
-                text.slice(0, 28000),
+                text.slice(0, 22000),
             },
           ],
         }),

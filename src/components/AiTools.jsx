@@ -252,7 +252,7 @@ export function AiSearchMode({ index, startUrisQueue, listenButtons, nowPlayingU
       }
       const candidates = [...scores.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 70)
+        .slice(0, 40)
         .map(([i, kw]) => ({ i, kw, talk: index.talks[i] }))
         .filter((c) => c.talk);
 
@@ -269,16 +269,30 @@ export function AiSearchMode({ index, startUrisQueue, listenButtons, nowPlayingU
       if (!aiDown) {
         setStatusMsg(`AI is ranking ${candidates.length} candidate talks…`);
         try {
-          const rr = await postJson("/.netlify/functions/ai-search", {
-            action: "rerank",
-            query: q,
-            candidates: candidates.map((c) => ({
-              i: c.i,
-              title: c.talk.title,
-              speaker: c.talk.speaker,
-              when: `${monthName(c.talk.month)} ${c.talk.year}`,
-            })),
+          // The ranking arrives as a streamed JSON string (kept streaming so
+          // the server never hits its time limit); fallback errors arrive as
+          // regular JSON. Distinguish by content type.
+          const res = await fetch("/.netlify/functions/ai-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "rerank",
+              query: q,
+              candidates: candidates.map((c) => ({
+                i: c.i,
+                title: c.talk.title,
+                speaker: c.talk.speaker,
+                when: `${monthName(c.talk.month)} ${c.talk.year}`,
+              })),
+            }),
           });
+          let rr;
+          if ((res.headers.get("content-type") || "").includes("application/json")) {
+            rr = await res.json();
+            if (!res.ok) throw new Error(rr.error || `Ranking failed (${res.status})`);
+          } else {
+            rr = JSON.parse(await res.text());
+          }
           if (rr.fallback) {
             aiDown = true;
           } else {
@@ -534,7 +548,8 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setEssay(acc);
+        // Leading newlines are keep-alive pulses from the server — ignore.
+        setEssay(acc.replace(/^\s+/, ""));
       }
       setPhase("done");
     } catch (e) {
