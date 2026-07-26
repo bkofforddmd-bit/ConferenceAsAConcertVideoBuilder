@@ -638,8 +638,8 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        // Leading newlines are keep-alive pulses from the server — ignore.
-        setEssay(acc.replace(/^\s+/, ""));
+        // Leading whitespace / zero-width chars are keep-alive pulses — ignore.
+        setEssay(acc.replace(/^[\s​]+/, ""));
       }
       setPhase("done");
       // Keep the finished analysis on this device so it survives reloads.
@@ -647,7 +647,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         localId: String(Date.now()),
         kind: tab,
         label: analysisLabel,
-        essay: acc.replace(/^\s+/, ""),
+        essay: acc.replace(/^[\s​]+/, ""),
         items: citeList.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
         at: new Date().toISOString(),
       };

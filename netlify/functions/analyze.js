@@ -95,9 +95,20 @@ export default async (req) => {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (s) => { try { controller.enqueue(encoder.encode(s)); } catch {} };
-      let gotFirstDelta = false;
-      const heartbeat = setInterval(() => { if (!gotFirstDelta) send("\n"); }, 8000);
-      try {
+      // Keep-alive pulse while the model is silent (thinking before its first
+      // words, or between continuation rounds). A zero-width space is
+      // invisible and safe even if it lands mid-sentence.
+      let lastDelta = Date.now();
+      const heartbeat = setInterval(() => {
+        if (Date.now() - lastDelta > 8000) send("​");
+      }, 8000);
+
+      let fullText = "";     // everything streamed so far (for continuations)
+      let stopReason = null; // from the round's message_delta
+
+      // Stream one model call; returns false on a request-level failure.
+      const streamOnce = async (messages) => {
+        stopReason = null;
         const upstream = await fetch(ANTHROPIC_URL, {
           method: "POST",
           headers: {
@@ -107,17 +118,17 @@ export default async (req) => {
           },
           body: JSON.stringify({
             model: MODEL,
-            max_tokens: 16000,
+            max_tokens: 32000,
             stream: true,
             output_config: { effort: "medium" },
             system,
-            messages: [{ role: "user", content: userContent }],
+            messages,
           }),
         });
         if (!upstream.ok) {
           const err = await upstream.json().catch(() => ({}));
           send(`\n\n*(Analysis failed: ${err?.error?.message || `the AI service responded ${upstream.status}`})*`);
-          return;
+          return false;
         }
         upstreamReader = upstream.body.getReader();
         const decoder = new TextDecoder();
@@ -134,13 +145,45 @@ export default async (req) => {
             try {
               const data = JSON.parse(dataLine.slice(6));
               if (data.type === "content_block_delta" && data.delta?.type === "text_delta") {
-                gotFirstDelta = true;
+                lastDelta = Date.now();
+                fullText += data.delta.text;
                 send(data.delta.text);
-              } else if (data.type === "message_delta" && data.delta?.stop_reason === "refusal") {
-                send("\n\n*(The model declined to complete this analysis.)*");
+              } else if (data.type === "message_delta" && data.delta?.stop_reason) {
+                stopReason = data.delta.stop_reason;
               }
             } catch {}
           }
+        }
+        return true;
+      };
+
+      try {
+        const baseMessages = [{ role: "user", content: userContent }];
+        let ok = await streamOnce(baseMessages);
+
+        // Long essays can hit the output ceiling mid-sentence — continue
+        // where the text stopped (up to twice) so the analysis finishes.
+        let rounds = 0;
+        while (ok && !cancelled && stopReason === "max_tokens" && rounds < 2) {
+          rounds++;
+          ok = await streamOnce([
+            ...baseMessages,
+            { role: "assistant", content: fullText },
+            {
+              role: "user",
+              content:
+                "Your previous response hit the output length limit and stopped " +
+                "mid-sentence. Continue EXACTLY where it left off — same essay, " +
+                "same structure, same citation style. Do not repeat anything " +
+                "already written, do not restart a section, do not add a preamble. " +
+                "Just continue seamlessly to the end of the essay.",
+            },
+          ]);
+        }
+        if (ok && stopReason === "max_tokens") {
+          send("\n\n*(The analysis reached its maximum length.)*");
+        } else if (ok && stopReason === "refusal") {
+          send("\n\n*(The model declined to complete this analysis.)*");
         }
       } catch (e) {
         send(`\n\n*(Analysis failed: ${String(e && e.message)})*`);
