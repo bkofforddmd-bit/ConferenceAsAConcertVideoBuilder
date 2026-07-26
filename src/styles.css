@@ -805,6 +805,88 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 .sync-or { font-size: 13px; color: var(--ink-soft); }
 .sync-input { width: 240px; font-size: 15px; padding: 10px 12px; }
 
+/* AI search + Insights */
+.ai-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  margin: 6px 0 4px;
+}
+.ai-search-row .picker-search-input { flex: 1; }
+.ai-why { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+.ins-tabs { display: flex; gap: 8px; margin: 10px 0 14px; }
+.ins-launch {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 16px 0 6px;
+}
+.ins-progress {
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.ins-progress-text { font-size: 14px; color: var(--ink); }
+.ins-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(8, 11, 28, 0.6);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.ins-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-soft), var(--gold));
+  transition: width 0.4s ease;
+}
+.essay {
+  margin-top: 10px;
+  padding: 18px 20px;
+  background: rgba(8, 11, 28, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.essay-h {
+  font-family: "Fraunces", serif;
+  color: var(--gold);
+  font-size: 18px;
+  margin: 18px 0 6px;
+}
+.essay-h:first-child { margin-top: 0; }
+.essay-p { margin: 0 0 12px; }
+.essay-ul { margin: 0 0 12px; padding-left: 22px; }
+.cite-chip {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 5px;
+  margin: 0 1px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  vertical-align: 2px;
+  color: var(--bg-deep);
+  background: var(--gold-soft);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cite-chip:hover { background: var(--gold); }
+.ins-talklist { margin-top: 16px; }
+.ins-talklist summary {
+  cursor: pointer;
+  font-family: "Fraunces", serif;
+  font-size: 15px;
+  color: var(--gold-soft);
+  margin-bottom: 8px;
+}
+
 /* Topic mode */
 .topic-chips {
   display: flex;

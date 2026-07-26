@@ -19,6 +19,7 @@
 // hands the text to the Lyric Creator, unchanged.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AiSearchMode, InsightsMode } from "./AiTools.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -34,7 +35,7 @@ const confNum = (year, month) => Number(year) * 100 + Number(month);
 
 // Church presidencies, expressed as the conferences that fell within each —
 // the online archive starts April 1971. `to: null` = present.
-const PRESIDENCIES = [
+export const PRESIDENCIES = [
   { key: "jfsmith", label: "Pres. Joseph Fielding Smith (1971–1972)", from: 197104, to: 197204 },
   { key: "lee", label: "Pres. Harold B. Lee (1972–1973)", from: 197210, to: 197310 },
   { key: "kimball", label: "Pres. Spencer W. Kimball (1974–1985)", from: 197404, to: 198510 },
@@ -77,6 +78,12 @@ function fmtTime(secs) {
   const s = Math.max(0, Math.floor(secs || 0));
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function orderText(order) {
+  if (order === "oldest") return "oldest → newest";
+  if (order === "ranked") return "AI ranking";
+  return "newest → oldest";
 }
 
 export default function ConferencePicker({ onTalkLoaded }) {
@@ -729,6 +736,28 @@ export default function ConferencePicker({ onTalkLoaded }) {
     });
   }
 
+  // ---- generic playlists (AI search results, analysis talk sets) ----
+  const uriMap = useMemo(
+    () => new Map(((index && index.talks) || []).map((t) => [t.uri, t])),
+    [index]
+  );
+
+  // Start (or resume) a playlist defined by an explicit list of talk links.
+  // `uris` come in their canonical order (newest-first, or AI-ranked);
+  // order "oldest" plays them reversed.
+  function startUrisQueue({ id, label, uris, order = "newest", startUri }) {
+    const bm = bookmarks[id];
+    if (bm && !startUri) {
+      resumeBookmark(bm);
+      return;
+    }
+    let queue = uris.map((u) => uriMap.get(u)).filter(Boolean);
+    if (order === "oldest") queue = [...queue].reverse();
+    if (!queue.length) return;
+    const idx = startUri ? Math.max(0, queue.findIndex((t) => t.uri === startUri)) : 0;
+    startPlayback({ id, label, queue, idx, order, spec: { kind: "uris", uris, label } });
+  }
+
   // Rebuild a saved playlist from its spec and pick up where it left off.
   async function resumeBookmark(bm) {
     if (!index) return;
@@ -736,6 +765,9 @@ export default function ConferencePicker({ onTalkLoaded }) {
     if (bm.spec.kind === "speaker") {
       const talks = index.talks.filter((t) => t.speaker === bm.spec.speaker);
       queue = bm.order === "newest" ? talks : talks.reverse();
+    } else if (bm.spec.kind === "uris") {
+      queue = (bm.spec.uris || []).map((u) => uriMap.get(u)).filter(Boolean);
+      if (bm.order === "oldest") queue = [...queue].reverse();
     } else if (bm.spec.kind === "topic") {
       const data = topicsIdx || (await loadTopics());
       if (!data) {
@@ -859,6 +891,18 @@ export default function ConferencePicker({ onTalkLoaded }) {
           By topic
         </button>
         <button
+          className={`picker-mode-btn ${mode === "ai" ? "active" : ""}`}
+          onClick={() => setMode("ai")}
+        >
+          ✨ AI search
+        </button>
+        <button
+          className={`picker-mode-btn ${mode === "insights" ? "active" : ""}`}
+          onClick={() => setMode("insights")}
+        >
+          📈 Insights
+        </button>
+        <button
           className={`picker-mode-btn ${mode === "browse" ? "active" : ""}`}
           onClick={() => setMode("browse")}
         >
@@ -958,7 +1002,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
                 </span>
                 <span className="resume-card-pos">
                   talk {bm.idx + 1} of {bm.total} · {fmtTime(bm.seconds)} in ·{" "}
-                  {bm.order === "newest" ? "newest → oldest" : "oldest → newest"}
+                  {orderText(bm.order)}
                 </span>
               </button>
               <button
@@ -1198,6 +1242,30 @@ export default function ConferencePicker({ onTalkLoaded }) {
         </div>
       )}
 
+      {/* ------------------- AI SEARCH ------------------- */}
+      {mode === "ai" && (
+        <AiSearchMode
+          index={index}
+          startUrisQueue={startUrisQueue}
+          listenButtons={listenButtons}
+          nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
+          chooseTalk={chooseTalk}
+          loadingUri={loadingUri}
+        />
+      )}
+
+      {/* ------------------- INSIGHTS ------------------- */}
+      {mode === "insights" && (
+        <InsightsMode
+          index={index}
+          presidencies={PRESIDENCIES}
+          startUrisQueue={startUrisQueue}
+          nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
+          chooseTalk={chooseTalk}
+          loadingUri={loadingUri}
+        />
+      )}
+
       {/* ------------------- BROWSE BY CONFERENCE ------------------- */}
       {mode === "browse" && (
         <div className="picker-browse">
@@ -1303,7 +1371,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
               {player.spec.kind === "topic" ? `${nowPlaying.speaker} · ` : ""}
               {monthName(nowPlaying.month)} {nowPlaying.year}
               {" · "}{player.idx + 1} of {player.queue.length}
-              {" · "}{player.order === "newest" ? "newest → oldest" : "oldest → newest"}
+              {" · "}{orderText(player.order)}
               {playerStatus === "loading" ? " · loading…" : ""}
             </span>
             {playerError && <span className="listen-note">{playerError}</span>}
