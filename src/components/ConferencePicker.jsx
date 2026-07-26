@@ -83,11 +83,22 @@ function fmtTime(secs) {
 function orderText(order) {
   if (order === "oldest") return "oldest → newest";
   if (order === "ranked") return "AI ranking";
+  if (order === "analysis") return "analysis order";
   return "newest → oldest";
 }
 
+// A shared-analysis link (/?analysis=abc123) opens straight into Insights.
+function sharedAnalysisIdFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get("analysis") || "";
+  } catch {
+    return "";
+  }
+}
+
 export default function ConferencePicker({ onTalkLoaded }) {
-  const [mode, setMode] = useState("speaker"); // "speaker" | "topic" | "browse"
+  const [sharedAnalysisId] = useState(sharedAnalysisIdFromUrl);
+  const [mode, setMode] = useState(sharedAnalysisId ? "insights" : "speaker"); // speaker | topic | ai | insights | browse
 
   // ---- talk being fetched for Make song (shared by all modes) ----
   const [loadingUri, setLoadingUri] = useState("");
@@ -1263,6 +1274,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
           nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
           chooseTalk={chooseTalk}
           loadingUri={loadingUri}
+          sharedId={sharedAnalysisId}
         />
       )}
 

@@ -878,6 +878,15 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   transition: background 0.15s;
 }
 .cite-chip:hover { background: var(--gold); }
+.ins-shared-banner {
+  margin: 10px 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--gold);
+  background: rgba(226, 183, 91, 0.08);
+  border: 1px solid var(--gold-soft);
+  border-radius: 10px;
+}
 .ins-talklist { margin-top: 16px; }
 .ins-talklist summary {
   cursor: pointer;

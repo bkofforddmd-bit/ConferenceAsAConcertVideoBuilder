@@ -399,10 +399,27 @@ export function AiSearchMode({ index, startUrisQueue, listenButtons, nowPlayingU
   );
 }
 
+// ---------------------------------------------------------------------------
+// Saved analyses live in localStorage so a finished essay survives reloads
+// without re-running (and re-paying for) the analysis.
+// ---------------------------------------------------------------------------
+const ANALYSES_KEY = "cac-analyses";
+function loadMyAnalyses() {
+  try {
+    const a = JSON.parse(localStorage.getItem(ANALYSES_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+function persistMyAnalyses(list) {
+  try { localStorage.setItem(ANALYSES_KEY, JSON.stringify(list.slice(0, 12))); } catch {}
+}
+
 // ===========================================================================
 // INSIGHTS MODE (speaker journey + era focus)
 // ===========================================================================
-export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUri, chooseTalk, loadingUri }) {
+export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUri, chooseTalk, loadingUri, sharedId }) {
   const [tab, setTab] = useState("speaker"); // speaker | era
   const [speakerQuery, setSpeakerQuery] = useState("");
   const [speaker, setSpeaker] = useState(null);
@@ -417,6 +434,76 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   const [items, setItems] = useState([]); // analyzed talks, chronological
   const [errMsg, setErrMsg] = useState("");
   const abortRef = useRef(null);
+
+  // Viewing a saved or shared analysis instead of a freshly generated one.
+  const [loaded, setLoaded] = useState(null); // {kind,label,essay,items,sharedId?}
+  const [myAnalyses, setMyAnalyses] = useState(loadMyAnalyses);
+  const [shareState, setShareState] = useState("idle"); // idle | working | copied | error
+  const [shareUrl, setShareUrl] = useState("");
+
+  function openSaved(rec) {
+    setLoaded(rec);
+    setEssay(rec.essay);
+    setItems(rec.items);
+    setPhase("done");
+    setErrMsg("");
+    setShareState("idle");
+    setShareUrl(rec.sharedId ? `${window.location.origin}/?analysis=${rec.sharedId}` : "");
+  }
+
+  function deleteSaved(localId) {
+    const next = myAnalyses.filter((a) => a.localId !== localId);
+    setMyAnalyses(next);
+    persistMyAnalyses(next);
+  }
+
+  // A shared link (/?analysis=abc) — load and display it.
+  React.useEffect(() => {
+    if (!sharedId) return;
+    (async () => {
+      try {
+        const d = await postJson("/.netlify/functions/analysis", { action: "get", id: sharedId });
+        openSaved({ ...d.analysis, sharedId });
+      } catch (e) {
+        setErrMsg(e.message || "Couldn't load that shared analysis.");
+      }
+    })();
+  }, [sharedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function shareAnalysis() {
+    if (!essay || shareState === "working") return;
+    // Already published (reopened or shared view) — just copy the link again.
+    let url = shareUrl;
+    if (!url) {
+      setShareState("working");
+      try {
+        const d = await postJson("/.netlify/functions/analysis", {
+          action: "save",
+          analysis: {
+            kind: loaded ? loaded.kind : tab,
+            label: loaded ? loaded.label : analysisLabel,
+            essay,
+            items: items.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
+          },
+        });
+        url = `${window.location.origin}/?analysis=${d.id}`;
+        setShareUrl(url);
+        // Remember the share id on the local copy so re-sharing reuses it.
+        if (loaded && loaded.localId) {
+          const next = myAnalyses.map((a) => (a.localId === loaded.localId ? { ...a, sharedId: d.id } : a));
+          setMyAnalyses(next);
+          persistMyAnalyses(next);
+        }
+      } catch (e) {
+        setShareState("error");
+        setErrMsg(e.message || "Couldn't publish the analysis.");
+        return;
+      }
+    }
+    try { await navigator.clipboard.writeText(url); } catch {}
+    setShareState("copied");
+    setTimeout(() => setShareState("idle"), 4000);
+  }
 
   const speakerMatches = useMemo(() => {
     if (!index) return [];
@@ -484,6 +571,9 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
     setErrMsg("");
     setEssay("");
     setItems([]);
+    setLoaded(null);
+    setShareUrl("");
+    setShareState("idle");
     setPhase("notes");
 
     try {
@@ -552,6 +642,19 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         setEssay(acc.replace(/^\s+/, ""));
       }
       setPhase("done");
+      // Keep the finished analysis on this device so it survives reloads.
+      const rec = {
+        localId: String(Date.now()),
+        kind: tab,
+        label: analysisLabel,
+        essay: acc.replace(/^\s+/, ""),
+        items: citeList.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
+        at: new Date().toISOString(),
+      };
+      const nextList = [rec, ...loadMyAnalyses()].slice(0, 12);
+      setMyAnalyses(nextList);
+      persistMyAnalyses(nextList);
+      setLoaded(rec);
     } catch (e) {
       if (ctrl.signal.aborted) return;
       setPhase("error");
@@ -560,13 +663,31 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   }
 
   const itemUris = useMemo(() => [...items].reverse().map((t) => t.uri), [items]); // newest-first for queues
-  const missingCount = Math.max(0, progress.total);
   const estimate = (n) => (n * NOTE_COST >= 0.5 ? `~$${(n * NOTE_COST).toFixed(2)}` : "a few cents");
+  const displayLabel = loaded ? loaded.label : analysisLabel;
+
+  // The progression playlist: talks in the ORDER THE ESSAY CITES THEM —
+  // following the analysis's narrative arc rather than the calendar.
+  const progressionUris = useMemo(() => {
+    if (!essay || !items.length) return [];
+    const seen = new Set();
+    const out = [];
+    const re = /\[(\d+)\]/g;
+    let m;
+    while ((m = re.exec(essay)) !== null) {
+      const t = items[parseInt(m[1], 10) - 1];
+      if (t && !seen.has(t.uri)) {
+        seen.add(t.uri);
+        out.push(t.uri);
+      }
+    }
+    return out;
+  }, [essay, items]);
 
   function playCitation(t) {
     startUrisQueue({
-      id: `ins|${analysisLabel}|oldest`,
-      label: analysisLabel,
+      id: `ins|${displayLabel}|oldest`,
+      label: displayLabel,
       uris: itemUris,
       order: "oldest",
       startUri: t.uri,
@@ -591,6 +712,36 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
           Era focus
         </button>
       </div>
+
+      {loaded && loaded.sharedId && sharedId && (
+        <div className="ins-shared-banner">
+          Viewing a shared analysis. You can listen to every cited talk right here.
+        </div>
+      )}
+
+      {!busy && myAnalyses.length > 0 && (
+        <div className="resume-shelf" style={{ marginTop: 4 }}>
+          <div className="resume-shelf-title">My analyses</div>
+          {myAnalyses.map((a) => (
+            <div className="resume-card" key={a.localId}>
+              <button
+                className="resume-card-main"
+                title="Reopen this analysis — no cost, it's saved on this device"
+                onClick={() => openSaved(a)}
+              >
+                <span className="resume-card-label">📈 {a.label}</span>
+                <span className="resume-card-pos">
+                  {a.items.length} talks · {new Date(a.at).toLocaleDateString()}
+                  {a.sharedId ? " · shared" : ""}
+                </span>
+              </button>
+              <button className="resume-card-x" title="Remove this saved analysis" onClick={() => deleteSaved(a.localId)}>
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {tab === "speaker" && !busy && (
         <>
@@ -699,22 +850,52 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       {essay && (
         <>
           <div className="picker-group-head" style={{ marginTop: 14 }}>
-            <span className="picker-group-name">{analysisLabel}</span>
+            <span className="picker-group-name">{displayLabel}</span>
             {items.length > 0 && (
               <span className="picker-listen-btns">
+                {progressionUris.length >= 2 && (
+                  <button
+                    className="picker-listen-btn"
+                    title="Play the cited talks in the order the essay tells the story"
+                    onClick={() =>
+                      startUrisQueue({
+                        id: `insprog|${displayLabel}`,
+                        label: `${displayLabel} · progression`,
+                        uris: progressionUris,
+                        order: "analysis",
+                      })
+                    }
+                  >
+                    ▶ Play the progression
+                  </button>
+                )}
                 <button
                   className="picker-listen-btn"
                   onClick={() =>
                     startUrisQueue({
-                      id: `ins|${analysisLabel}|oldest`,
-                      label: analysisLabel,
+                      id: `ins|${displayLabel}|oldest`,
+                      label: displayLabel,
                       uris: itemUris,
                       order: "oldest",
                     })
                   }
                 >
-                  ▶ Listen to these talks (oldest → newest)
+                  ▶ All talks (oldest → newest)
                 </button>
+                {phase === "done" && (
+                  <button
+                    className="picker-listen-btn"
+                    title="Publish this analysis and copy a link — anyone who opens it can read it and play every cited talk"
+                    onClick={shareAnalysis}
+                    disabled={shareState === "working"}
+                  >
+                    {shareState === "working"
+                      ? "Publishing…"
+                      : shareState === "copied"
+                      ? "✓ Link copied!"
+                      : "🔗 Share"}
+                  </button>
+                )}
               </span>
             )}
           </div>
