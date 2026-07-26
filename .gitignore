@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# build output (Netlify builds this on deploy)
+dist/
+
+# local env / secrets
+.env
+.env.*
+!.env.example
+
+# logs & os cruft
+*.log
+.DS_Store
+.netlify/
