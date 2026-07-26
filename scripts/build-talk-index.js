@@ -24,6 +24,7 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_PATH = join(__dirname, "..", "public", "talks-index.json");
+const TOPICS_OUT_PATH = join(__dirname, "..", "public", "topics-index.json");
 
 const FIRST_YEAR = 1971; // start of the modern online archive
 const MONTHS = ["04", "10"]; // April, October
@@ -150,6 +151,87 @@ async function main() {
   console.log(`\nWrote ${all.length} talks (${speakers.size} distinct speaker names) to ${OUT_PATH}`);
   const bednar = all.filter((t) => /bednar/i.test(t.speaker)).length;
   console.log(`Sanity check — talks with "Bednar" in speaker: ${bednar}`);
+
+  await buildTopicsIndex(all);
+}
+
+// ---------------------------------------------------------------------------
+// Topic index: the Church curates ~335 General Conference topic pages
+// (/study/general-conference/topics/{slug}) each listing every related talk
+// across the archive. We crawl them and store, per topic, the positions of
+// its talks in the talks array above (indices keep the file ~10x smaller
+// than repeating URI strings). talkCount is embedded so the app can detect
+// a topics file that's out of step with talks-index.json.
+// ---------------------------------------------------------------------------
+
+async function fetchHtml(url) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
+    } catch (e) {
+      if (attempt === 1) throw e;
+      await sleep(1500);
+    }
+  }
+}
+
+async function buildTopicsIndex(allTalks) {
+  console.log("\nBuilding topic index…");
+  const listingUrl = "https://www.churchofjesuschrist.org/study/general-conference/topics?lang=eng";
+  const listing = await fetchHtml(listingUrl);
+
+  // Topic links: <a href=".../study/general-conference/topics/{slug}?lang=eng">…Name…</a>
+  const topics = [];
+  const seen = new Set();
+  const linkRe = /<a\b[^>]*?href="([^"]*\/study\/general-conference\/topics\/([a-z0-9-]+)[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = linkRe.exec(listing)) !== null) {
+    const slug = m[2];
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    const name = stripHtml(m[3]) || slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    topics.push({ slug, name });
+  }
+  console.log(`  found ${topics.length} topics`);
+
+  // Map uri -> index into the talks array for compact storage.
+  const uriToIdx = new Map(allTalks.map((t, i) => [t.uri, i]));
+
+  const out = [];
+  for (const topic of topics) {
+    try {
+      const html = await fetchHtml(
+        `https://www.churchofjesuschrist.org/study/general-conference/topics/${topic.slug}?lang=eng`
+      );
+      const idxs = new Set();
+      const talkRe = /\/study\/general-conference\/(\d{4})\/(\d{2})\/([a-z0-9-]+)/g;
+      let tm;
+      while ((tm = talkRe.exec(html)) !== null) {
+        const uri = `/study/general-conference/${tm[1]}/${tm[2]}/${tm[3]}`;
+        const idx = uriToIdx.get(uri);
+        if (idx !== undefined) idxs.add(idx);
+      }
+      if (idxs.size) {
+        out.push({ name: topic.name, slug: topic.slug, t: [...idxs].sort((a, b) => a - b) });
+        process.stdout.write(`  ${topic.slug}: ${idxs.size}\n`);
+      }
+    } catch (e) {
+      console.log(`  ${topic.slug}: ERROR ${e.message}`);
+    }
+    await sleep(200);
+  }
+
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    source: "churchofjesuschrist.org general conference topics",
+    talkCount: allTalks.length, // guard: must match talks-index.json
+    topicCount: out.length,
+    topics: out,
+  };
+  await writeFile(TOPICS_OUT_PATH, JSON.stringify(payload));
+  console.log(`\nWrote ${out.length} topics to ${TOPICS_OUT_PATH}`);
 }
 
 main().catch((e) => {
