@@ -702,7 +702,9 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   // with its own time budget, so long essays always finish).
   async function streamEssay(ctrl, kind, label, payloadItems) {
     let acc = "";
-    for (let round = 0; round < 6; round++) {
+    // Rounds are small slices (~1200 tokens each, fitting the server's ~30s
+    // stream window), so a full essay can take many of them.
+    for (let round = 0; round < 24; round++) {
       const res = await fetch("/.netlify/functions/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

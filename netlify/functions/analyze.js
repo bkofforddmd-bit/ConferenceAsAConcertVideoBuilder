@@ -130,7 +130,21 @@ export default async (req) => {
       ? `Era: ${label}\nTalks (chronological):\n\n`
       : `Speaker: ${label}\nFull talk texts (chronological):\n\n`;
 
-  const baseMessages = [{ role: "user", content: intro + lines.join("\n\n") }];
+  // The big source block is byte-identical on every round and carries a
+  // cache breakpoint, so continuation rounds read it from the prompt cache
+  // (~10% of the normal input price) instead of re-paying for it.
+  const baseMessages = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: intro + lines.join("\n\n"),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    },
+  ];
   const messages = continueFrom
     ? [
         ...baseMessages,
@@ -170,10 +184,18 @@ export default async (req) => {
           },
           body: JSON.stringify({
             model: MODEL,
-            max_tokens: 16000,
+            // The platform kills any response stream at ~30s, so each round
+            // writes a small slice and the browser chains rounds via the
+            // @@CONTINUE@@ sentinel. ~1200 tokens streams in ~15-20s.
+            max_tokens: 1200,
             stream: true,
+            // No extended thinking on essay rounds — it would spend the
+            // 30s window (and the token budget) before any text appears.
+            thinking: { type: "disabled" },
             output_config: { effort: "medium" },
-            system: SYSTEMS[kind],
+            system:
+              SYSTEMS[kind] +
+              "\n\nDo not include internal or system XML tags in your response.",
             messages,
           }),
         });
