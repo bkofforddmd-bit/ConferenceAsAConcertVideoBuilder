@@ -527,7 +527,7 @@ function loadMyAnalyses() {
   }
 }
 function persistMyAnalyses(list) {
-  try { localStorage.setItem(ANALYSES_KEY, JSON.stringify(list.slice(0, 12))); } catch {}
+  try { localStorage.setItem(ANALYSES_KEY, JSON.stringify(list.slice(0, 30))); } catch {}
 }
 
 // ===========================================================================
@@ -853,7 +853,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       items: citeList.map((t) => ({ uri: t.uri, title: t.title, speaker: t.speaker, when: t.when })),
       at: new Date().toISOString(),
     };
-    const nextList = [rec, ...loadMyAnalyses()].slice(0, 12);
+    const nextList = [rec, ...loadMyAnalyses()].slice(0, 30);
     setMyAnalyses(nextList);
     persistMyAnalyses(nextList);
     setLoaded(rec);

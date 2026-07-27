@@ -804,6 +804,11 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 }
 .sync-or { font-size: 13px; color: var(--ink-soft); }
 .sync-input { width: 240px; font-size: 15px; padding: 10px 12px; }
+.sync-backup {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
 
 /* AI search + Insights */
 .ai-search-row {

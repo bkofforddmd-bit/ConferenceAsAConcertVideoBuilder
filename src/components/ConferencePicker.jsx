@@ -315,6 +315,115 @@ export default function ConferencePicker({ onTalkLoaded }) {
     setSyncError("");
   }
 
+  // ---- backup & restore (a .json with everything this device knows) ----
+  const BACKUP_KEYS = [
+    "cac-listen-bookmarks",
+    "cac-listen-deleted",
+    "cac-listen-speed",
+    "cac-listen-speed-at",
+    "cac-sync-code",
+    "cac-analyses",
+  ];
+  const backupFileRef = useRef(null);
+  const [backupMsg, setBackupMsg] = useState("");
+
+  function downloadBackup() {
+    const data = {};
+    for (const k of BACKUP_KEYS) {
+      try {
+        const v = localStorage.getItem(k);
+        if (v !== null) data[k] = v;
+      } catch {}
+    }
+    const payload = {
+      app: "conference-as-a-concert-listening",
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `conference-concert-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setBackupMsg("Backup downloaded — keep it somewhere safe (it includes your analyses).");
+    setTimeout(() => setBackupMsg(""), 6000);
+  }
+
+  const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
+
+  // Merge a backup into this device (newest wins; nothing is blindly
+  // overwritten), then reload so every part of the app picks it up.
+  async function restoreBackup(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      if (payload.app !== "conference-as-a-concert-listening" || !payload.data) {
+        setBackupMsg("That file doesn't look like a listening backup from this app.");
+        return;
+      }
+      const inc = payload.data;
+
+      // Listening spots: per-playlist newest-wins, honoring deletions.
+      const curBm = loadBookmarksFromStorage();
+      const incBm = parseJson(inc["cac-listen-bookmarks"] || "{}", {});
+      const curDel = loadDeletedFromStorage();
+      const incDel = parseJson(inc["cac-listen-deleted"] || "{}", {});
+      const deleted = { ...curDel };
+      for (const [id, ts] of Object.entries(incDel)) {
+        if (!deleted[id] || ts > deleted[id]) deleted[id] = ts;
+      }
+      const merged = { ...curBm };
+      for (const [id, bm] of Object.entries(incBm)) {
+        if (!merged[id] || (bm.updatedAt || 0) > (merged[id].updatedAt || 0)) merged[id] = bm;
+      }
+      for (const [id, ts] of Object.entries(deleted)) {
+        if (merged[id] && ts >= (merged[id].updatedAt || 0)) delete merged[id];
+      }
+      localStorage.setItem("cac-listen-bookmarks", JSON.stringify(merged));
+      localStorage.setItem("cac-listen-deleted", JSON.stringify(deleted));
+
+      // Analyses: union by id, newest first.
+      const curAn = parseJson(localStorage.getItem("cac-analyses") || "[]", []);
+      const incAn = parseJson(inc["cac-analyses"] || "[]", []);
+      const byId = new Map();
+      for (const a of [...curAn, ...incAn]) {
+        if (a && a.localId && !byId.has(a.localId)) byId.set(a.localId, a);
+      }
+      const analyses = [...byId.values()]
+        .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
+        .slice(0, 30);
+      localStorage.setItem("cac-analyses", JSON.stringify(analyses));
+
+      // Speed preference: newer change wins.
+      const incAt = parseInt(inc["cac-listen-speed-at"] || "0", 10) || 0;
+      const curAt = parseInt(localStorage.getItem("cac-listen-speed-at") || "0", 10) || 0;
+      if (inc["cac-listen-speed"] && incAt > curAt) {
+        localStorage.setItem("cac-listen-speed", inc["cac-listen-speed"]);
+        localStorage.setItem("cac-listen-speed-at", String(incAt));
+      }
+
+      // Sync code: adopt only if this device doesn't have one (an active
+      // pairing on this device wins over the backup's).
+      if (inc["cac-sync-code"] && !localStorage.getItem("cac-sync-code")) {
+        localStorage.setItem("cac-sync-code", inc["cac-sync-code"]);
+      }
+
+      setBackupMsg("Backup loaded — refreshing…");
+      setTimeout(() => window.location.reload(), 700);
+    } catch {
+      setBackupMsg("Couldn't read that backup file.");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
   // Sync on arrival, and whenever the tab regains focus (that's the moment
   // you switch from laptop to phone or back).
   useEffect(() => {
@@ -990,6 +1099,34 @@ export default function ConferencePicker({ onTalkLoaded }) {
               </>
             )}
             {syncError && <div className="picker-error">{syncError}</div>}
+
+            <div className="sync-backup">
+              <span className="picker-label">Backup</span>
+              <div className="sync-actions" style={{ marginTop: 6 }}>
+                <button className="picker-example-chip" onClick={downloadBackup}>
+                  ⬇ Download backup (.json)
+                </button>
+                <button
+                  className="picker-example-chip"
+                  onClick={() => backupFileRef.current && backupFileRef.current.click()}
+                >
+                  Load backup…
+                </button>
+                <input
+                  ref={backupFileRef}
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  onChange={restoreBackup}
+                />
+              </div>
+              {backupMsg && <span className="sync-when">{backupMsg}</span>}
+              <span className="sync-when">
+                One file with your analyses, listening spots, sync code, and settings —
+                load it on any computer (or after a cleared browser) to pick up where
+                you left off. Loading merges; it never wipes what's already here.
+              </span>
+            </div>
           </div>
         )}
       </div>
