@@ -894,6 +894,79 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 .quote-del:hover { color: var(--danger); border-color: var(--danger); }
 .quote-del.confirm { color: var(--danger); border-color: var(--danger); }
 
+/* Talk builder */
+.studio-quote {
+  margin: 12px 0 16px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--gold);
+  background: rgba(226, 183, 91, 0.06);
+  border-radius: 0 10px 10px 0;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+.studio-cite {
+  display: block;
+  margin-top: 8px;
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.studio-coach {
+  margin: 14px 0;
+}
+.studio-coach summary {
+  cursor: pointer;
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.studio-sections { margin-top: 16px; }
+.studio-section {
+  background: rgba(8, 11, 28, 0.4);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.studio-section-name {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.studio-guidance {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.studio-guidance .essay {
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  background: rgba(8, 11, 28, 0.35);
+}
+.studio-input {
+  width: 100%;
+  min-height: 90px;
+  background: rgba(8, 11, 28, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  font-family: "Spectral", serif;
+  font-size: 14.5px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.studio-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(226, 183, 91, 0.15);
+}
+.studio-review .essay { border-color: var(--gold-soft); }
+
 /* Continue-listening shelf */
 .resume-shelf {
   margin: 14px 0 6px;

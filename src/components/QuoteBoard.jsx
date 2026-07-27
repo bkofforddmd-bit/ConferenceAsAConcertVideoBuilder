@@ -21,7 +21,7 @@ async function suggestTags(text) {
   return (data.subjects || []).slice(0, 5);
 }
 
-function QuoteCard({ q, onDelete, onSetTags, onPlay, playing }) {
+function QuoteCard({ q, onDelete, onSetTags, onPlay, playing, onUseInTalk }) {
   const [adding, setAdding] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
@@ -93,6 +93,13 @@ function QuoteCard({ q, onDelete, onSetTags, onPlay, playing }) {
         <button className="picker-talk-listen" onClick={onPlay}>{playing ? "♪ Playing" : "▶ Play talk"}</button>
         <a className="picker-talk-read" href={officialUrl(q.uri)} target="_blank" rel="noopener noreferrer">Read ↗</a>
         <button className="picker-talk-listen" onClick={copyQuote}>{copied ? "✓ Copied" : "⧉ Copy"}</button>
+        <button
+          className="picker-talk-make"
+          title="Build a sacrament meeting talk around this quote"
+          onClick={() => onUseInTalk(q)}
+        >
+          🎙 Use in a talk
+        </button>
         {confirmDel ? (
           <button className="quote-del confirm" onClick={() => onDelete(q.id)}>Really delete?</button>
         ) : (
@@ -105,7 +112,7 @@ function QuoteCard({ q, onDelete, onSetTags, onPlay, playing }) {
   );
 }
 
-export default function QuoteBoard({ quotes, onDelete, onSetTags, startUrisQueue, nowPlayingUri }) {
+export default function QuoteBoard({ quotes, onDelete, onSetTags, startUrisQueue, nowPlayingUri, onUseInTalk }) {
   const [query, setQuery] = useState("");
   const [speaker, setSpeaker] = useState("");
   const [subject, setSubject] = useState("");
@@ -200,6 +207,7 @@ export default function QuoteBoard({ quotes, onDelete, onSetTags, startUrisQueue
           q={q}
           onDelete={onDelete}
           onSetTags={onSetTags}
+          onUseInTalk={onUseInTalk}
           playing={nowPlayingUri === q.uri}
           onPlay={() =>
             startUrisQueue({ id: `quote|${q.uri}`, label: q.title, uris: [q.uri], order: "newest" })

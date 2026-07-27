@@ -21,6 +21,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiSearchMode, InsightsMode } from "./AiTools.jsx";
 import QuoteBoard from "./QuoteBoard.jsx";
+import TalkStudio from "./TalkStudio.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -203,6 +204,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
   const [quotes, setQuotes] = useState(loadQuotesFromStorage);
   const [quotePop, setQuotePop] = useState(null); // {top,left,text}
   const [quoteToast, setQuoteToast] = useState("");
+  const [studioSeedId, setStudioSeedId] = useState("");
 
   function persistQuotes(next) {
     setQuotes(next);
@@ -562,6 +564,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-analyses",
     "cac-quotes",
     "cac-quotes-deleted",
+    "cac-talk-drafts",
   ];
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -666,6 +669,22 @@ export default function ConferencePicker({ onTalkLoaded }) {
         )
       );
       localStorage.setItem("cac-quotes-deleted", JSON.stringify(qDel));
+
+      // Talk drafts: union by id, newest edit wins.
+      const curD = parseJson(localStorage.getItem("cac-talk-drafts") || "[]", []);
+      const incD = parseJson(inc["cac-talk-drafts"] || "[]", []);
+      const dById = new Map();
+      for (const d of [...curD, ...incD]) {
+        if (!d || !d.id) continue;
+        const e = dById.get(d.id);
+        if (!e || (d.updatedAt || 0) > (e.updatedAt || 0)) dById.set(d.id, d);
+      }
+      localStorage.setItem(
+        "cac-talk-drafts",
+        JSON.stringify(
+          [...dById.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10)
+        )
+      );
 
       // Speed preference: newer change wins.
       const incAt = parseInt(inc["cac-listen-speed-at"] || "0", 10) || 0;
@@ -1300,6 +1319,12 @@ export default function ConferencePicker({ onTalkLoaded }) {
           💬 Quotes{quotes.length ? ` (${quotes.length})` : ""}
         </button>
         <button
+          className={`picker-mode-btn ${mode === "studio" ? "active" : ""}`}
+          onClick={() => setMode("studio")}
+        >
+          🎙 Talk builder
+        </button>
+        <button
           className={`picker-mode-btn ${mode === "browse" ? "active" : ""}`}
           onClick={() => setMode("browse")}
         >
@@ -1700,7 +1725,13 @@ export default function ConferencePicker({ onTalkLoaded }) {
           onSetTags={setQuoteTags}
           startUrisQueue={startUrisQueue}
           nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
+          onUseInTalk={(q) => { setStudioSeedId(q.id); setMode("studio"); }}
         />
+      )}
+
+      {/* ------------------- TALK BUILDER ------------------- */}
+      {mode === "studio" && (
+        <TalkStudio key={studioSeedId || "studio"} quotes={quotes} seedQuoteId={studioSeedId} />
       )}
 
       {/* ------------------- BROWSE BY CONFERENCE ------------------- */}

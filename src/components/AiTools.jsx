@@ -237,7 +237,7 @@ function Inline({ text, citations, onCite }) {
   );
 }
 
-function Essay({ md, citations, onCite }) {
+export function Essay({ md, citations, onCite }) {
   const blocks = [];
   let list = null;
   for (const raw of String(md).split("\n")) {
