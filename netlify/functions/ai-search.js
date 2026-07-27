@@ -75,6 +75,46 @@ export default async (req) => {
     }
   }
 
+  // Suggest 2-5 subject tags for a saved quote (Quote board).
+  if (body.action === "tag") {
+    if (!apiKey) return json({ fallback: true, subjects: [] });
+    try {
+      const data = await callClaude(apiKey, {
+        model: MODEL,
+        max_tokens: 500,
+        thinking: { type: "disabled" },
+        output_config: {
+          effort: "low",
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: {
+                subjects: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "2-5 short gospel subject tags in Title Case",
+                },
+              },
+              required: ["subjects"],
+              additionalProperties: false,
+            },
+          },
+        },
+        system:
+          "You tag quotes from General Conference talks with gospel subjects " +
+          "for a personal quote board. Return 2-5 short subject tags in Title " +
+          "Case (e.g. Service, Faith, Revelation, Family, Repentance). Prefer " +
+          "broad, reusable subjects over hyper-specific ones.",
+        messages: [{ role: "user", content: `Quote: ${query.slice(0, 2000)}` }],
+      });
+      const parsed = JSON.parse(textOf(data));
+      return json({ subjects: (parsed.subjects || []).map(String).slice(0, 5) });
+    } catch (e) {
+      return json({ fallback: true, subjects: [], detail: String(e.message) });
+    }
+  }
+
   if (body.action === "rerank") {
     const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 50) : [];
     if (!candidates.length) return json({ ranked: [] });

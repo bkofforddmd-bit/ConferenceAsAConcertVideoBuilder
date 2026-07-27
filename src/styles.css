@@ -765,6 +765,135 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   .reader-para { font-size: 15px; }
 }
 
+/* Save-quote popover + toast (inside the reader panel) */
+.quote-pop {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 5;
+  font-family: "Fraunces", serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a1c05;
+  background: linear-gradient(180deg, var(--gold), var(--gold-soft));
+  border: none;
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.quote-toast {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: var(--gold);
+  background: rgba(8, 11, 28, 0.92);
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  padding: 7px 16px;
+  z-index: 5;
+}
+
+/* Quote board */
+.quote-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0 10px;
+}
+.quote-search { flex: 1 1 220px; }
+.quote-subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.picker-example-chip.active-chip {
+  background: linear-gradient(180deg, var(--gold), var(--gold-soft));
+  color: #2a1c05;
+  border-color: transparent;
+  font-weight: 600;
+}
+.quote-card {
+  background: rgba(8, 11, 28, 0.45);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold-soft);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.quote-text {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.quote-cite { font-size: 13px; color: var(--ink-soft); margin-bottom: 10px; }
+.quote-cite strong { color: var(--gold-soft); }
+.quote-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.quote-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--gold);
+  background: rgba(226, 183, 91, 0.1);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.quote-tag.ghost {
+  color: var(--ink-soft);
+  background: transparent;
+  border-style: dashed;
+  cursor: pointer;
+}
+.quote-tag.ghost:hover { color: var(--gold); border-color: var(--gold-soft); }
+.quote-tag-x {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 0 0 2px;
+  line-height: 1;
+}
+.quote-tag-x:hover { color: var(--danger); }
+.quote-tag-input {
+  font-size: 12px;
+  width: 110px;
+  background: rgba(8, 11, 28, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  padding: 3px 10px;
+}
+.quote-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.quote-del {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.quote-del:hover { color: var(--danger); border-color: var(--danger); }
+.quote-del.confirm { color: var(--danger); border-color: var(--danger); }
+
 /* Continue-listening shelf */
 .resume-shelf {
   margin: 14px 0 6px;

@@ -20,6 +20,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiSearchMode, InsightsMode } from "./AiTools.jsx";
+import QuoteBoard from "./QuoteBoard.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -68,6 +69,26 @@ function loadBookmarksFromStorage() {
 function loadDeletedFromStorage() {
   try {
     const o = JSON.parse(localStorage.getItem(DEL_KEY) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+// ---- quote board storage ----
+const QUOTES_KEY = "cac-quotes";
+const QUOTES_DEL_KEY = "cac-quotes-deleted";
+function loadQuotesFromStorage() {
+  try {
+    const a = JSON.parse(localStorage.getItem(QUOTES_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+function loadQuotesDeletedFromStorage() {
+  try {
+    const o = JSON.parse(localStorage.getItem(QUOTES_DEL_KEY) || "{}");
     return o && typeof o === "object" ? o : {};
   } catch {
     return {};
@@ -178,6 +199,34 @@ export default function ConferencePicker({ onTalkLoaded }) {
     if (p && p.id === id) closePlayer(true);
   }
 
+  // ---- quote board state ----
+  const [quotes, setQuotes] = useState(loadQuotesFromStorage);
+  const [quotePop, setQuotePop] = useState(null); // {top,left,text}
+  const [quoteToast, setQuoteToast] = useState("");
+
+  function persistQuotes(next) {
+    setQuotes(next);
+    try { localStorage.setItem(QUOTES_KEY, JSON.stringify(next)); } catch {}
+    schedulePush();
+  }
+
+  function deleteQuote(id) {
+    try {
+      const d = loadQuotesDeletedFromStorage();
+      d[id] = Date.now();
+      localStorage.setItem(QUOTES_DEL_KEY, JSON.stringify(d));
+    } catch {}
+    persistQuotes(loadQuotesFromStorage().filter((q) => q.id !== id));
+  }
+
+  function setQuoteTags(id, tags) {
+    persistQuotes(
+      loadQuotesFromStorage().map((q) =>
+        q.id === id ? { ...q, tags, updatedAt: Date.now() } : q
+      )
+    );
+  }
+
   // ---- cross-device sync (private code + /sync function) ----
   const [syncCode, setSyncCode] = useState(() => {
     try { return localStorage.getItem(SYNC_CODE_KEY) || ""; } catch { return ""; }
@@ -198,6 +247,8 @@ export default function ConferencePicker({ onTalkLoaded }) {
     return {
       bookmarks: loadBookmarksFromStorage(),
       deleted: loadDeletedFromStorage(),
+      quotes: Object.fromEntries(loadQuotesFromStorage().map((q) => [q.id, q])),
+      quotesDeleted: loadQuotesDeletedFromStorage(),
       speed: speedRef.current,
       speedUpdatedAt: speedAt,
     };
@@ -209,6 +260,16 @@ export default function ConferencePicker({ onTalkLoaded }) {
     try { localStorage.setItem(BM_KEY, JSON.stringify(state.bookmarks || {})); } catch {}
     try { localStorage.setItem(DEL_KEY, JSON.stringify(state.deleted || {})); } catch {}
     setBookmarks(state.bookmarks || {});
+    if (state.quotes) {
+      const arr = Object.values(state.quotes).sort((a, b) =>
+        String(b.savedAt || "").localeCompare(String(a.savedAt || ""))
+      );
+      try {
+        localStorage.setItem(QUOTES_KEY, JSON.stringify(arr));
+        localStorage.setItem(QUOTES_DEL_KEY, JSON.stringify(state.quotesDeleted || {}));
+      } catch {}
+      setQuotes(arr);
+    }
     let localSpeedAt = 0;
     try { localSpeedAt = parseInt(localStorage.getItem("cac-listen-speed-at") || "0", 10) || 0; } catch {}
     if (
@@ -445,6 +506,52 @@ export default function ConferencePicker({ onTalkLoaded }) {
     el.play().catch(() => {});
   }
 
+  // Highlighting text in the reader offers a "Save quote" chip; saving files
+  // the passage on the Quote board with its citation.
+  function handleReaderSelection() {
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) { setQuotePop(null); return; }
+      const text = sel.toString().replace(/\s+/g, " ").trim();
+      if (text.length < 8 || text.length > 2000) { setQuotePop(null); return; }
+      const body = readerBodyRef.current;
+      if (!body) return;
+      const range = sel.getRangeAt(0);
+      if (!body.contains(range.commonAncestorContainer)) { setQuotePop(null); return; }
+      const rect = range.getBoundingClientRect();
+      const panel = body.closest(".reader-panel");
+      if (!panel) return;
+      const pRect = panel.getBoundingClientRect();
+      setQuotePop({
+        top: Math.max(8, rect.top - pRect.top - 40),
+        left: Math.min(Math.max(rect.left - pRect.left + rect.width / 2, 80), pRect.width - 80),
+        text,
+      });
+    }, 10);
+  }
+
+  function saveQuoteFromSelection() {
+    const p = playerRef.current;
+    if (!quotePop || !p) return;
+    const t = p.queue[p.idx];
+    const rec = {
+      id: `q${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      text: quotePop.text,
+      uri: t.uri,
+      title: (readerDoc && readerDoc.title) || t.title,
+      speaker: t.speaker,
+      when: `${monthName(t.month)} ${t.year}`,
+      tags: [],
+      savedAt: new Date().toISOString(),
+      updatedAt: Date.now(),
+    };
+    persistQuotes([rec, ...loadQuotesFromStorage()]);
+    setQuotePop(null);
+    try { window.getSelection().removeAllRanges(); } catch {}
+    setQuoteToast("✓ Saved to the Quote board");
+    setTimeout(() => setQuoteToast(""), 2500);
+  }
+
   // ---- backup & restore (a .json with everything this device knows) ----
   const BACKUP_KEYS = [
     "cac-listen-bookmarks",
@@ -453,6 +560,8 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-listen-speed-at",
     "cac-sync-code",
     "cac-analyses",
+    "cac-quotes",
+    "cac-quotes-deleted",
   ];
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -530,6 +639,33 @@ export default function ConferencePicker({ onTalkLoaded }) {
         .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
         .slice(0, 30);
       localStorage.setItem("cac-analyses", JSON.stringify(analyses));
+
+      // Quotes: union by id (newest edit wins), deletions honored.
+      const curQ = parseJson(localStorage.getItem("cac-quotes") || "[]", []);
+      const incQ = parseJson(inc["cac-quotes"] || "[]", []);
+      const curQD = parseJson(localStorage.getItem("cac-quotes-deleted") || "{}", {});
+      const incQD = parseJson(inc["cac-quotes-deleted"] || "{}", {});
+      const qDel = { ...curQD };
+      for (const [id, ts] of Object.entries(incQD)) {
+        if (!qDel[id] || ts > qDel[id]) qDel[id] = ts;
+      }
+      const qById = new Map();
+      for (const q of [...curQ, ...incQ]) {
+        if (!q || !q.id) continue;
+        const e = qById.get(q.id);
+        if (!e || (q.updatedAt || 0) > (e.updatedAt || 0)) qById.set(q.id, q);
+      }
+      for (const [id, ts] of Object.entries(qDel)) {
+        const q = qById.get(id);
+        if (q && ts >= (q.updatedAt || 0)) qById.delete(id);
+      }
+      localStorage.setItem(
+        "cac-quotes",
+        JSON.stringify(
+          [...qById.values()].sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")))
+        )
+      );
+      localStorage.setItem("cac-quotes-deleted", JSON.stringify(qDel));
 
       // Speed preference: newer change wins.
       const incAt = parseInt(inc["cac-listen-speed-at"] || "0", 10) || 0;
@@ -1158,6 +1294,12 @@ export default function ConferencePicker({ onTalkLoaded }) {
           📈 Insights
         </button>
         <button
+          className={`picker-mode-btn ${mode === "quotes" ? "active" : ""}`}
+          onClick={() => setMode("quotes")}
+        >
+          💬 Quotes{quotes.length ? ` (${quotes.length})` : ""}
+        </button>
+        <button
           className={`picker-mode-btn ${mode === "browse" ? "active" : ""}`}
           onClick={() => setMode("browse")}
         >
@@ -1550,6 +1692,17 @@ export default function ConferencePicker({ onTalkLoaded }) {
         />
       )}
 
+      {/* ------------------- QUOTE BOARD ------------------- */}
+      {mode === "quotes" && (
+        <QuoteBoard
+          quotes={quotes}
+          onDelete={deleteQuote}
+          onSetTags={setQuoteTags}
+          startUrisQueue={startUrisQueue}
+          nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
+        />
+      )}
+
       {/* ------------------- BROWSE BY CONFERENCE ------------------- */}
       {mode === "browse" && (
         <div className="picker-browse">
@@ -1683,20 +1836,35 @@ export default function ConferencePicker({ onTalkLoaded }) {
             <p className="note" style={{ margin: "12px 16px" }}>Couldn't load this talk's text.</p>
           )}
           {readerDoc && readerDoc.status === "ready" && (
-            <div className="reader-body" ref={readerBodyRef}>
+            <div
+              className="reader-body"
+              ref={readerBodyRef}
+              onMouseUp={handleReaderSelection}
+              onTouchEnd={handleReaderSelection}
+            >
               {readerDoc.paragraphs.map((p, i) => (
                 <p
                   key={i}
                   ref={(el) => { paraRefs.current[i] = el; }}
                   className={`reader-para ${i === readerPara ? "current" : ""}`}
-                  title="Tap to play from this paragraph"
-                  onClick={() => seekToParagraph(i)}
+                  title="Tap to play from this paragraph — or highlight text to save a quote"
+                  onClick={() => { if (!quotePop) seekToParagraph(i); }}
                 >
                   {p}
                 </p>
               ))}
             </div>
           )}
+          {quotePop && (
+            <button
+              className="quote-pop"
+              style={{ top: quotePop.top, left: quotePop.left }}
+              onClick={saveQuoteFromSelection}
+            >
+              💬 Save quote
+            </button>
+          )}
+          {quoteToast && <div className="quote-toast">{quoteToast}</div>}
         </div>
       )}
 

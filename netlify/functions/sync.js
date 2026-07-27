@@ -73,6 +73,8 @@ function makeCode() {
 const normalizeState = (s) => ({
   bookmarks: (s && typeof s.bookmarks === "object" && s.bookmarks) || {},
   deleted: (s && typeof s.deleted === "object" && s.deleted) || {},
+  quotes: (s && typeof s.quotes === "object" && s.quotes) || {},
+  quotesDeleted: (s && typeof s.quotesDeleted === "object" && s.quotesDeleted) || {},
   speed: s && typeof s.speed === "number" ? s.speed : null,
   speedUpdatedAt: (s && s.speedUpdatedAt) || 0,
 });
@@ -98,11 +100,29 @@ function mergeStates(a, b) {
   for (const [id, ts] of Object.entries(deleted)) {
     if (bookmarks[id] && ts >= (bookmarks[id].updatedAt || 0)) delete bookmarks[id];
   }
+  // Quotes: same newest-wins + tombstone rules as bookmarks.
+  const quotesDeleted = { ...A.quotesDeleted };
+  for (const [id, ts] of Object.entries(B.quotesDeleted)) {
+    if (!quotesDeleted[id] || ts > quotesDeleted[id]) quotesDeleted[id] = ts;
+  }
+  const quotes = {};
+  for (const src of [A.quotes, B.quotes]) {
+    for (const [id, q] of Object.entries(src)) {
+      if (!q || typeof q !== "object") continue;
+      const existing = quotes[id];
+      if (!existing || (q.updatedAt || 0) > (existing.updatedAt || 0)) quotes[id] = q;
+    }
+  }
+  for (const [id, ts] of Object.entries(quotesDeleted)) {
+    if (quotes[id] && ts >= (quotes[id].updatedAt || 0)) delete quotes[id];
+  }
   // Speed preference: newest change wins.
   const speedNewer = (B.speedUpdatedAt || 0) > (A.speedUpdatedAt || 0) ? B : A;
   return {
     bookmarks,
     deleted,
+    quotes,
+    quotesDeleted,
     speed: speedNewer.speed,
     speedUpdatedAt: speedNewer.speedUpdatedAt,
     savedAt: Date.now(),
