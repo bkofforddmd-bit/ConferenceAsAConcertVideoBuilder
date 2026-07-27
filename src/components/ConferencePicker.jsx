@@ -315,6 +315,136 @@ export default function ConferencePicker({ onTalkLoaded }) {
     setSyncError("");
   }
 
+  // ---- follow-along reader (talk text scrolls with the audio) ----
+  const [readerOpen, setReaderOpen] = useState(false);
+  const [readerDoc, setReaderDoc] = useState(null); // {uri,title,paragraphs,status}
+  const [readerPara, setReaderPara] = useState(-1);
+  const [readerOffset, setReaderOffset] = useState(0); // manual sync nudge (s)
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [barH, setBarH] = useState(96);
+  const readerCacheRef = useRef(new Map()); // uri -> {title, paragraphs}
+  const readerBodyRef = useRef(null);
+  const paraRefs = useRef([]);
+  const userScrollAtRef = useRef(0);
+  const barRef = useRef(null);
+
+  // Lines that appear in the printed text but aren't spoken in the audio
+  // (byline, office) — dropping them keeps the timing model honest.
+  function spokenParagraphs(paragraphs, speakerName) {
+    return (paragraphs || []).filter((p) => {
+      const s = p.trim();
+      if (!s) return false;
+      if (/^By\s+(President|Elder|Sister|Brother|Bishop)\b/i.test(s)) return false;
+      if (/^Of the (Quorum of the Twelve Apostles|Seventy)/i.test(s)) return false;
+      if (/^(First|Second) Counselor in the First Presidency/i.test(s)) return false;
+      if (/^(President of The Church|Presiding Bishop|Acting President of the Quorum)/i.test(s)) return false;
+      if (speakerName && s === speakerName) return false;
+      return true;
+    });
+  }
+
+  async function loadReaderDoc(talk) {
+    const cached = readerCacheRef.current.get(talk.uri);
+    if (cached) {
+      setReaderDoc({ ...cached, uri: talk.uri, status: "ready" });
+      return;
+    }
+    setReaderDoc({ uri: talk.uri, title: talk.title, paragraphs: [], status: "loading" });
+    try {
+      const res = await fetch("/.netlify/functions/fetch-talk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: talk.uri }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't load the talk text.");
+      const doc = {
+        title: data.title || talk.title,
+        paragraphs: spokenParagraphs(data.paragraphs, data.speakerName || talk.speaker),
+      };
+      readerCacheRef.current.set(talk.uri, doc);
+      setReaderDoc({ ...doc, uri: talk.uri, status: "ready" });
+    } catch (e) {
+      setReaderDoc({ uri: talk.uri, title: talk.title, paragraphs: [], status: "error" });
+    }
+  }
+
+  // Load the text whenever the reader is open and the track changes.
+  const readerUri = readerOpen && player ? player.queue[player.idx]?.uri : null;
+  useEffect(() => {
+    if (!readerUri || !player) return;
+    setReaderPara(-1);
+    paraRefs.current = [];
+    loadReaderDoc(player.queue[player.idx]);
+  }, [readerUri]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the reader panel sitting exactly on top of the listen bar.
+  useEffect(() => {
+    const measure = () => {
+      if (barRef.current) setBarH(barRef.current.offsetHeight + 6);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [player, readerOpen]);
+
+  // Paragraph start times: proportional to word count across the audio
+  // duration (talks are delivered at a steady pace), with a small lead-in
+  // plus the user's manual nudge.
+  const paraStarts = useMemo(() => {
+    const paras = readerDoc && readerDoc.status === "ready" ? readerDoc.paragraphs : null;
+    if (!paras || !paras.length || !audioDuration || !isFinite(audioDuration)) return null;
+    const words = paras.map((p) => p.split(/\s+/).length);
+    const total = words.reduce((a, b) => a + b, 0) || 1;
+    const lead = 2 + readerOffset;
+    const usable = Math.max(30, audioDuration - lead - 2);
+    const starts = [];
+    let cum = 0;
+    for (const w of words) {
+      starts.push(lead + (cum / total) * usable);
+      cum += w;
+    }
+    return starts;
+  }, [readerDoc, audioDuration, readerOffset]);
+  const paraStartsRef = useRef(null);
+  useEffect(() => { paraStartsRef.current = paraStarts; }, [paraStarts]);
+  const readerParaRef = useRef(-1);
+  useEffect(() => { readerParaRef.current = readerPara; }, [readerPara]);
+
+  // Called from the audio element's timeupdate: move the highlight.
+  function updateReaderPosition(t) {
+    const starts = paraStartsRef.current;
+    if (!readerOpen || !starts) return;
+    let idx = 0;
+    for (let i = 0; i < starts.length; i++) {
+      if (starts[i] <= t + 0.25) idx = i;
+      else break;
+    }
+    if (idx !== readerParaRef.current) setReaderPara(idx);
+  }
+
+  // Auto-scroll the highlighted paragraph to the middle of the panel —
+  // unless the user scrolled manually in the last few seconds.
+  useEffect(() => {
+    if (readerPara < 0) return;
+    if (Date.now() - userScrollAtRef.current < 6000) return;
+    const el = paraRefs.current[readerPara];
+    const box = readerBodyRef.current;
+    if (!el || !box) return;
+    box.scrollTo({
+      top: el.offsetTop - box.offsetTop - box.clientHeight / 2 + el.clientHeight / 2,
+      behavior: "smooth",
+    });
+  }, [readerPara]);
+
+  function seekToParagraph(i) {
+    const el = audioRef.current;
+    const starts = paraStartsRef.current;
+    if (!el || !starts || starts[i] === undefined) return;
+    el.currentTime = Math.max(0, starts[i]);
+    el.play().catch(() => {});
+  }
+
   // ---- backup & restore (a .json with everything this device knows) ----
   const BACKUP_KEYS = [
     "cac-listen-bookmarks",
@@ -748,7 +878,9 @@ export default function ConferencePicker({ onTalkLoaded }) {
   }
 
   // Ongoing auto-save: every few seconds of listening, remember the spot.
-  function handleTimeUpdate() {
+  // Also drives the follow-along reader's paragraph highlight.
+  function handleTimeUpdate(e) {
+    updateReaderPosition(e.target.currentTime || 0);
     const now = Date.now();
     if (now - lastBmSaveRef.current < 5000) return;
     lastBmSaveRef.current = now;
@@ -767,6 +899,9 @@ export default function ConferencePicker({ onTalkLoaded }) {
     playerRef.current = null;
     setPlayerStatus("idle");
     setPlayerError("");
+    setReaderOpen(false);
+    setReaderDoc(null);
+    setReaderPara(-1);
   }
 
   // ---- queue starters ----
@@ -1508,10 +1643,67 @@ export default function ConferencePicker({ onTalkLoaded }) {
         </div>
       )}
 
+      {/* ------------------- FOLLOW-ALONG READER ------------------- */}
+      {readerOpen && player && nowPlaying && (
+        <div
+          className="reader-panel"
+          style={{ bottom: barH }}
+          onWheel={() => { userScrollAtRef.current = Date.now(); }}
+          onTouchMove={() => { userScrollAtRef.current = Date.now(); }}
+        >
+          <div className="reader-head">
+            <span className="reader-title">{(readerDoc && readerDoc.title) || nowPlaying.title}</span>
+            <span className="reader-tools">
+              <button
+                className="picker-example-chip"
+                title="Highlight running early? Push the text later."
+                onClick={() => setReaderOffset((o) => o + 5)}
+              >
+                +5s
+              </button>
+              <button
+                className="picker-example-chip"
+                title="Highlight running late? Pull the text earlier."
+                onClick={() => setReaderOffset((o) => o - 5)}
+              >
+                −5s
+              </button>
+              {readerOffset !== 0 && (
+                <span className="reader-offset">sync {readerOffset > 0 ? "+" : ""}{readerOffset}s</span>
+              )}
+              <button className="resume-card-x" title="Close the reader" onClick={() => setReaderOpen(false)}>
+                ✕
+              </button>
+            </span>
+          </div>
+          {readerDoc && readerDoc.status === "loading" && (
+            <p className="note" style={{ margin: "12px 16px" }}>Loading the talk text…</p>
+          )}
+          {readerDoc && readerDoc.status === "error" && (
+            <p className="note" style={{ margin: "12px 16px" }}>Couldn't load this talk's text.</p>
+          )}
+          {readerDoc && readerDoc.status === "ready" && (
+            <div className="reader-body" ref={readerBodyRef}>
+              {readerDoc.paragraphs.map((p, i) => (
+                <p
+                  key={i}
+                  ref={(el) => { paraRefs.current[i] = el; }}
+                  className={`reader-para ${i === readerPara ? "current" : ""}`}
+                  title="Tap to play from this paragraph"
+                  onClick={() => seekToParagraph(i)}
+                >
+                  {p}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ------------------- LISTEN BAR (playlist player) ------------------- */}
       {/* Always mounted so the <audio> element (and playback) survives
           re-renders; hidden until a queue is started. */}
-      <div className="listen-bar" style={{ display: player ? "flex" : "none" }}>
+      <div className="listen-bar" ref={barRef} style={{ display: player ? "flex" : "none" }}>
         {nowPlaying && (
           <div className="listen-info">
             <span className="listen-speaker">{player.label}</span>
@@ -1543,7 +1735,16 @@ export default function ConferencePicker({ onTalkLoaded }) {
             onEnded={handleEnded}
             onTimeUpdate={handleTimeUpdate}
             onPause={() => writeBookmark()}
+            onLoadedMetadata={(e) => setAudioDuration(e.target.duration || 0)}
+            onDurationChange={(e) => setAudioDuration(e.target.duration || 0)}
           />
+          <button
+            className={`listen-btn listen-reader-btn ${readerOpen ? "active" : ""}`}
+            title="Follow along — the talk text scrolls with the audio"
+            onClick={() => setReaderOpen(!readerOpen)}
+          >
+            📖
+          </button>
           <button
             className="listen-btn"
             title="Next talk"
