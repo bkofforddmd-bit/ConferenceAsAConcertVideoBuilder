@@ -86,7 +86,7 @@ function inlineHtml(text, items) {
   return s;
 }
 
-function buildExportHtml(label, essay, items) {
+export function buildExportHtml(label, essay, items) {
   const blocks = [];
   let inList = false;
   const closeList = () => { if (inList) { blocks.push("</ul>"); inList = false; } };
@@ -144,7 +144,7 @@ ${cited}
 </html>`;
 }
 
-function safeFilename(label) {
+export function safeFilename(label) {
   return (String(label).replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "analysis");
 }
 

@@ -19,9 +19,9 @@
 // hands the text to the Lyric Creator, unchanged.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AiSearchMode, InsightsMode } from "./AiTools.jsx";
+import { AiSearchMode, InsightsMode, buildExportHtml, safeFilename } from "./AiTools.jsx";
 import QuoteBoard from "./QuoteBoard.jsx";
-import TalkStudio from "./TalkStudio.jsx";
+import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -107,6 +107,38 @@ function orderText(order) {
   if (order === "ranked") return "AI ranking";
   if (order === "analysis") return "analysis order";
   return "newest → oldest";
+}
+
+// ---- local data folder (File System Access API, Chrome/Edge) ----
+// Each user connects their OWN folder — Desktop, Google Drive, Dropbox,
+// OneDrive, anywhere. The folder handle persists in IndexedDB per browser.
+const FS_DB = "cac-fs";
+function idbHandle(op, value) {
+  return new Promise((resolve) => {
+    const open = indexedDB.open(FS_DB, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("handles");
+    open.onerror = () => resolve(null);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction("handles", op === "get" ? "readonly" : "readwrite");
+      const store = tx.objectStore("handles");
+      const req =
+        op === "get" ? store.get("dataFolder")
+        : op === "set" ? store.put(value, "dataFolder")
+        : store.delete("dataFolder");
+      req.onsuccess = () => resolve(op === "get" ? req.result || null : true);
+      req.onerror = () => resolve(null);
+      tx.oncomplete = () => db.close();
+    };
+  });
+}
+
+async function writeFolderFile(root, subdir, filename, contents) {
+  const dir = await root.getDirectoryHandle(subdir, { create: true });
+  const fh = await dir.getFileHandle(filename, { create: true });
+  const w = await fh.createWritable();
+  await w.write(contents);
+  await w.close();
 }
 
 // A shared-analysis link (/?analysis=abc123) opens straight into Insights.
@@ -569,7 +601,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
 
-  function downloadBackup() {
+  function makeBackupPayload() {
     const data = {};
     for (const k of BACKUP_KEYS) {
       try {
@@ -577,12 +609,16 @@ export default function ConferencePicker({ onTalkLoaded }) {
         if (v !== null) data[k] = v;
       } catch {}
     }
-    const payload = {
+    return {
       app: "conference-as-a-concert-listening",
       version: 1,
       savedAt: new Date().toISOString(),
       data,
     };
+  }
+
+  function downloadBackup() {
+    const payload = makeBackupPayload();
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -708,6 +744,150 @@ export default function ConferencePicker({ onTalkLoaded }) {
       e.target.value = "";
     }
   }
+
+  // ---- local data folder: each user connects their own archive location ----
+  const [fsState, setFsState] = useState({ status: "loading", name: "" });
+  const [fsMsg, setFsMsg] = useState("");
+  const fsHandleRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      if (!window.showDirectoryPicker) {
+        setFsState({ status: "unsupported", name: "" });
+        return;
+      }
+      const handle = await idbHandle("get");
+      if (!handle) {
+        setFsState({ status: "none", name: "" });
+        return;
+      }
+      fsHandleRef.current = handle;
+      try {
+        const perm = await handle.queryPermission({ mode: "readwrite" });
+        setFsState({ status: perm === "granted" ? "granted" : "prompt", name: handle.name });
+      } catch {
+        setFsState({ status: "prompt", name: handle.name });
+      }
+    })();
+  }, []);
+
+  async function connectDataFolder() {
+    try {
+      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      fsHandleRef.current = handle;
+      await idbHandle("set", handle);
+      setFsState({ status: "granted", name: handle.name });
+      setFsMsg(`Connected — archives will be saved into “${handle.name}”.`);
+    } catch {}
+  }
+
+  async function reconnectDataFolder() {
+    const handle = fsHandleRef.current;
+    if (!handle) return;
+    try {
+      const perm = await handle.requestPermission({ mode: "readwrite" });
+      if (perm === "granted") {
+        setFsState({ status: "granted", name: handle.name });
+        setFsMsg("Reconnected.");
+      }
+    } catch {}
+  }
+
+  async function forgetDataFolder() {
+    await idbHandle("delete");
+    fsHandleRef.current = null;
+    setFsState({ status: "none", name: "" });
+    setFsMsg("");
+  }
+
+  function buildQuotesDocHtml(list) {
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const rows = list
+      .map(
+        (q) =>
+          `<blockquote>“${esc(q.text)}”<span class="cite">— ${esc(q.speaker)}, “${esc(q.title)},” ${esc(q.when)} General Conference${
+            (q.tags || []).length ? ` · <em>${esc(q.tags.join(", "))}</em>` : ""
+          }</span></blockquote>`
+      )
+      .join("\n");
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Quote board</title>
+<style>body{font-family:Georgia,serif;color:#1a1a1a;max-width:7.5in;margin:0 auto;padding:24px;line-height:1.6;font-size:12pt}
+h1{font-size:18pt;margin:0 0 4px}.meta{color:#666;font-size:10pt;margin:0 0 16px}
+blockquote{margin:0 0 16px;padding:10px 16px;border-left:3px solid #b9923c;background:#faf7ef;font-style:italic}
+blockquote .cite{display:block;margin-top:6px;font-style:normal;font-size:10pt;color:#555}</style></head><body>
+<h1>Quote board</h1><p class="meta">${list.length} quotes · exported ${new Date().toLocaleDateString()}</p>
+${rows}</body></html>`;
+  }
+
+  // Write everything the app knows into the connected folder, organized
+  // into subfolders. Word-format .doc files carry the readable copies.
+  async function saveArchive() {
+    const root = fsHandleRef.current;
+    if (!root || fsState.status !== "granted") return;
+    setFsMsg("Saving…");
+    let files = 0;
+    try {
+      const payload = JSON.stringify(makeBackupPayload(), null, 2);
+      const stamp = new Date().toISOString().slice(0, 10);
+      await writeFolderFile(root, "Backups", `backup-${stamp}.json`, payload);
+      await writeFolderFile(root, "Backups", "backup-latest.json", payload);
+      files += 2;
+
+      const qs = loadQuotesFromStorage();
+      if (qs.length) {
+        await writeFolderFile(root, "Quote board", "Quote board.doc", "﻿" + buildQuotesDocHtml(qs));
+        await writeFolderFile(root, "Quote board", "quotes.json", JSON.stringify(qs, null, 2));
+        files += 2;
+      }
+
+      let analyses = [];
+      try { analyses = JSON.parse(localStorage.getItem("cac-analyses") || "[]"); } catch {}
+      for (const a of analyses) {
+        await writeFolderFile(
+          root,
+          "Analyses",
+          `${safeFilename(a.label)}.doc`,
+          "﻿" + buildExportHtml(a.label, a.essay, a.items)
+        );
+        files++;
+      }
+
+      let drafts = [];
+      try { drafts = JSON.parse(localStorage.getItem("cac-talk-drafts") || "[]"); } catch {}
+      for (const d of drafts) {
+        await writeFolderFile(
+          root,
+          "Talk drafts",
+          `${safeFilename(`Talk - ${d.emulate}`)}-${String(d.id).slice(-4)}.doc`,
+          "﻿" + buildOutlineHtml(d)
+        );
+        files++;
+      }
+
+      setFsMsg(`✓ Saved ${files} files into “${fsState.name || "your data folder"}” (Backups, Quote board, Analyses, Talk drafts).`);
+    } catch (e) {
+      setFsMsg(`Couldn't save: ${e && e.message ? e.message : "unknown error"}`);
+    }
+  }
+
+  // Quiet safety net: refresh the latest backup file once a minute while
+  // the app is open and a folder is connected.
+  useEffect(() => {
+    if (fsState.status !== "granted") return;
+    const id = setInterval(async () => {
+      const root = fsHandleRef.current;
+      if (!root) return;
+      try {
+        await writeFolderFile(
+          root,
+          "Backups",
+          "backup-latest.json",
+          JSON.stringify(makeBackupPayload(), null, 2)
+        );
+      } catch {}
+    }, 60000);
+    return () => clearInterval(id);
+  }, [fsState.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync on arrival, and whenever the tab regains focus (that's the moment
   // you switch from laptop to phone or back).
@@ -1428,6 +1608,65 @@ export default function ConferencePicker({ onTalkLoaded }) {
                 load it on any computer (or after a cleared browser) to pick up where
                 you left off. Loading merges; it never wipes what's already here.
               </span>
+            </div>
+
+            <div className="sync-backup">
+              <span className="picker-label">Data folder</span>
+              {fsState.status === "unsupported" && (
+                <span className="sync-when">
+                  Direct folder saving needs Chrome or Edge on a computer. (The
+                  Download-backup button above works everywhere.)
+                </span>
+              )}
+              {fsState.status === "none" && (
+                <>
+                  <div className="sync-actions" style={{ marginTop: 6 }}>
+                    <button className="picker-example-chip" onClick={connectDataFolder}>
+                      📁 Choose my data folder…
+                    </button>
+                  </div>
+                  <span className="sync-when">
+                    Pick any folder on your computer — a Desktop folder, or one
+                    inside Google Drive, Dropbox, or OneDrive for automatic cloud
+                    backup. The app will save your archives there: backups (.json),
+                    analyses and talk drafts (Word), and your Quote board. Each
+                    person using the app chooses their own location.
+                  </span>
+                </>
+              )}
+              {fsState.status === "prompt" && (
+                <>
+                  <div className="sync-actions" style={{ marginTop: 6 }}>
+                    <button className="picker-example-chip" onClick={reconnectDataFolder}>
+                      🔓 Reconnect “{fsState.name || "your data folder"}”
+                    </button>
+                    <button className="picker-example-chip" onClick={forgetDataFolder}>Forget</button>
+                  </div>
+                  <span className="sync-when">
+                    Your folder is remembered — the browser just needs one click to
+                    re-allow saving after a restart.
+                  </span>
+                </>
+              )}
+              {fsState.status === "granted" && (
+                <>
+                  <div className="sync-actions" style={{ marginTop: 6 }}>
+                    <button className="btn btn-primary" style={{ padding: "8px 16px", fontSize: 14 }} onClick={saveArchive}>
+                      💾 Save everything now
+                    </button>
+                    <span className="sync-when" style={{ margin: 0 }}>✓ Saving to “{fsState.name || "your data folder"}”</span>
+                    <button className="picker-example-chip" onClick={forgetDataFolder}>Forget folder</button>
+                  </div>
+                  <span className="sync-when">
+                    Writes Backups (.json), your Quote board (Word + data), every
+                    analysis, and every talk draft into tidy subfolders. A fresh
+                    backup-latest.json is also kept updated automatically while the
+                    app is open. (PDFs still print from their own buttons — the Word
+                    copies land here.)
+                  </span>
+                </>
+              )}
+              {fsMsg && <span className="sync-when">{fsMsg}</span>}
             </div>
           </div>
         )}

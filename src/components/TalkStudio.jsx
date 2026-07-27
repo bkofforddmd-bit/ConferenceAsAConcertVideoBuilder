@@ -76,7 +76,7 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function exportOutline(draft, mode) {
+export function buildOutlineHtml(draft) {
   const secs = draft.sections
     .map(
       (s) =>
@@ -86,7 +86,7 @@ function exportOutline(draft, mode) {
           : `<p class="empty">(to be written)</p>`)
     )
     .join("\n");
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Talk outline</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Talk outline</title>
 <style>body{font-family:Georgia,serif;color:#1a1a1a;max-width:7.5in;margin:0 auto;padding:24px;line-height:1.6;font-size:12pt}
 h1{font-size:18pt;margin:0 0 4px}.meta{color:#666;font-size:10pt;margin:0 0 14px}
 blockquote{margin:0 0 16px;padding:10px 16px;border-left:3px solid #b9923c;background:#faf7ef;font-style:italic}
@@ -98,6 +98,10 @@ p{margin:0 0 8px}.empty{color:#999;font-style:italic}@media print{body{padding:0
 <blockquote>“${escapeHtml(draft.quote.text)}”<span class="cite">— ${escapeHtml(draft.quote.speaker)}, “${escapeHtml(draft.quote.title)},” ${escapeHtml(draft.quote.when)} General Conference</span></blockquote>
 ${secs}
 </body></html>`;
+}
+
+function exportOutline(draft, mode) {
+  const html = buildOutlineHtml(draft);
   if (mode === "pdf") {
     const w = window.open("", "_blank");
     if (!w) return;
