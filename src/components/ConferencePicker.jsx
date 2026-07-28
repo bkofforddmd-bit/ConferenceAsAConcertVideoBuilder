@@ -24,6 +24,7 @@ import QuoteBoard from "./QuoteBoard.jsx";
 import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
 import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
 import { cutClipToWav, fmtClock } from "../lib/audio-clip.js";
+import { recordClipToVideo } from "../lib/video-clip.js";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -217,7 +218,13 @@ function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [media, setMedia] = useState(null); // {audio, video}
+  const [recording, setRecording] = useState(false);
+  const [recProgress, setRecProgress] = useState(0);
   const previewTimerRef = useRef(null);
+  const recJobRef = useRef(null);
+  const recMountRef = useRef(null);
+
+  useEffect(() => () => { recJobRef.current?.cancel(); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -269,6 +276,47 @@ function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }
     setBusy(false);
   }
 
+  // Record the marked segment of the official video, in real time.
+  async function saveVideo() {
+    const el = audioRef.current;
+    if (!el || start == null || end == null || end <= start || busy || recording) return;
+    setStatus("");
+    setRecording(true);
+    setRecProgress(0);
+    try { el.pause(); } catch {} // one soundtrack at a time
+    try {
+      const m = media || (await resolveMedia());
+      const vUrl = (m.video && (m.video.p720 || m.video.p1080 || m.video.p360)) || "";
+      if (!vUrl) throw new Error("no video is available for this talk");
+      const job = recordClipToVideo({
+        videoUrl: vUrl,
+        startSec: start,
+        endSec: end,
+        container: recMountRef.current,
+        onStatus: setStatus,
+        onProgress: setRecProgress,
+      });
+      recJobRef.current = job;
+      const { blob, ext } = await job.promise;
+      const ok = await onSaveClip({
+        name: name.trim() || talk.title,
+        start,
+        end,
+        blob,
+        ext,
+        kind: "video",
+        audioUrl: m.audio || "",
+        videoUrl: vUrl,
+        duration: el.duration || 0,
+      });
+      setStatus(ok);
+    } catch (e) {
+      setStatus(e.message === "cancelled" ? "Recording cancelled." : `Couldn't record the clip: ${e.message}`);
+    }
+    recJobRef.current = null;
+    setRecording(false);
+  }
+
   return (
     <div className="reader-panel journal-panel" style={{ bottom }}>
       <div className="reader-head">
@@ -279,8 +327,9 @@ function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }
       </div>
       <div className="journal-body">
         <p className="note" style={{ marginTop: 0 }}>
-          Let the talk play; mark where the clip should begin and end. The clip
-          saves as a .wav file — drop it straight into a presentation.
+          Let the talk play; mark where the clip should begin and end. Save it
+          as an audio file (.wav) or record it as a video clip — either drops
+          straight into a presentation.
         </p>
         <div className="clip-rows">
           <div className="clip-row">
@@ -312,29 +361,51 @@ function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }
           <input type="text" className="picker-search-input" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="journal-actions">
-          <button className="picker-talk-listen" onClick={preview} disabled={start == null || end == null || end <= start}>
+          <button className="picker-talk-listen" onClick={preview} disabled={recording || start == null || end == null || end <= start}>
             ▶ Preview
           </button>
-          <button className="btn btn-primary" onClick={save} disabled={busy || start == null || end == null || end <= start}>
+          <button className="btn btn-primary" onClick={save} disabled={busy || recording || start == null || end == null || end <= start}>
             {busy ? "Cutting…" : "💾 Save audio clip (.wav)"}
           </button>
+          {videoUrl && !recording && (
+            <button
+              className="btn btn-primary"
+              onClick={saveVideo}
+              disabled={busy || start == null || end == null || end <= start}
+              title="Plays your marked segment once and records it into a video file (takes as long as the clip)"
+            >
+              🎥 Record video clip
+            </button>
+          )}
+          {recording && (
+            <button className="picker-talk-listen" onClick={() => recJobRef.current?.cancel()}>
+              ✕ Cancel recording
+            </button>
+          )}
           {videoUrl && (
             <a
               className="picker-talk-read"
               href={`${videoUrl}?download=true`}
               target="_blank"
               rel="noopener noreferrer"
-              title="Downloads the official talk video (720p MP4)"
+              title="Downloads the full official talk video (720p MP4)"
             >
-              🎬 Video (MP4) ↓
+              🎬 Full video (MP4) ↓
             </a>
           )}
         </div>
-        {videoUrl && start != null && end != null && end > start && (
+        <div ref={recMountRef} style={recording ? { marginTop: 10 } : { display: "none" }} />
+        {recording && start != null && end != null && (
           <p className="note">
-            For a video clip: download the MP4, insert it into your slide, then
-            trim to {fmtClock(start)}–{fmtClock(end)} (PowerPoint: Playback →
-            Trim Video).
+            🎥 Recording {fmtClock(Math.min(recProgress, end - start))} of {fmtClock(end - start)} — the
+            clip plays through once while it records; keep this tab open.
+          </p>
+        )}
+        {videoUrl && !recording && start != null && end != null && end > start && (
+          <p className="note">
+            🎥 records exactly {fmtClock(start)}–{fmtClock(end)} as its own
+            video file. For the highest quality instead, download the full MP4
+            and trim it in your slides app (PowerPoint: Playback → Trim Video).
           </p>
         )}
         {status && <p className="note">{status}</p>}
@@ -549,23 +620,26 @@ export default function ConferencePicker({ onTalkLoaded }) {
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
-  // Deliver a cut clip: into the data folder's "Audio clips" when connected,
-  // otherwise as a download. Records the clip's metadata either way so it
-  // can be re-cut later from the shelf.
-  async function deliverClip({ name, start, end, blob, audioUrl, videoUrl, duration }, talk, recordMeta = true) {
-    const filename = `${safeFilename(name)} [${fmtClock(start)}-${fmtClock(end)}].wav`;
+  // Deliver a cut clip: into the data folder's "Audio clips" / "Video clips"
+  // when connected, otherwise as a download. Records the clip's metadata
+  // either way so it can be re-cut later from the shelf.
+  async function deliverClip({ name, start, end, blob, ext, kind, audioUrl, videoUrl, duration }, talk, recordMeta = true) {
+    const fileExt = ext || "wav";
+    const folder = kind === "video" ? "Video clips" : "Audio clips";
+    const filename = `${safeFilename(name)} [${fmtClock(start)}-${fmtClock(end)}].${fileExt}`;
+    const sizeNote = blob.size > 1e6 ? ` (${(blob.size / 1e6).toFixed(1)} MB)` : "";
     let where;
     if (fsHandleRef.current && fsState.status === "granted") {
       try {
-        await writeFolderFile(fsHandleRef.current, "Audio clips", filename, blob);
-        where = `✓ Saved to “${fsState.name || "your data folder"}/Audio clips/${filename}”`;
+        await writeFolderFile(fsHandleRef.current, folder, filename, blob);
+        where = `✓ Saved to “${fsState.name || "your data folder"}/${folder}/${filename}”${sizeNote}`;
       } catch {
         downloadBlob(blob, filename);
-        where = `✓ Downloaded ${filename} (folder write failed)`;
+        where = `✓ Downloaded ${filename}${sizeNote} (folder write failed)`;
       }
     } else {
       downloadBlob(blob, filename);
-      where = `✓ Downloaded ${filename}`;
+      where = `✓ Downloaded ${filename}${sizeNote}`;
     }
     if (recordMeta && talk) {
       const rec = {
@@ -575,6 +649,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
         speaker: talk.speaker,
         when: talk.when || `${monthName(talk.month)} ${talk.year}`,
         name: name || talk.title,
+        kind: kind || "audio",
         start,
         end,
         audioUrl,
@@ -2624,8 +2699,8 @@ ${rows}</body></html>`;
       {mode === "quotes" && (
         <div className="clip-shelf">
           <h3 className="prog-h">
-            🎬 Audio clips
-            <span className="prog-hint"> — snipped with ✂️ on the player; .wav files for presentations</span>
+            🎬 Clips
+            <span className="prog-hint"> — snipped with ✂️ on the player; audio + video clips for presentations</span>
           </h3>
           {clipMsg && <p className="note">{clipMsg}</p>}
           {clips.length === 0 ? (
@@ -2637,7 +2712,7 @@ ${rows}</body></html>`;
           ) : (
             clips.map((c) => (
               <div className="quote-card" key={c.id}>
-                <p className="quote-text" style={{ fontStyle: "normal" }}>🎬 {c.name}</p>
+                <p className="quote-text" style={{ fontStyle: "normal" }}>{c.kind === "video" ? "🎥" : "🎬"} {c.name}</p>
                 <div className="quote-cite">
                   {fmtClock(c.start)}–{fmtClock(c.end)} ({fmtClock(c.end - c.start)}) of “{c.title}” —{" "}
                   <strong>{c.speaker}</strong>, {c.when} General Conference
