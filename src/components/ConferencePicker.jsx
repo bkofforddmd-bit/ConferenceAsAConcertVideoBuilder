@@ -88,6 +88,26 @@ function loadListenedFromStorage() {
   }
 }
 
+// ---- Becoming journal storage ----
+const JOURNAL_KEY = "cac-journal";
+const JOURNAL_DEL_KEY = "cac-journal-deleted";
+function loadJournalFromStorage() {
+  try {
+    const a = JSON.parse(localStorage.getItem(JOURNAL_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+function loadJournalDeletedFromStorage() {
+  try {
+    const o = JSON.parse(localStorage.getItem(JOURNAL_DEL_KEY) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
+
 // ---- quote board storage ----
 const QUOTES_KEY = "cac-quotes";
 const QUOTES_DEL_KEY = "cac-quotes-deleted";
@@ -160,6 +180,64 @@ function sharedAnalysisIdFromUrl() {
   } catch {
     return "";
   }
+}
+
+// Bottom panel for writing a Becoming-journal entry about a talk.
+function JournalPanel({ talk, entries, bottom, onSave, onClose }) {
+  const [text, setText] = useState("");
+  const [saved, setSaved] = useState(false);
+  return (
+    <div className="reader-panel journal-panel" style={{ bottom }}>
+      <div className="reader-head">
+        <span className="reader-title">🌱 {talk.title}</span>
+        <span className="reader-tools">
+          <button className="resume-card-x" title="Close" onClick={onClose}>✕</button>
+        </span>
+      </div>
+      <div className="journal-body">
+        <p className="journal-prompt">
+          What did I learn that I need to apply to my life to become more like Christ?
+        </p>
+        <textarea
+          className="studio-input"
+          autoFocus
+          value={text}
+          placeholder="Write the change you'll make…"
+          onChange={(e) => { setText(e.target.value); setSaved(false); }}
+        />
+        <div className="journal-actions">
+          <button
+            className="btn btn-primary"
+            disabled={!text.trim()}
+            onClick={() => {
+              onSave(text);
+              setText("");
+              setSaved(true);
+              setTimeout(() => setSaved(false), 3000);
+            }}
+          >
+            {saved ? "✓ Recorded" : "🌱 Record in my journal"}
+          </button>
+          <span className="note" style={{ margin: 0 }}>
+            — {talk.speaker}, {talk.when}
+          </span>
+        </div>
+        {entries.length > 0 && (
+          <div className="journal-prev">
+            <div className="resume-shelf-title" style={{ marginTop: 14 }}>
+              Earlier entries on this talk
+            </div>
+            {entries.map((e) => (
+              <div key={e.id} className="journal-prev-entry">
+                <p>{e.text}</p>
+                <span className="studio-cite">{new Date(e.at).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ConferencePicker({ onTalkLoaded }) {
@@ -262,6 +340,63 @@ export default function ConferencePicker({ onTalkLoaded }) {
     schedulePush();
   }
 
+  // ---- Becoming journal state ----
+  const [journal, setJournal] = useState(loadJournalFromStorage);
+  const [journalPanel, setJournalPanel] = useState(null); // {uri,title,speaker,when} being journaled
+  const [journalNudge, setJournalNudge] = useState(null); // just-finished talk, invite an entry
+  const nudgeTimerRef = useRef(null);
+
+  function persistJournal(next) {
+    setJournal(next);
+    try { localStorage.setItem(JOURNAL_KEY, JSON.stringify(next)); } catch {}
+    schedulePush();
+  }
+
+  function addJournalEntry(talk, text) {
+    const t = String(text || "").trim();
+    if (!t || !talk) return;
+    const rec = {
+      id: `j${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      uri: talk.uri,
+      title: talk.title,
+      speaker: talk.speaker,
+      when: talk.when || `${monthName(talk.month)} ${talk.year}`,
+      text: t,
+      at: new Date().toISOString(),
+      updatedAt: Date.now(),
+    };
+    persistJournal([rec, ...loadJournalFromStorage()]);
+  }
+
+  function updateJournalEntry(id, text) {
+    persistJournal(
+      loadJournalFromStorage().map((e) =>
+        e.id === id ? { ...e, text: String(text || "").trim(), updatedAt: Date.now() } : e
+      )
+    );
+  }
+
+  function deleteJournalEntry(id) {
+    try {
+      const d = loadJournalDeletedFromStorage();
+      d[id] = Date.now();
+      localStorage.setItem(JOURNAL_DEL_KEY, JSON.stringify(d));
+    } catch {}
+    persistJournal(loadJournalFromStorage().filter((e) => e.id !== id));
+  }
+
+  function openJournalFor(talk) {
+    if (!talk) return;
+    setJournalPanel({
+      uri: talk.uri,
+      title: talk.title,
+      speaker: talk.speaker,
+      when: talk.when || `${monthName(talk.month)} ${talk.year}`,
+    });
+    setReaderOpen(false); // one bottom panel at a time
+    setJournalNudge(null);
+  }
+
   // ---- quote board state ----
   const [quotes, setQuotes] = useState(loadQuotesFromStorage);
   const [quotePop, setQuotePop] = useState(null); // {top,left,text}
@@ -314,6 +449,8 @@ export default function ConferencePicker({ onTalkLoaded }) {
       quotes: Object.fromEntries(loadQuotesFromStorage().map((q) => [q.id, q])),
       quotesDeleted: loadQuotesDeletedFromStorage(),
       listened: loadListenedFromStorage(),
+      journal: Object.fromEntries(loadJournalFromStorage().map((e) => [e.id, e])),
+      journalDeleted: loadJournalDeletedFromStorage(),
       speed: speedRef.current,
       speedUpdatedAt: speedAt,
     };
@@ -338,6 +475,16 @@ export default function ConferencePicker({ onTalkLoaded }) {
     if (state.listened) {
       try { localStorage.setItem(LISTENED_KEY, JSON.stringify(state.listened)); } catch {}
       setListened(state.listened);
+    }
+    if (state.journal) {
+      const arr = Object.values(state.journal).sort((a, b) =>
+        String(b.at || "").localeCompare(String(a.at || ""))
+      );
+      try {
+        localStorage.setItem(JOURNAL_KEY, JSON.stringify(arr));
+        localStorage.setItem(JOURNAL_DEL_KEY, JSON.stringify(state.journalDeleted || {}));
+      } catch {}
+      setJournal(arr);
     }
     let localSpeedAt = 0;
     try { localSpeedAt = parseInt(localStorage.getItem("cac-listen-speed-at") || "0", 10) || 0; } catch {}
@@ -633,6 +780,8 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-quotes-deleted",
     "cac-talk-drafts",
     "cac-listened",
+    "cac-journal",
+    "cac-journal-deleted",
   ];
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -757,6 +906,31 @@ export default function ConferencePicker({ onTalkLoaded }) {
           [...dById.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10)
         )
       );
+
+      // Becoming journal: union by id (newest edit wins), deletions honored.
+      const curJ = parseJson(localStorage.getItem("cac-journal") || "[]", []);
+      const incJ = parseJson(inc["cac-journal"] || "[]", []);
+      const curJD = parseJson(localStorage.getItem("cac-journal-deleted") || "{}", {});
+      const incJD = parseJson(inc["cac-journal-deleted"] || "{}", {});
+      const jDel = { ...curJD };
+      for (const [id, ts] of Object.entries(incJD)) {
+        if (!jDel[id] || ts > jDel[id]) jDel[id] = ts;
+      }
+      const jById = new Map();
+      for (const e of [...curJ, ...incJ]) {
+        if (!e || !e.id) continue;
+        const x = jById.get(e.id);
+        if (!x || (e.updatedAt || 0) > (x.updatedAt || 0)) jById.set(e.id, e);
+      }
+      for (const [id, ts] of Object.entries(jDel)) {
+        const e = jById.get(id);
+        if (e && ts >= (e.updatedAt || 0)) jById.delete(id);
+      }
+      localStorage.setItem(
+        "cac-journal",
+        JSON.stringify([...jById.values()].sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))))
+      );
+      localStorage.setItem("cac-journal-deleted", JSON.stringify(jDel));
 
       // Listening history: pure union (never un-heard).
       const curL = parseJson(localStorage.getItem("cac-listened") || "{}", {});
@@ -885,6 +1059,28 @@ ${rows}</body></html>`;
       if (qs.length) {
         await writeFolderFile(root, "Quote board", "Quote board.doc", "﻿" + buildQuotesDocHtml(qs));
         await writeFolderFile(root, "Quote board", "quotes.json", JSON.stringify(qs, null, 2));
+        files += 2;
+      }
+
+      const jl = loadJournalFromStorage();
+      if (jl.length) {
+        const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const rows = jl
+          .map(
+            (e) =>
+              `<div class="entry"><p>${esc(e.text).split(/\n+/).join("</p><p>")}</p>` +
+              `<span class="cite">After “${esc(e.title)}” — ${esc(e.speaker)}, ${esc(e.when)} General Conference · ${new Date(e.at).toLocaleDateString()}</span></div>`
+          )
+          .join("\n");
+        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Becoming journal</title>
+<style>body{font-family:Georgia,serif;color:#1a1a1a;max-width:7.5in;margin:0 auto;padding:24px;line-height:1.6;font-size:12pt}
+h1{font-size:18pt;margin:0 0 4px}.meta{color:#666;font-size:10pt;margin:0 0 16px}
+.entry{margin:0 0 18px;padding:12px 16px;border-left:3px solid #b9923c;background:#faf7ef}
+.entry .cite{display:block;margin-top:6px;font-size:10pt;color:#555;font-style:italic}</style></head><body>
+<h1>Becoming journal</h1><p class="meta">What I will apply to become more like Christ · ${jl.length} entries · exported ${new Date().toLocaleDateString()}</p>
+${rows}</body></html>`;
+        await writeFolderFile(root, "Becoming journal", "Becoming journal.doc", "﻿" + doc);
+        await writeFolderFile(root, "Becoming journal", "journal.json", JSON.stringify(jl, null, 2));
         files += 2;
       }
 
@@ -1256,7 +1452,20 @@ ${rows}</body></html>`;
   function handleEnded() {
     const p = playerRef.current;
     if (!p) return;
-    markListened(p.queue[p.idx] && p.queue[p.idx].uri);
+    const finished = p.queue[p.idx];
+    markListened(finished && finished.uri);
+    // The moment of becoming: invite a journal entry about the talk that
+    // just ended (a quiet chip, not an interruption — playback continues).
+    if (finished) {
+      setJournalNudge({
+        uri: finished.uri,
+        title: finished.title,
+        speaker: finished.speaker,
+        when: `${monthName(finished.month)} ${finished.year}`,
+      });
+      clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = setTimeout(() => setJournalNudge(null), 25000);
+    }
     if (p.idx + 1 < p.queue.length) {
       playerStep(1);
     } else {
@@ -1569,7 +1778,7 @@ ${rows}</body></html>`;
           className={`picker-mode-btn ${mode === "progress" ? "active" : ""}`}
           onClick={() => setMode("progress")}
         >
-          🏆 Progress
+          🌱 Becoming
         </button>
         <button
           className={`picker-mode-btn ${mode === "browse" ? "active" : ""}`}
@@ -2046,13 +2255,17 @@ ${rows}</body></html>`;
         <TalkStudio key={studioSeedId || "studio"} quotes={quotes} seedQuoteId={studioSeedId} />
       )}
 
-      {/* ------------------- PROGRESS ------------------- */}
+      {/* ------------------- BECOMING ------------------- */}
       {mode === "progress" && (
         <ProgressBoard
           index={index}
           listened={listened}
           bookmarks={bookmarks}
           startUrisQueue={startUrisQueue}
+          journal={journal}
+          onUpdateEntry={updateJournalEntry}
+          onDeleteEntry={deleteJournalEntry}
+          nowPlayingUri={nowPlaying ? nowPlaying.uri : null}
         />
       )}
 
@@ -2221,6 +2434,31 @@ ${rows}</body></html>`;
         </div>
       )}
 
+      {/* ------------------- BECOMING JOURNAL PANEL ------------------- */}
+      {journalPanel && (
+        <JournalPanel
+          talk={journalPanel}
+          entries={journal.filter((e) => e.uri === journalPanel.uri)}
+          bottom={barH}
+          onSave={(text) => {
+            addJournalEntry(journalPanel, text);
+          }}
+          onClose={() => setJournalPanel(null)}
+        />
+      )}
+
+      {/* End-of-talk nudge: the moment to record what to apply. */}
+      {journalNudge && !journalPanel && (
+        <button
+          className="journal-nudge"
+          style={{ bottom: barH + 8 }}
+          onClick={() => openJournalFor(journalNudge)}
+        >
+          🌱 “{journalNudge.title.slice(0, 44)}{journalNudge.title.length > 44 ? "…" : ""}” just ended —
+          what will you apply?
+        </button>
+      )}
+
       {/* ------------------- LISTEN BAR (playlist player) ------------------- */}
       {/* Always mounted so the <audio> element (and playback) survives
           re-renders; hidden until a queue is started. */}
@@ -2264,9 +2502,17 @@ ${rows}</body></html>`;
           <button
             className={`listen-btn listen-reader-btn ${readerOpen ? "active" : ""}`}
             title="Follow along — the talk text scrolls with the audio"
-            onClick={() => setReaderOpen(!readerOpen)}
+            onClick={() => { setJournalPanel(null); setReaderOpen(!readerOpen); }}
           >
             📖
+          </button>
+          <button
+            className={`listen-btn ${journalPanel ? "active" : ""}`}
+            title="Becoming journal — what will you apply from this talk?"
+            onClick={() => (journalPanel ? setJournalPanel(null) : openJournalFor(nowPlaying))}
+            disabled={!nowPlaying}
+          >
+            ✍️
           </button>
           <button
             className="listen-btn"

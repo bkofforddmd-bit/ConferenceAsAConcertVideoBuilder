@@ -76,6 +76,8 @@ const normalizeState = (s) => ({
   quotes: (s && typeof s.quotes === "object" && s.quotes) || {},
   quotesDeleted: (s && typeof s.quotesDeleted === "object" && s.quotesDeleted) || {},
   listened: (s && typeof s.listened === "object" && s.listened) || {},
+  journal: (s && typeof s.journal === "object" && s.journal) || {},
+  journalDeleted: (s && typeof s.journalDeleted === "object" && s.journalDeleted) || {},
   speed: s && typeof s.speed === "number" ? s.speed : null,
   speedUpdatedAt: (s && s.speedUpdatedAt) || 0,
 });
@@ -128,6 +130,22 @@ function mergeStates(a, b) {
       n: Math.max((e && e.n) || 0, rec.n || 1),
     };
   }
+  // Becoming journal: same newest-wins + tombstone rules as quotes.
+  const journalDeleted = { ...A.journalDeleted };
+  for (const [id, ts] of Object.entries(B.journalDeleted)) {
+    if (!journalDeleted[id] || ts > journalDeleted[id]) journalDeleted[id] = ts;
+  }
+  const journal = {};
+  for (const src of [A.journal, B.journal]) {
+    for (const [id, e] of Object.entries(src)) {
+      if (!e || typeof e !== "object") continue;
+      const existing = journal[id];
+      if (!existing || (e.updatedAt || 0) > (existing.updatedAt || 0)) journal[id] = e;
+    }
+  }
+  for (const [id, ts] of Object.entries(journalDeleted)) {
+    if (journal[id] && ts >= (journal[id].updatedAt || 0)) delete journal[id];
+  }
   // Speed preference: newest change wins.
   const speedNewer = (B.speedUpdatedAt || 0) > (A.speedUpdatedAt || 0) ? B : A;
   return {
@@ -136,6 +154,8 @@ function mergeStates(a, b) {
     quotes,
     quotesDeleted,
     listened,
+    journal,
+    journalDeleted,
     speed: speedNewer.speed,
     speedUpdatedAt: speedNewer.speedUpdatedAt,
     savedAt: Date.now(),

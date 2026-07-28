@@ -46,8 +46,65 @@ function computeStreak(dates) {
   return streak;
 }
 
-export default function ProgressBoard({ index, listened, bookmarks, startUrisQueue }) {
+// One journal entry card: read, edit in place, play the talk, delete.
+function JournalEntryCard({ e, onUpdate, onDelete, startUrisQueue, nowPlayingUri }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(e.text);
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <div className="journal-card">
+      {editing ? (
+        <>
+          <textarea className="studio-input" value={text} onChange={(ev) => setText(ev.target.value)} />
+          <div className="quote-actions" style={{ marginTop: 8 }}>
+            <button
+              className="picker-talk-listen"
+              onClick={() => { onUpdate(e.id, text); setEditing(false); }}
+            >
+              ✓ Save
+            </button>
+            <button className="picker-talk-listen" onClick={() => { setText(e.text); setEditing(false); }}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="journal-card-text">{e.text}</p>
+          <div className="quote-cite">
+            After “{e.title}” — <strong>{e.speaker}</strong>, {e.when} General Conference ·{" "}
+            {new Date(e.at).toLocaleDateString()}
+          </div>
+          <div className="quote-actions">
+            <button
+              className="picker-talk-listen"
+              onClick={() =>
+                startUrisQueue({ id: `quote|${e.uri}`, label: e.title, uris: [e.uri], order: "newest" })
+              }
+            >
+              {nowPlayingUri === e.uri ? "♪ Playing" : "▶ Hear it again"}
+            </button>
+            <button className="picker-talk-listen" onClick={() => setEditing(true)}>✎ Edit</button>
+            {confirmDel ? (
+              <button className="quote-del confirm" onClick={() => onDelete(e.id)}>Really delete?</button>
+            ) : (
+              <button
+                className="quote-del"
+                onClick={() => { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function ProgressBoard({ index, listened, bookmarks, startUrisQueue, journal = [], onUpdateEntry, onDeleteEntry, nowPlayingUri }) {
   const [wallDecade, setWallDecade] = useState("all");
+  const [journalQuery, setJournalQuery] = useState("");
 
   const stats = useMemo(() => {
     if (!index) return null;
@@ -125,11 +182,24 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
     [bookmarks]
   );
 
+  const shownEntries = useMemo(() => {
+    const q = journalQuery.trim().toLowerCase();
+    if (!q) return journal;
+    return journal.filter((e) =>
+      [e.text, e.speaker, e.title].join(" ").toLowerCase().includes(q)
+    );
+  }, [journal, journalQuery]);
+
   if (!stats) return <p className="note">Loading the talk archive…</p>;
 
   const pct = stats.total ? stats.heard / stats.total : 0;
+  const talksJournaled = new Set(journal.map((e) => e.uri)).size;
 
   const badges = [
+    { e: "✍️", label: "First journal entry", got: journal.length >= 1 },
+    { e: "📔", label: "10 entries", got: journal.length >= 10 },
+    { e: "📚", label: "50 entries", got: journal.length >= 50 },
+    { e: "🕊", label: "100 entries", got: journal.length >= 100 },
     { e: "🌱", label: "First talk heard", got: stats.heard >= 1 },
     { e: "🔟", label: "10 talks", got: stats.heard >= 10 },
     { e: "🌟", label: "50 talks", got: stats.heard >= 50 },
@@ -165,20 +235,61 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
 
   return (
     <div className="picker-progress">
-      {/* ---- headline ---- */}
+      {/* ---- Becoming: the point of it all ---- */}
+      <p className="note">
+        The talks teach the mind and will of God; the invitation is to
+        <em> become</em>. Hearing is the journey — this journal is the
+        destination: the changes you commit to make.
+      </p>
       <div className="prog-headline">
         <div className="prog-big">
-          <span className="prog-number">{stats.heard.toLocaleString()}</span>
-          <span className="prog-of"> of {stats.total.toLocaleString()} talks heard</span>
-          <span className="prog-pct"> · {(pct * 100).toFixed(1)}%</span>
+          <span className="prog-number">{journal.length.toLocaleString()}</span>
+          <span className="prog-of">
+            {" "}journal {journal.length === 1 ? "entry" : "entries"} · {talksJournaled} talk
+            {talksJournaled === 1 ? "" : "s"} that changed you
+          </span>
         </div>
-        <Bar pct={pct} label={`${stats.heard} of ${stats.total}`} />
         <div className="prog-substats">
+          <span>🎧 {stats.heard.toLocaleString()} of {stats.total.toLocaleString()} talks heard ({(pct * 100).toFixed(1)}%)</span>
           {stats.streak > 0 && <span>🔥 {stats.streak}-day streak</span>}
           <span>📅 {stats.fullConfs} of {stats.wall.length} conferences completed</span>
           <span>🗓 {stats.listeningDays} listening day{stats.listeningDays === 1 ? "" : "s"}</span>
         </div>
       </div>
+
+      {/* ---- the Becoming journal ---- */}
+      <h3 className="prog-h">My Becoming journal</h3>
+      {journal.length === 0 ? (
+        <p className="note">
+          While a talk plays, tap ✍️ on the player (or the 🌱 nudge when a talk
+          ends) and answer one question: <em>“What did I learn that I need to
+          apply to my life to become more like Christ?”</em> Your answers gather
+          here.
+        </p>
+      ) : (
+        <>
+          {journal.length > 4 && (
+            <input
+              type="text"
+              className="picker-search-input"
+              style={{ marginBottom: 10 }}
+              placeholder="Search your journal…"
+              value={journalQuery}
+              onChange={(e) => setJournalQuery(e.target.value)}
+            />
+          )}
+          {shownEntries.map((e) => (
+            <JournalEntryCard
+              key={e.id}
+              e={e}
+              onUpdate={onUpdateEntry}
+              onDelete={onDeleteEntry}
+              startUrisQueue={startUrisQueue}
+              nowPlayingUri={nowPlayingUri}
+            />
+          ))}
+        </>
+      )}
 
       {/* ---- milestones ---- */}
       <div className="prog-badges">

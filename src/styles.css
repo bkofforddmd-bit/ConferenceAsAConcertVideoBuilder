@@ -894,6 +894,61 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
 .quote-del:hover { color: var(--danger); border-color: var(--danger); }
 .quote-del.confirm { color: var(--danger); border-color: var(--danger); }
 
+/* Becoming journal */
+.journal-panel { max-height: 62vh; }
+.journal-body { overflow-y: auto; padding: 14px 20px 18px; }
+.journal-prompt {
+  font-family: "Fraunces", serif;
+  font-size: 16px;
+  color: var(--gold);
+  margin: 0 0 10px;
+}
+.journal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.journal-prev-entry {
+  padding: 8px 12px;
+  border-left: 3px solid var(--line);
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.journal-prev-entry p { margin: 0 0 4px; }
+.journal-nudge {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 54;
+  max-width: min(92vw, 560px);
+  font-family: "Fraunces", serif;
+  font-size: 14px;
+  color: #2a1c05;
+  background: linear-gradient(180deg, var(--gold), var(--gold-soft));
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  cursor: pointer;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
+}
+.journal-card {
+  background: rgba(8, 11, 28, 0.45);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+.journal-card-text {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
 /* Progress board */
 .prog-bar {
   display: block;
