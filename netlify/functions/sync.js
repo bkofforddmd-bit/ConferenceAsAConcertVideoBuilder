@@ -76,6 +76,7 @@ const normalizeState = (s) => ({
   quotes: (s && typeof s.quotes === "object" && s.quotes) || {},
   quotesDeleted: (s && typeof s.quotesDeleted === "object" && s.quotesDeleted) || {},
   listened: (s && typeof s.listened === "object" && s.listened) || {},
+  listenDays: (s && typeof s.listenDays === "object" && s.listenDays) || {},
   journal: (s && typeof s.journal === "object" && s.journal) || {},
   journalDeleted: (s && typeof s.journalDeleted === "object" && s.journalDeleted) || {},
   speed: s && typeof s.speed === "number" ? s.speed : null,
@@ -130,6 +131,11 @@ function mergeStates(a, b) {
       n: Math.max((e && e.n) || 0, rec.n || 1),
     };
   }
+  // Daily listening seconds: per-day maximum (never shrinks).
+  const listenDays = { ...A.listenDays };
+  for (const [d, s] of Object.entries(B.listenDays)) {
+    listenDays[d] = Math.max(listenDays[d] || 0, s || 0);
+  }
   // Becoming journal: same newest-wins + tombstone rules as quotes.
   const journalDeleted = { ...A.journalDeleted };
   for (const [id, ts] of Object.entries(B.journalDeleted)) {
@@ -154,6 +160,7 @@ function mergeStates(a, b) {
     quotes,
     quotesDeleted,
     listened,
+    listenDays,
     journal,
     journalDeleted,
     speed: speedNewer.speed,

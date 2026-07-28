@@ -659,6 +659,17 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   color: var(--gold-soft);
   font-weight: 600;
 }
+.listen-streak {
+  margin-left: 8px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--gold);
+  background: rgba(226, 183, 91, 0.14);
+  border: 1px solid var(--gold-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.prog-streak { color: var(--gold); font-weight: 600; }
 .listen-title {
   font-family: "Fraunces", serif;
   font-size: 17px;

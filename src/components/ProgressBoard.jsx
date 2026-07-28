@@ -25,25 +25,39 @@ function Bar({ pct, label }) {
   );
 }
 
-function daysBetween(a, b) {
-  return Math.round((b - a) / 86400000);
-}
-
-// Consecutive-day listening streak ending today or yesterday.
-function computeStreak(dates) {
-  if (!dates.size) return 0;
-  const today = new Date(new Date().toDateString()).getTime();
-  let cursor = today;
-  if (!dates.has(cursor)) {
-    cursor -= 86400000; // streak may end yesterday and still be alive
-    if (!dates.has(cursor)) return 0;
+// Days-in-a-row listening. A day counts with ≥60s of playback (partial
+// talks count) or any talk completed that day. Exported so the player bar
+// can wear the flame too.
+export function computeStreakData(listenDays, listened) {
+  const days = new Set();
+  for (const [d, secs] of Object.entries(listenDays || {})) {
+    if ((secs || 0) >= 60) {
+      const t = new Date(`${d}T00:00:00`).getTime();
+      if (!isNaN(t)) days.add(t);
+    }
   }
-  let streak = 0;
-  while (dates.has(cursor)) {
-    streak++;
+  for (const r of Object.values(listened || {})) {
+    if (r && r.at) days.add(new Date(new Date(r.at).toDateString()).getTime());
+  }
+  // current streak — alive if it includes today or ended yesterday
+  let current = 0;
+  const today = new Date(new Date().toDateString()).getTime();
+  let cursor = days.has(today) ? today : today - 86400000;
+  while (days.has(cursor)) {
+    current++;
     cursor -= 86400000;
   }
-  return streak;
+  // longest streak ever
+  const sorted = [...days].sort((a, b) => a - b);
+  let longest = 0;
+  let run = 0;
+  let prev = null;
+  for (const t of sorted) {
+    run = prev !== null && t - prev === 86400000 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    prev = t;
+  }
+  return { current, longest, totalDays: days.size };
 }
 
 // One journal entry card: read, edit in place, play the talk, delete.
@@ -102,9 +116,14 @@ function JournalEntryCard({ e, onUpdate, onDelete, startUrisQueue, nowPlayingUri
   );
 }
 
-export default function ProgressBoard({ index, listened, bookmarks, startUrisQueue, journal = [], onUpdateEntry, onDeleteEntry, nowPlayingUri }) {
+export default function ProgressBoard({ index, listened, listenDays, bookmarks, startUrisQueue, journal = [], onUpdateEntry, onDeleteEntry, nowPlayingUri }) {
   const [wallDecade, setWallDecade] = useState("all");
   const [journalQuery, setJournalQuery] = useState("");
+
+  const streakData = useMemo(
+    () => computeStreakData(listenDays, listened),
+    [listenDays, listened]
+  );
 
   const stats = useMemo(() => {
     if (!index) return null;
@@ -145,14 +164,6 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
     const apHeard = apostles.reduce((n, a) => n + a.heard, 0);
     const fullSpeakers = apostles.filter((a) => a.heard === a.total && a.total >= 5).length;
 
-    // streak + dates
-    const dayset = new Set(
-      Object.values(listened)
-        .map((r) => r && r.at && new Date(new Date(r.at).toDateString()).getTime())
-        .filter(Boolean)
-    );
-    const streak = computeStreak(dayset);
-
     // decades heard from
     const decadesHeard = new Set(
       talks.filter((t) => heardUris.has(t.uri)).map((t) => Math.floor(Number(t.year) / 10) * 10)
@@ -167,8 +178,6 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
       apTotal,
       apHeard,
       fullSpeakers,
-      streak,
-      listeningDays: dayset.size,
       decadesHeard: decadesHeard.size,
       heardUris,
     };
@@ -208,8 +217,10 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
     { e: "👑", label: "1,000 talks", got: stats.heard >= 1000 },
     { e: "📅", label: "A full conference", got: stats.fullConfs >= 1 },
     { e: "🎓", label: "Every talk by one apostle", got: stats.fullSpeakers >= 1 },
-    { e: "🔥", label: "7-day streak", got: stats.streak >= 7 },
-    { e: "⚡", label: "30-day streak", got: stats.streak >= 30 },
+    { e: "🔥", label: "3 days in a row", got: streakData.longest >= 3 },
+    { e: "🔥", label: "7 days in a row", got: streakData.longest >= 7 },
+    { e: "⚡", label: "30 days in a row", got: streakData.longest >= 30 },
+    { e: "🏛", label: "100 days in a row", got: streakData.longest >= 100 },
     { e: "🕰", label: "Heard from every decade", got: stats.decadesHeard >= 6 },
   ];
 
@@ -250,10 +261,17 @@ export default function ProgressBoard({ index, listened, bookmarks, startUrisQue
           </span>
         </div>
         <div className="prog-substats">
+          {streakData.current > 0 ? (
+            <span className="prog-streak">
+              🔥 {streakData.current} day{streakData.current === 1 ? "" : "s"} in a row
+              {streakData.longest > streakData.current ? ` · best ${streakData.longest}` : ""}
+            </span>
+          ) : streakData.longest > 0 ? (
+            <span>🔥 best streak: {streakData.longest} days — start a new one today</span>
+          ) : null}
           <span>🎧 {stats.heard.toLocaleString()} of {stats.total.toLocaleString()} talks heard ({(pct * 100).toFixed(1)}%)</span>
-          {stats.streak > 0 && <span>🔥 {stats.streak}-day streak</span>}
           <span>📅 {stats.fullConfs} of {stats.wall.length} conferences completed</span>
-          <span>🗓 {stats.listeningDays} listening day{stats.listeningDays === 1 ? "" : "s"}</span>
+          <span>🗓 {streakData.totalDays} listening day{streakData.totalDays === 1 ? "" : "s"}</span>
         </div>
       </div>
 

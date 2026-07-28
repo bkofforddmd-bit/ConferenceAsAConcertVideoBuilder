@@ -22,7 +22,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiSearchMode, InsightsMode, buildExportHtml, safeFilename } from "./AiTools.jsx";
 import QuoteBoard from "./QuoteBoard.jsx";
 import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
-import ProgressBoard from "./ProgressBoard.jsx";
+import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -87,6 +87,21 @@ function loadListenedFromStorage() {
     return {};
   }
 }
+
+// ---- daily listening minutes (powers the days-in-a-row streak) ----
+const LISTEN_DAYS_KEY = "cac-listen-days";
+function loadListenDaysFromStorage() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LISTEN_DAYS_KEY) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
+const localDayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 // ---- Becoming journal storage ----
 const JOURNAL_KEY = "cac-journal";
@@ -326,6 +341,29 @@ export default function ConferencePicker({ onTalkLoaded }) {
   const [listened, setListened] = useState(loadListenedFromStorage);
   const sessionMarkedRef = useRef(new Set());
 
+  // Seconds of actual playback per local day (≥60s makes it a streak day).
+  const [listenDays, setListenDays] = useState(loadListenDaysFromStorage);
+  const dayAccumRef = useRef({ pending: 0, lastEvent: 0, lastFlush: 0 });
+  const streakData = useMemo(() => computeStreakData(listenDays, listened), [listenDays, listened]);
+
+  function trackListeningTime() {
+    const now = Date.now();
+    const acc = dayAccumRef.current;
+    // timeupdate fires ~4×/s during playback; gaps >2s mean paused/seeking.
+    if (acc.lastEvent && now - acc.lastEvent < 2000) acc.pending += (now - acc.lastEvent) / 1000;
+    acc.lastEvent = now;
+    if (acc.pending > 0 && now - acc.lastFlush > 15000) {
+      acc.lastFlush = now;
+      const days = loadListenDaysFromStorage();
+      const key = localDayKey();
+      days[key] = Math.round((days[key] || 0) + acc.pending);
+      acc.pending = 0;
+      try { localStorage.setItem(LISTEN_DAYS_KEY, JSON.stringify(days)); } catch {}
+      setListenDays(days);
+      schedulePush();
+    }
+  }
+
   // A talk counts as HEARD when its audio ends naturally or the listener
   // reaches ~92% of it. Marked once per session per talk; repeat listens on
   // later days bump the count.
@@ -449,6 +487,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
       quotes: Object.fromEntries(loadQuotesFromStorage().map((q) => [q.id, q])),
       quotesDeleted: loadQuotesDeletedFromStorage(),
       listened: loadListenedFromStorage(),
+      listenDays: loadListenDaysFromStorage(),
       journal: Object.fromEntries(loadJournalFromStorage().map((e) => [e.id, e])),
       journalDeleted: loadJournalDeletedFromStorage(),
       speed: speedRef.current,
@@ -475,6 +514,10 @@ export default function ConferencePicker({ onTalkLoaded }) {
     if (state.listened) {
       try { localStorage.setItem(LISTENED_KEY, JSON.stringify(state.listened)); } catch {}
       setListened(state.listened);
+    }
+    if (state.listenDays) {
+      try { localStorage.setItem(LISTEN_DAYS_KEY, JSON.stringify(state.listenDays)); } catch {}
+      setListenDays(state.listenDays);
     }
     if (state.journal) {
       const arr = Object.values(state.journal).sort((a, b) =>
@@ -780,6 +823,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-quotes-deleted",
     "cac-talk-drafts",
     "cac-listened",
+    "cac-listen-days",
     "cac-journal",
     "cac-journal-deleted",
   ];
@@ -943,6 +987,14 @@ export default function ConferencePicker({ onTalkLoaded }) {
         };
       }
       localStorage.setItem("cac-listened", JSON.stringify(curL));
+
+      // Daily listening seconds: per-day maximum.
+      const curLD = parseJson(localStorage.getItem("cac-listen-days") || "{}", {});
+      const incLD = parseJson(inc["cac-listen-days"] || "{}", {});
+      for (const [d, s] of Object.entries(incLD)) {
+        curLD[d] = Math.max(curLD[d] || 0, s || 0);
+      }
+      localStorage.setItem("cac-listen-days", JSON.stringify(curLD));
 
       // Speed preference: newer change wins.
       const incAt = parseInt(inc["cac-listen-speed-at"] || "0", 10) || 0;
@@ -1481,6 +1533,7 @@ ${rows}</body></html>`;
   function handleTimeUpdate(e) {
     const t = e.target.currentTime || 0;
     updateReaderPosition(t);
+    trackListeningTime();
     const dur = e.target.duration;
     if (dur && isFinite(dur) && dur > 60 && t / dur > 0.92) {
       const p = playerRef.current;
@@ -2260,6 +2313,7 @@ ${rows}</body></html>`;
         <ProgressBoard
           index={index}
           listened={listened}
+          listenDays={listenDays}
           bookmarks={bookmarks}
           startUrisQueue={startUrisQueue}
           journal={journal}
@@ -2465,7 +2519,14 @@ ${rows}</body></html>`;
       <div className="listen-bar" ref={barRef} style={{ display: player ? "flex" : "none" }}>
         {nowPlaying && (
           <div className="listen-info">
-            <span className="listen-speaker">{player.label}</span>
+            <span className="listen-speaker">
+              {player.label}
+              {streakData.current >= 2 && (
+                <span className="listen-streak" title={`${streakData.current} days of listening in a row`}>
+                  🔥{streakData.current}
+                </span>
+              )}
+            </span>
             <span className="listen-title">{nowPlaying.title}</span>
             <span className="listen-when">
               {nowPlaying.speaker && nowPlaying.speaker !== player.label
