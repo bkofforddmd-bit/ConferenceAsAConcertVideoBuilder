@@ -210,13 +210,22 @@ function sharedAnalysisIdFromUrl() {
 }
 
 // Bottom panel for snipping an audio clip from the playing talk.
-function ClipPanel({ talk, audioRef, bottom, onSaveClip, onClose }) {
+function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }) {
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
   const [name, setName] = useState(`${talk.speaker} — ${talk.title}`.slice(0, 80));
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [media, setMedia] = useState(null); // {audio, video}
   const previewTimerRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    resolveMedia().then((m) => { if (alive) setMedia(m); });
+    return () => { alive = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const videoUrl = media && ((media.video && (media.video.p720 || media.video.p1080 || media.video.p360)) || "");
 
   const now = () => (audioRef.current ? audioRef.current.currentTime : 0);
   const nudge = (which, d) => {
@@ -239,8 +248,20 @@ function ClipPanel({ talk, audioRef, bottom, onSaveClip, onClose }) {
     setBusy(true);
     setStatus("");
     try {
-      const blob = await cutClipToWav(el.currentSrc, start, end, el.duration || 0, setStatus);
-      const ok = await onSaveClip({ name: name.trim() || talk.title, start, end, blob, audioUrl: el.currentSrc, duration: el.duration || 0 });
+      // Always cut from the MP3 (even in watch mode — the byte-rate math
+      // that makes ranged fetching precise only holds for the audio file).
+      const m = media || (await resolveMedia());
+      if (!m.audio) throw new Error("couldn't resolve this talk's audio");
+      const blob = await cutClipToWav(m.audio, start, end, el.duration || 0, setStatus);
+      const ok = await onSaveClip({
+        name: name.trim() || talk.title,
+        start,
+        end,
+        blob,
+        audioUrl: m.audio,
+        videoUrl,
+        duration: el.duration || 0,
+      });
       setStatus(ok);
     } catch (e) {
       setStatus(`Couldn't cut the clip: ${e.message}`);
@@ -295,9 +316,27 @@ function ClipPanel({ talk, audioRef, bottom, onSaveClip, onClose }) {
             ▶ Preview
           </button>
           <button className="btn btn-primary" onClick={save} disabled={busy || start == null || end == null || end <= start}>
-            {busy ? "Cutting…" : "💾 Save clip"}
+            {busy ? "Cutting…" : "💾 Save audio clip (.wav)"}
           </button>
+          {videoUrl && (
+            <a
+              className="picker-talk-read"
+              href={`${videoUrl}?download=true`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Downloads the official talk video (720p MP4)"
+            >
+              🎬 Video (MP4) ↓
+            </a>
+          )}
         </div>
+        {videoUrl && start != null && end != null && end > start && (
+          <p className="note">
+            For a video clip: download the MP4, insert it into your slide, then
+            trim to {fmtClock(start)}–{fmtClock(end)} (PowerPoint: Playback →
+            Trim Video).
+          </p>
+        )}
         {status && <p className="note">{status}</p>}
       </div>
     </div>
@@ -513,7 +552,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
   // Deliver a cut clip: into the data folder's "Audio clips" when connected,
   // otherwise as a download. Records the clip's metadata either way so it
   // can be re-cut later from the shelf.
-  async function deliverClip({ name, start, end, blob, audioUrl, duration }, talk, recordMeta = true) {
+  async function deliverClip({ name, start, end, blob, audioUrl, videoUrl, duration }, talk, recordMeta = true) {
     const filename = `${safeFilename(name)} [${fmtClock(start)}-${fmtClock(end)}].wav`;
     let where;
     if (fsHandleRef.current && fsState.status === "granted") {
@@ -539,6 +578,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
         start,
         end,
         audioUrl,
+        videoUrl: videoUrl || "",
         duration,
         at: new Date().toISOString(),
         updatedAt: Date.now(),
@@ -1645,8 +1685,9 @@ ${rows}</body></html>`;
     }
   }
 
-  // ---- listening: resolve a talk's official MP3 (cached per session) ----
-  async function getAudioUrl(talk) {
+  // ---- listening: resolve a talk's official media (cached per session) ----
+  // Each cache entry holds { audio: mp3Url, video: {p360,p720,p1080} }.
+  async function resolveMedia(talk) {
     const cached = audioUrlCache.current.get(talk.uri);
     if (cached !== undefined) return cached;
     try {
@@ -1657,17 +1698,60 @@ ${rows}</body></html>`;
       });
       const data = await res.json();
       if (res.ok) {
-        const url = data.audioUrl || "";
-        audioUrlCache.current.set(talk.uri, url);
-        return url;
+        const entry = { audio: data.audioUrl || "", video: data.video || {} };
+        audioUrlCache.current.set(talk.uri, entry);
+        return entry;
       }
       // Only a definitive "no recording exists" (404) is worth remembering;
       // transient failures (rate limits, hiccups) must stay retryable.
-      if (res.status === 404) audioUrlCache.current.set(talk.uri, "");
-      return "";
+      if (res.status === 404) audioUrlCache.current.set(talk.uri, { audio: "", video: {} });
+      return { audio: "", video: {} };
     } catch {
-      return ""; // network hiccup — treat as unavailable, don't cache
+      return { audio: "", video: {} }; // network hiccup — don't cache
     }
+  }
+  async function getAudioUrl(talk) {
+    return (await resolveMedia(talk)).audio;
+  }
+  const bestVideo = (v) => (v && (v.p720 || v.p1080 || v.p360)) || "";
+
+  // ---- watch mode: play the official video instead of audio-only ----
+  const [watchOpen, setWatchOpen] = useState(false);
+  const watchOpenRef = useRef(false);
+  useEffect(() => { watchOpenRef.current = watchOpen; }, [watchOpen]);
+
+  // Swap the media element's source, preserving position and play state.
+  function swapSrc(url) {
+    const el = audioRef.current;
+    if (!el || !url || el.currentSrc === url) return;
+    const t = el.currentTime;
+    const playing = !el.paused;
+    el.src = url;
+    el.playbackRate = speedRef.current;
+    el.addEventListener("loadedmetadata", () => { try { el.currentTime = t; } catch {} }, { once: true });
+    if (playing) el.play().catch(() => {});
+  }
+
+  async function toggleWatch() {
+    const p = playerRef.current;
+    if (!p) return;
+    const media = await resolveMedia(p.queue[p.idx]);
+    if (watchOpen) {
+      setWatchOpen(false);
+      if (media.audio) swapSrc(media.audio);
+      return;
+    }
+    const v = bestVideo(media.video);
+    if (!v) {
+      setPlayerError("No video is available for this talk — audio continues.");
+      return;
+    }
+    setPlayerError("");
+    setReaderOpen(false);
+    setJournalPanel(null);
+    setClipPanel(null);
+    setWatchOpen(true);
+    swapSrc(v);
   }
 
   // Start (or resume) playback of queue[idx]. startAt seeks into the first
@@ -1685,13 +1769,15 @@ ${rows}</body></html>`;
     setPlayerStatus("loading");
     setPlayerError("");
     for (let i = idx; i < queue.length; i++) {
-      const url = await getAudioUrl(queue[i]);
+      const media = await resolveMedia(queue[i]);
+      const url = media.audio;
       if (url) {
         setPlayer({ id, label, queue, idx: i, order, spec });
         playerRef.current = { id, label, queue, idx: i, order, spec };
         const el = audioRef.current;
         if (el) {
-          el.src = url;
+          // In watch mode, prefer the talk's video (fall back to audio).
+          el.src = (watchOpenRef.current && bestVideo(media.video)) || url;
           el.playbackRate = speedRef.current;
           const seekTo = i === idx ? startAt : 0;
           if (seekTo > 1) {
@@ -1790,6 +1876,9 @@ ${rows}</body></html>`;
     setReaderOpen(false);
     setReaderDoc(null);
     setReaderPara(-1);
+    setWatchOpen(false);
+    setClipPanel(null);
+    setJournalPanel(null);
   }
 
   // ---- queue starters ----
@@ -2557,6 +2646,17 @@ ${rows}</body></html>`;
                   <button className="picker-talk-listen" onClick={() => regenerateClip(c)}>
                     ⬇ WAV
                   </button>
+                  {c.videoUrl && (
+                    <a
+                      className="picker-talk-read"
+                      href={`${c.videoUrl}?download=true`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Official talk video (MP4) — trim to ${fmtClock(c.start)}–${fmtClock(c.end)} in your slides app`}
+                    >
+                      🎬 MP4 ↓
+                    </a>
+                  )}
                   <button
                     className="picker-talk-listen"
                     onClick={() =>
@@ -2764,6 +2864,7 @@ ${rows}</body></html>`;
           talk={clipPanel}
           audioRef={audioRef}
           bottom={barH}
+          resolveMedia={() => resolveMedia(clipPanel)}
           onSaveClip={(clip) => deliverClip(clip, clipPanel)}
           onClose={() => setClipPanel(null)}
         />
@@ -2830,17 +2931,45 @@ ${rows}</body></html>`;
           >
             ⏮
           </button>
-          <audio
+          <video
             ref={audioRef}
             controls
+            playsInline
             preload="none"
             className="listen-audio"
+            style={
+              watchOpen
+                ? {
+                    position: "fixed",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    bottom: barH + 8,
+                    width: "min(880px, 94vw)",
+                    maxWidth: "none",
+                    height: "auto",
+                    maxHeight: "58vh",
+                    zIndex: 56,
+                    background: "#000",
+                    borderRadius: 12,
+                    border: "1px solid var(--gold-soft)",
+                    boxShadow: "0 -14px 44px rgba(0,0,0,0.6)",
+                  }
+                : undefined
+            }
             onEnded={handleEnded}
             onTimeUpdate={handleTimeUpdate}
             onPause={() => writeBookmark()}
             onLoadedMetadata={(e) => setAudioDuration(e.target.duration || 0)}
             onDurationChange={(e) => setAudioDuration(e.target.duration || 0)}
           />
+          <button
+            className={`listen-btn ${watchOpen ? "active" : ""}`}
+            title="Watch the talk video (📺 on/off — audio keeps your place)"
+            onClick={toggleWatch}
+            disabled={!nowPlaying}
+          >
+            📺
+          </button>
           <button
             className={`listen-btn listen-reader-btn ${readerOpen ? "active" : ""}`}
             title="Follow along — the talk text scrolls with the audio"

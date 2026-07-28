@@ -54,12 +54,27 @@ export default async (req) => {
   const meta = entry?.meta || null;
   const audioUrl = meta?.audio?.[0]?.mediaUrl || "";
 
+  // The official video files (360p/720p/1080p MP4s) also live in the page
+  // state — harvest them so the player can offer a watch mode and the
+  // clips workflow can hand out the presentation-ready MP4.
+  const video = {};
+  try {
+    const stateStr = JSON.stringify(state);
+    for (const m of stateStr.matchAll(
+      /https:[^"'\\\s]*assets\.churchofjesuschrist\.org[^"'\\\s]*?-(360|720|1080)p-[a-z]{2,3}\.mp4/g
+    )) {
+      const q = `p${m[1]}`;
+      if (!video[q]) video[q] = m[0];
+    }
+  } catch {}
+
   if (!audioUrl) {
     return json({ error: "No audio recording is available for this talk." }, 404);
   }
 
   return json({
     audioUrl,
+    video,
     title: meta?.title || "",
     sourceUrl: pageUrl,
   });
