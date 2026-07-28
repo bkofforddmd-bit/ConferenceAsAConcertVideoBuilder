@@ -25,6 +25,7 @@ import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
 import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
 import { cutClipToWav, fmtClock } from "../lib/audio-clip.js";
 import { recordClipToVideo } from "../lib/video-clip.js";
+import SpeakerFace from "./SpeakerFace.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -320,7 +321,9 @@ function ClipPanel({ talk, audioRef, bottom, resolveMedia, onSaveClip, onClose }
   return (
     <div className="reader-panel journal-panel" style={{ bottom }}>
       <div className="reader-head">
-        <span className="reader-title">✂️ Clip — {talk.title}</span>
+        <span className="reader-title" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <SpeakerFace name={talk.speaker} size={26} /> ✂️ Clip — {talk.title}
+        </span>
         <span className="reader-tools">
           <button className="resume-card-x" title="Close" onClick={() => { clearTimeout(previewTimerRef.current); onClose(); }}>✕</button>
         </span>
@@ -421,7 +424,9 @@ function JournalPanel({ talk, entries, bottom, onSave, onClose }) {
   return (
     <div className="reader-panel journal-panel" style={{ bottom }}>
       <div className="reader-head">
-        <span className="reader-title">🌱 {talk.title}</span>
+        <span className="reader-title" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <SpeakerFace name={talk.speaker} size={26} /> 🌱 {talk.title}
+        </span>
         <span className="reader-tools">
           <button className="resume-card-x" title="Close" onClick={onClose}>✕</button>
         </span>
@@ -2711,8 +2716,10 @@ ${rows}</body></html>`;
             </p>
           ) : (
             clips.map((c) => (
-              <div className="quote-card" key={c.id}>
-                <p className="quote-text" style={{ fontStyle: "normal" }}>{c.kind === "video" ? "🎥" : "🎬"} {c.name}</p>
+              <div className="quote-card quote-with-face" key={c.id}>
+                <SpeakerFace name={c.speaker} size={44} />
+                <div className="quote-body">
+                <p className="quote-text" style={{ fontStyle: "normal", marginTop: 0 }}>{c.kind === "video" ? "🎥" : "🎬"} {c.name}</p>
                 <div className="quote-cite">
                   {fmtClock(c.start)}–{fmtClock(c.end)} ({fmtClock(c.end - c.start)}) of “{c.title}” —{" "}
                   <strong>{c.speaker}</strong>, {c.when} General Conference
@@ -2741,6 +2748,7 @@ ${rows}</body></html>`;
                     ▶ Play talk
                   </button>
                   <button className="quote-del" onClick={() => deleteClip(c.id)}>✕</button>
+                </div>
                 </div>
               </div>
             ))
@@ -2975,7 +2983,9 @@ ${rows}</body></html>`;
           re-renders; hidden until a queue is started. */}
       <div className="listen-bar" ref={barRef} style={{ display: player ? "flex" : "none" }}>
         {nowPlaying && (
-          <div className="listen-info">
+          <div className="listen-info" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <SpeakerFace name={nowPlaying.speaker || player.label} size={44} />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
             <span className="listen-speaker">
               {player.label}
               {streakData.current >= 2 && (
@@ -2995,6 +3005,7 @@ ${rows}</body></html>`;
               {playerStatus === "loading" ? " · loading…" : ""}
             </span>
             {playerError && <span className="listen-note">{playerError}</span>}
+            </div>
           </div>
         )}
         <div className="listen-controls">

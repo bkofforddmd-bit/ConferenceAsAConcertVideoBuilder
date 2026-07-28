@@ -7,6 +7,7 @@
 // and backup as everything else.
 
 import React, { useMemo, useState } from "react";
+import SpeakerFace from "./SpeakerFace.jsx";
 
 const officialUrl = (uri) => `https://www.churchofjesuschrist.org${uri}?lang=eng`;
 
@@ -54,8 +55,10 @@ function QuoteCard({ q, onDelete, onSetTags, onPlay, playing, onUseInTalk }) {
   }
 
   return (
-    <div className="quote-card">
-      <p className="quote-text">“{q.text}”</p>
+    <div className="quote-card quote-with-face">
+      <SpeakerFace name={q.speaker} size={44} />
+      <div className="quote-body">
+      <p className="quote-text" style={{ marginTop: 0 }}>“{q.text}”</p>
       <div className="quote-cite">
         <strong>{q.speaker}</strong> — “{q.title},” {q.when} General Conference
       </div>
@@ -107,6 +110,7 @@ function QuoteCard({ q, onDelete, onSetTags, onPlay, playing, onUseInTalk }) {
             ✕
           </button>
         )}
+      </div>
       </div>
     </div>
   );

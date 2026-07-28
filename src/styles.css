@@ -1091,8 +1091,14 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   cursor: pointer;
   padding: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.prog-apostle-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .prog-apostle-name:hover { color: var(--gold); }
 .prog-apostle-n { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
@@ -1409,3 +1415,29 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   .picker-listen-btns { margin-left: 0; }
   .listen-audio { max-width: 100%; flex: 1 1 200px; }
 }
+
+/* ---- speaker portraits ---- */
+.speaker-face {
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+  border: 1px solid var(--gold-soft);
+  background: #10131f;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+.speaker-face-blank {
+  color: var(--gold-soft);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+.quote-with-face {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.quote-with-face > .quote-body { flex: 1 1 auto; min-width: 0; }

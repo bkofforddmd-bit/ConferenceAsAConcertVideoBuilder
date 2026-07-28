@@ -13,6 +13,7 @@
 
 import React, { useMemo, useState } from "react";
 import { APOSTLES } from "./AiTools.jsx";
+import SpeakerFace from "./SpeakerFace.jsx";
 
 const monthName = (m) => (String(m) === "10" ? "October" : "April");
 const confNum = (y, m) => Number(y) * 100 + Number(m);
@@ -85,9 +86,12 @@ function JournalEntryCard({ e, onUpdate, onDelete, startUrisQueue, nowPlayingUri
       ) : (
         <>
           <p className="journal-card-text">{e.text}</p>
-          <div className="quote-cite">
-            After “{e.title}” — <strong>{e.speaker}</strong>, {e.when} General Conference ·{" "}
-            {new Date(e.at).toLocaleDateString()}
+          <div className="quote-cite" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <SpeakerFace name={e.speaker} size={28} />
+            <span>
+              After “{e.title}” — <strong>{e.speaker}</strong>, {e.when} General Conference ·{" "}
+              {new Date(e.at).toLocaleDateString()}
+            </span>
           </div>
           <div className="quote-actions">
             <button
@@ -383,7 +387,8 @@ export default function ProgressBoard({ index, listened, listenDays, bookmarks, 
                 })
               }
             >
-              {a.serving ? "★ " : ""}{a.name}
+              <SpeakerFace name={a.name} size={26} />
+              <span>{a.serving ? "★ " : ""}{a.name}</span>
             </button>
             <Bar pct={a.total ? a.heard / a.total : 0} label={`${a.heard} of ${a.total}`} />
             <span className="prog-apostle-n">
