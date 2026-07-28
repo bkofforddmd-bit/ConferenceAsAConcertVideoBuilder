@@ -43,6 +43,16 @@ export function portraitUrlFor(name) {
   return (portraitsMap && portraitsMap[normName(name)]) || "";
 }
 
+// The Church image server takes the size in the URL — swap in "max" for the
+// full-resolution original (1600×1920 for current leaders). BYU portraits
+// are already served at their largest size.
+export function fullPortraitUrlFor(name) {
+  const url = portraitUrlFor(name);
+  return url.replace(/(\/imgs\/[^/]+\/full\/)[^/]+(\/0\/default)/, "$1max$2");
+}
+
+export { loadPortraits };
+
 const initialsOf = (name) =>
   normName(name)
     .split(/\s+/)

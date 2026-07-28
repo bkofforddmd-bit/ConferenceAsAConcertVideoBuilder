@@ -1,11 +1,19 @@
 // netlify/functions/audio-proxy.js
 //
-// Relay for talk audio bytes. The official MP3s on
-// assets.churchofjesuschrist.org play fine in an <audio> tag but don't send
-// CORS headers, so the browser can't READ the bytes to cut clips. This
-// function streams them through same-origin, forwarding Range requests so
-// the clipper fetches only the slice it needs (~16KB per second of audio).
-// Locked to that one host — this is not an open proxy.
+// Relay for talk media bytes. The official MP3s/MP4s on
+// assets.churchofjesuschrist.org play fine in media tags but don't send
+// CORS headers, so the browser can't READ the bytes to cut clips or record
+// video. This function streams them through same-origin, forwarding Range
+// requests so the clipper fetches only the slice it needs. Also relays the
+// speaker portraits (Church image server + BYU Speeches CDN) so they can be
+// downloaded as files. Locked to those hosts/paths — this is not an open
+// proxy.
+
+const ALLOWED = [
+  { host: "assets.churchofjesuschrist.org", path: /^\// },
+  { host: "www.churchofjesuschrist.org", path: /^\/imgs\// },
+  { host: "d6zb2yxvzmqfc.cloudfront.net", path: /^\/wp-content\/uploads\// },
+];
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -16,8 +24,8 @@ export default async (req) => {
   } catch {
     return json({ error: "Bad src." }, 400);
   }
-  if (target.hostname !== "assets.churchofjesuschrist.org") {
-    return json({ error: "Only official talk audio can be relayed." }, 403);
+  if (!ALLOWED.some((a) => a.host === target.hostname && a.path.test(target.pathname))) {
+    return json({ error: "Only official talk media can be relayed." }, 403);
   }
 
   const headers = { "User-Agent": "ConferenceAsAConcert/1.0" };
