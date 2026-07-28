@@ -2147,8 +2147,10 @@ ${rows}</body></html>`;
             <span className="listen-speaker">{player.label}</span>
             <span className="listen-title">{nowPlaying.title}</span>
             <span className="listen-when">
-              {player.spec.kind === "topic" ? `${nowPlaying.speaker} · ` : ""}
-              {monthName(nowPlaying.month)} {nowPlaying.year}
+              {nowPlaying.speaker && nowPlaying.speaker !== player.label
+                ? `${nowPlaying.speaker} · `
+                : ""}
+              {monthName(nowPlaying.month)} {nowPlaying.year} General Conference
               {" · "}{player.idx + 1} of {player.queue.length}
               {" · "}{orderText(player.order)}
               {playerStatus === "loading" ? " · loading…" : ""}
@@ -2182,6 +2184,14 @@ ${rows}</body></html>`;
             onClick={() => setReaderOpen(!readerOpen)}
           >
             📖
+          </button>
+          <button
+            className="listen-btn"
+            title="That would make a good song! Load this talk into the Lyric Creator"
+            onClick={() => nowPlaying && chooseTalk(nowPlaying)}
+            disabled={!nowPlaying || busy}
+          >
+            {nowPlaying && loadingUri === nowPlaying.uri ? "…" : "🎵"}
           </button>
           <button
             className="listen-btn"
