@@ -23,6 +23,7 @@ import { AiSearchMode, InsightsMode, buildExportHtml, safeFilename } from "./AiT
 import QuoteBoard from "./QuoteBoard.jsx";
 import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
 import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
+import { cutClipToWav, fmtClock } from "../lib/audio-clip.js";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -102,6 +103,17 @@ const localDayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+// ---- audio clips (metadata; the .wav bytes go to the data folder) ----
+const CLIPS_KEY = "cac-clips";
+function loadClipsFromStorage() {
+  try {
+    const a = JSON.parse(localStorage.getItem(CLIPS_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
 
 // ---- Becoming journal storage ----
 const JOURNAL_KEY = "cac-journal";
@@ -195,6 +207,101 @@ function sharedAnalysisIdFromUrl() {
   } catch {
     return "";
   }
+}
+
+// Bottom panel for snipping an audio clip from the playing talk.
+function ClipPanel({ talk, audioRef, bottom, onSaveClip, onClose }) {
+  const [start, setStart] = useState(null);
+  const [end, setEnd] = useState(null);
+  const [name, setName] = useState(`${talk.speaker} — ${talk.title}`.slice(0, 80));
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const previewTimerRef = useRef(null);
+
+  const now = () => (audioRef.current ? audioRef.current.currentTime : 0);
+  const nudge = (which, d) => {
+    if (which === "start") setStart((s) => Math.max(0, (s ?? 0) + d));
+    else setEnd((s) => Math.max(0, (s ?? 0) + d));
+  };
+
+  function preview() {
+    const el = audioRef.current;
+    if (!el || start == null || end == null || end <= start) return;
+    clearTimeout(previewTimerRef.current);
+    el.currentTime = start;
+    el.play().catch(() => {});
+    previewTimerRef.current = setTimeout(() => { try { el.pause(); } catch {} }, (end - start) * 1000 / (el.playbackRate || 1));
+  }
+
+  async function save() {
+    const el = audioRef.current;
+    if (!el || start == null || end == null || end <= start || busy) return;
+    setBusy(true);
+    setStatus("");
+    try {
+      const blob = await cutClipToWav(el.currentSrc, start, end, el.duration || 0, setStatus);
+      const ok = await onSaveClip({ name: name.trim() || talk.title, start, end, blob, audioUrl: el.currentSrc, duration: el.duration || 0 });
+      setStatus(ok);
+    } catch (e) {
+      setStatus(`Couldn't cut the clip: ${e.message}`);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="reader-panel journal-panel" style={{ bottom }}>
+      <div className="reader-head">
+        <span className="reader-title">✂️ Clip — {talk.title}</span>
+        <span className="reader-tools">
+          <button className="resume-card-x" title="Close" onClick={() => { clearTimeout(previewTimerRef.current); onClose(); }}>✕</button>
+        </span>
+      </div>
+      <div className="journal-body">
+        <p className="note" style={{ marginTop: 0 }}>
+          Let the talk play; mark where the clip should begin and end. The clip
+          saves as a .wav file — drop it straight into a presentation.
+        </p>
+        <div className="clip-rows">
+          <div className="clip-row">
+            <button className="picker-example-chip" onClick={() => setStart(now())}>⏱ Mark start here</button>
+            <span className="clip-time">{start == null ? "—" : fmtClock(start)}</span>
+            {start != null && (
+              <>
+                <button className="picker-example-chip" onClick={() => nudge("start", -1)}>−1s</button>
+                <button className="picker-example-chip" onClick={() => nudge("start", 1)}>+1s</button>
+              </>
+            )}
+          </div>
+          <div className="clip-row">
+            <button className="picker-example-chip" onClick={() => setEnd(now())}>⏱ Mark end here</button>
+            <span className="clip-time">{end == null ? "—" : fmtClock(end)}</span>
+            {end != null && (
+              <>
+                <button className="picker-example-chip" onClick={() => nudge("end", -1)}>−1s</button>
+                <button className="picker-example-chip" onClick={() => nudge("end", 1)}>+1s</button>
+              </>
+            )}
+          </div>
+        </div>
+        {start != null && end != null && end > start && (
+          <p className="note">Clip length: {fmtClock(end - start)}</p>
+        )}
+        <label className="picker-field" style={{ width: "100%" }}>
+          <span className="picker-label">Clip name</span>
+          <input type="text" className="picker-search-input" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <div className="journal-actions">
+          <button className="picker-talk-listen" onClick={preview} disabled={start == null || end == null || end <= start}>
+            ▶ Preview
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={busy || start == null || end == null || end <= start}>
+            {busy ? "Cutting…" : "💾 Save clip"}
+          </button>
+        </div>
+        {status && <p className="note">{status}</p>}
+      </div>
+    </div>
+  );
 }
 
 // Bottom panel for writing a Becoming-journal entry about a talk.
@@ -378,6 +485,113 @@ export default function ConferencePicker({ onTalkLoaded }) {
     schedulePush();
   }
 
+  // ---- audio clips state ----
+  const [clips, setClips] = useState(loadClipsFromStorage);
+  const [clipPanel, setClipPanel] = useState(null); // talk being clipped
+  const [clipMsg, setClipMsg] = useState("");
+
+  function persistClips(next) {
+    setClips(next);
+    try { localStorage.setItem(CLIPS_KEY, JSON.stringify(next)); } catch {}
+  }
+
+  function deleteClip(id) {
+    persistClips(loadClipsFromStorage().filter((c) => c.id !== id));
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  // Deliver a cut clip: into the data folder's "Audio clips" when connected,
+  // otherwise as a download. Records the clip's metadata either way so it
+  // can be re-cut later from the shelf.
+  async function deliverClip({ name, start, end, blob, audioUrl, duration }, talk, recordMeta = true) {
+    const filename = `${safeFilename(name)} [${fmtClock(start)}-${fmtClock(end)}].wav`;
+    let where;
+    if (fsHandleRef.current && fsState.status === "granted") {
+      try {
+        await writeFolderFile(fsHandleRef.current, "Audio clips", filename, blob);
+        where = `✓ Saved to “${fsState.name || "your data folder"}/Audio clips/${filename}”`;
+      } catch {
+        downloadBlob(blob, filename);
+        where = `✓ Downloaded ${filename} (folder write failed)`;
+      }
+    } else {
+      downloadBlob(blob, filename);
+      where = `✓ Downloaded ${filename}`;
+    }
+    if (recordMeta && talk) {
+      const rec = {
+        id: `c${Date.now()}${Math.random().toString(36).slice(2, 5)}`,
+        uri: talk.uri,
+        title: talk.title,
+        speaker: talk.speaker,
+        when: talk.when || `${monthName(talk.month)} ${talk.year}`,
+        name: name || talk.title,
+        start,
+        end,
+        audioUrl,
+        duration,
+        at: new Date().toISOString(),
+        updatedAt: Date.now(),
+      };
+      persistClips([rec, ...loadClipsFromStorage()]);
+    }
+    return where;
+  }
+
+  // Re-cut a saved clip from its metadata (fresh .wav, no app data needed).
+  async function regenerateClip(meta) {
+    setClipMsg(`Cutting “${meta.name}”…`);
+    try {
+      let audioUrl = meta.audioUrl;
+      let duration = meta.duration;
+      if (!audioUrl) {
+        const res = await fetch("/.netlify/functions/fetch-audio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: meta.uri }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Couldn't resolve the audio.");
+        audioUrl = data.audioUrl;
+        duration = duration || 0;
+      }
+      const blob = await cutClipToWav(audioUrl, meta.start, meta.end, duration, (s) => setClipMsg(s));
+      const where = await deliverClip(
+        { name: meta.name, start: meta.start, end: meta.end, blob, audioUrl, duration },
+        null,
+        false
+      );
+      setClipMsg(where);
+    } catch (e) {
+      setClipMsg(`Couldn't cut the clip: ${e.message}`);
+    }
+    setTimeout(() => setClipMsg(""), 6000);
+  }
+
+  function openClipFor(talk) {
+    if (!talk) return;
+    setClipPanel({
+      uri: talk.uri,
+      title: talk.title,
+      speaker: talk.speaker,
+      when: talk.when || `${monthName(talk.month)} ${talk.year}`,
+      month: talk.month,
+      year: talk.year,
+    });
+    setReaderOpen(false);
+    setJournalPanel(null);
+  }
+
   // ---- Becoming journal state ----
   const [journal, setJournal] = useState(loadJournalFromStorage);
   const [journalPanel, setJournalPanel] = useState(null); // {uri,title,speaker,when} being journaled
@@ -432,6 +646,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
       when: talk.when || `${monthName(talk.month)} ${talk.year}`,
     });
     setReaderOpen(false); // one bottom panel at a time
+    setClipPanel(null);
     setJournalNudge(null);
   }
 
@@ -826,6 +1041,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-listen-days",
     "cac-journal",
     "cac-journal-deleted",
+    "cac-clips",
   ];
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -987,6 +1203,20 @@ export default function ConferencePicker({ onTalkLoaded }) {
         };
       }
       localStorage.setItem("cac-listened", JSON.stringify(curL));
+
+      // Audio clips metadata: union by id, newest edit wins.
+      const curC = parseJson(localStorage.getItem("cac-clips") || "[]", []);
+      const incC = parseJson(inc["cac-clips"] || "[]", []);
+      const cById = new Map();
+      for (const c of [...curC, ...incC]) {
+        if (!c || !c.id) continue;
+        const e = cById.get(c.id);
+        if (!e || (c.updatedAt || 0) > (e.updatedAt || 0)) cById.set(c.id, c);
+      }
+      localStorage.setItem(
+        "cac-clips",
+        JSON.stringify([...cById.values()].sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))))
+      );
 
       // Daily listening seconds: per-day maximum.
       const curLD = parseJson(localStorage.getItem("cac-listen-days") || "{}", {});
@@ -2302,6 +2532,46 @@ ${rows}</body></html>`;
           onUseInTalk={(q) => { setStudioSeedId(q.id); setMode("studio"); }}
         />
       )}
+      {mode === "quotes" && (
+        <div className="clip-shelf">
+          <h3 className="prog-h">
+            🎬 Audio clips
+            <span className="prog-hint"> — snipped with ✂️ on the player; .wav files for presentations</span>
+          </h3>
+          {clipMsg && <p className="note">{clipMsg}</p>}
+          {clips.length === 0 ? (
+            <p className="note">
+              While a talk plays, tap ✂️ on the player, mark the start and end
+              of the passage, and save — the clip lands in your data folder
+              (or Downloads) and is listed here for re-cutting anytime.
+            </p>
+          ) : (
+            clips.map((c) => (
+              <div className="quote-card" key={c.id}>
+                <p className="quote-text" style={{ fontStyle: "normal" }}>🎬 {c.name}</p>
+                <div className="quote-cite">
+                  {fmtClock(c.start)}–{fmtClock(c.end)} ({fmtClock(c.end - c.start)}) of “{c.title}” —{" "}
+                  <strong>{c.speaker}</strong>, {c.when} General Conference
+                </div>
+                <div className="quote-actions">
+                  <button className="picker-talk-listen" onClick={() => regenerateClip(c)}>
+                    ⬇ WAV
+                  </button>
+                  <button
+                    className="picker-talk-listen"
+                    onClick={() =>
+                      startUrisQueue({ id: `quote|${c.uri}`, label: c.title, uris: [c.uri], order: "newest" })
+                    }
+                  >
+                    ▶ Play talk
+                  </button>
+                  <button className="quote-del" onClick={() => deleteClip(c.id)}>✕</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* ------------------- TALK BUILDER ------------------- */}
       {mode === "studio" && (
@@ -2488,6 +2758,17 @@ ${rows}</body></html>`;
         </div>
       )}
 
+      {/* ------------------- AUDIO CLIP PANEL ------------------- */}
+      {clipPanel && player && (
+        <ClipPanel
+          talk={clipPanel}
+          audioRef={audioRef}
+          bottom={barH}
+          onSaveClip={(clip) => deliverClip(clip, clipPanel)}
+          onClose={() => setClipPanel(null)}
+        />
+      )}
+
       {/* ------------------- BECOMING JOURNAL PANEL ------------------- */}
       {journalPanel && (
         <JournalPanel
@@ -2574,6 +2855,14 @@ ${rows}</body></html>`;
             disabled={!nowPlaying}
           >
             ✍️
+          </button>
+          <button
+            className={`listen-btn ${clipPanel ? "active" : ""}`}
+            title="Snip an audio clip from this talk (saves a .wav for presentations)"
+            onClick={() => (clipPanel ? setClipPanel(null) : openClipFor(nowPlaying))}
+            disabled={!nowPlaying}
+          >
+            ✂️
           </button>
           <button
             className="listen-btn"
