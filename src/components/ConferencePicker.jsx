@@ -22,6 +22,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AiSearchMode, InsightsMode, buildExportHtml, safeFilename } from "./AiTools.jsx";
 import QuoteBoard from "./QuoteBoard.jsx";
 import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
+import ProgressBoard from "./ProgressBoard.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -70,6 +71,17 @@ function loadBookmarksFromStorage() {
 function loadDeletedFromStorage() {
   try {
     const o = JSON.parse(localStorage.getItem(DEL_KEY) || "{}");
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+// ---- listening history (which talks have been HEARD, for Progress) ----
+const LISTENED_KEY = "cac-listened";
+function loadListenedFromStorage() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LISTENED_KEY) || "{}");
     return o && typeof o === "object" ? o : {};
   } catch {
     return {};
@@ -232,6 +244,24 @@ export default function ConferencePicker({ onTalkLoaded }) {
     if (p && p.id === id) closePlayer(true);
   }
 
+  // ---- listening history (powers the Progress board) ----
+  const [listened, setListened] = useState(loadListenedFromStorage);
+  const sessionMarkedRef = useRef(new Set());
+
+  // A talk counts as HEARD when its audio ends naturally or the listener
+  // reaches ~92% of it. Marked once per session per talk; repeat listens on
+  // later days bump the count.
+  function markListened(uri) {
+    if (!uri || sessionMarkedRef.current.has(uri)) return;
+    sessionMarkedRef.current.add(uri);
+    const cur = loadListenedFromStorage();
+    const prev = cur[uri];
+    cur[uri] = { at: new Date().toISOString(), n: prev ? (prev.n || 1) + 1 : 1 };
+    try { localStorage.setItem(LISTENED_KEY, JSON.stringify(cur)); } catch {}
+    setListened(cur);
+    schedulePush();
+  }
+
   // ---- quote board state ----
   const [quotes, setQuotes] = useState(loadQuotesFromStorage);
   const [quotePop, setQuotePop] = useState(null); // {top,left,text}
@@ -283,6 +313,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
       deleted: loadDeletedFromStorage(),
       quotes: Object.fromEntries(loadQuotesFromStorage().map((q) => [q.id, q])),
       quotesDeleted: loadQuotesDeletedFromStorage(),
+      listened: loadListenedFromStorage(),
       speed: speedRef.current,
       speedUpdatedAt: speedAt,
     };
@@ -303,6 +334,10 @@ export default function ConferencePicker({ onTalkLoaded }) {
         localStorage.setItem(QUOTES_DEL_KEY, JSON.stringify(state.quotesDeleted || {}));
       } catch {}
       setQuotes(arr);
+    }
+    if (state.listened) {
+      try { localStorage.setItem(LISTENED_KEY, JSON.stringify(state.listened)); } catch {}
+      setListened(state.listened);
     }
     let localSpeedAt = 0;
     try { localSpeedAt = parseInt(localStorage.getItem("cac-listen-speed-at") || "0", 10) || 0; } catch {}
@@ -597,6 +632,7 @@ export default function ConferencePicker({ onTalkLoaded }) {
     "cac-quotes",
     "cac-quotes-deleted",
     "cac-talk-drafts",
+    "cac-listened",
   ];
   const backupFileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState("");
@@ -721,6 +757,18 @@ export default function ConferencePicker({ onTalkLoaded }) {
           [...dById.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10)
         )
       );
+
+      // Listening history: pure union (never un-heard).
+      const curL = parseJson(localStorage.getItem("cac-listened") || "{}", {});
+      const incL = parseJson(inc["cac-listened"] || "{}", {});
+      for (const [uri, rec] of Object.entries(incL)) {
+        const e = curL[uri];
+        curL[uri] = {
+          at: !e || String(rec.at || "") > String(e.at || "") ? rec.at : e.at,
+          n: Math.max((e && e.n) || 0, (rec && rec.n) || 1),
+        };
+      }
+      localStorage.setItem("cac-listened", JSON.stringify(curL));
 
       // Speed preference: newer change wins.
       const incAt = parseInt(inc["cac-listen-speed-at"] || "0", 10) || 0;
@@ -1130,9 +1178,15 @@ ${rows}</body></html>`;
         body: JSON.stringify({ url: talk.uri }),
       });
       const data = await res.json();
-      const url = res.ok ? data.audioUrl || "" : "";
-      audioUrlCache.current.set(talk.uri, url);
-      return url;
+      if (res.ok) {
+        const url = data.audioUrl || "";
+        audioUrlCache.current.set(talk.uri, url);
+        return url;
+      }
+      // Only a definitive "no recording exists" (404) is worth remembering;
+      // transient failures (rate limits, hiccups) must stay retryable.
+      if (res.status === 404) audioUrlCache.current.set(talk.uri, "");
+      return "";
     } catch {
       return ""; // network hiccup — treat as unavailable, don't cache
     }
@@ -1202,6 +1256,7 @@ ${rows}</body></html>`;
   function handleEnded() {
     const p = playerRef.current;
     if (!p) return;
+    markListened(p.queue[p.idx] && p.queue[p.idx].uri);
     if (p.idx + 1 < p.queue.length) {
       playerStep(1);
     } else {
@@ -1215,7 +1270,13 @@ ${rows}</body></html>`;
   // Ongoing auto-save: every few seconds of listening, remember the spot.
   // Also drives the follow-along reader's paragraph highlight.
   function handleTimeUpdate(e) {
-    updateReaderPosition(e.target.currentTime || 0);
+    const t = e.target.currentTime || 0;
+    updateReaderPosition(t);
+    const dur = e.target.duration;
+    if (dur && isFinite(dur) && dur > 60 && t / dur > 0.92) {
+      const p = playerRef.current;
+      if (p) markListened(p.queue[p.idx] && p.queue[p.idx].uri);
+    }
     const now = Date.now();
     if (now - lastBmSaveRef.current < 5000) return;
     lastBmSaveRef.current = now;
@@ -1505,6 +1566,12 @@ ${rows}</body></html>`;
           🎙 Talk builder
         </button>
         <button
+          className={`picker-mode-btn ${mode === "progress" ? "active" : ""}`}
+          onClick={() => setMode("progress")}
+        >
+          🏆 Progress
+        </button>
+        <button
           className={`picker-mode-btn ${mode === "browse" ? "active" : ""}`}
           onClick={() => setMode("browse")}
         >
@@ -1692,6 +1759,12 @@ ${rows}</body></html>`;
                 <span className="resume-card-pos">
                   talk {bm.idx + 1} of {bm.total} · {fmtTime(bm.seconds)} in ·{" "}
                   {orderText(bm.order)}
+                </span>
+                <span className="prog-bar resume-card-bar">
+                  <span
+                    className="prog-bar-fill"
+                    style={{ width: `${Math.round(((bm.idx + 1) / Math.max(1, bm.total)) * 100)}%` }}
+                  />
                 </span>
               </button>
               <button
@@ -1971,6 +2044,16 @@ ${rows}</body></html>`;
       {/* ------------------- TALK BUILDER ------------------- */}
       {mode === "studio" && (
         <TalkStudio key={studioSeedId || "studio"} quotes={quotes} seedQuoteId={studioSeedId} />
+      )}
+
+      {/* ------------------- PROGRESS ------------------- */}
+      {mode === "progress" && (
+        <ProgressBoard
+          index={index}
+          listened={listened}
+          bookmarks={bookmarks}
+          startUrisQueue={startUrisQueue}
+        />
       )}
 
       {/* ------------------- BROWSE BY CONFERENCE ------------------- */}

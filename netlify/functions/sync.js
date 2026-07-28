@@ -75,6 +75,7 @@ const normalizeState = (s) => ({
   deleted: (s && typeof s.deleted === "object" && s.deleted) || {},
   quotes: (s && typeof s.quotes === "object" && s.quotes) || {},
   quotesDeleted: (s && typeof s.quotesDeleted === "object" && s.quotesDeleted) || {},
+  listened: (s && typeof s.listened === "object" && s.listened) || {},
   speed: s && typeof s.speed === "number" ? s.speed : null,
   speedUpdatedAt: (s && s.speedUpdatedAt) || 0,
 });
@@ -116,6 +117,17 @@ function mergeStates(a, b) {
   for (const [id, ts] of Object.entries(quotesDeleted)) {
     if (quotes[id] && ts >= (quotes[id].updatedAt || 0)) delete quotes[id];
   }
+  // Listening history: pure union — hearing a talk is never un-heard.
+  // Keep the newest listen date and the highest listen count per talk.
+  const listened = { ...A.listened };
+  for (const [uri, rec] of Object.entries(B.listened)) {
+    if (!rec || typeof rec !== "object") continue;
+    const e = listened[uri];
+    listened[uri] = {
+      at: !e || String(rec.at || "") > String(e.at || "") ? rec.at : e.at,
+      n: Math.max((e && e.n) || 0, rec.n || 1),
+    };
+  }
   // Speed preference: newest change wins.
   const speedNewer = (B.speedUpdatedAt || 0) > (A.speedUpdatedAt || 0) ? B : A;
   return {
@@ -123,6 +135,7 @@ function mergeStates(a, b) {
     deleted,
     quotes,
     quotesDeleted,
+    listened,
     speed: speedNewer.speed,
     speedUpdatedAt: speedNewer.speedUpdatedAt,
     savedAt: Date.now(),
