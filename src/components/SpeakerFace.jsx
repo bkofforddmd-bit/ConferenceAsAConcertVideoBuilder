@@ -53,6 +53,27 @@ export function fullPortraitUrlFor(name) {
 
 export { loadPortraits };
 
+// Downloads the speaker's full-size portrait as a file (via the audio-proxy,
+// since the image hosts don't send CORS headers). Returns {filename, mb}.
+export async function downloadFullPortrait(speaker) {
+  await loadPortraits();
+  const url = fullPortraitUrlFor(speaker);
+  if (!url) throw new Error("no portrait is available for this speaker");
+  const res = await fetch(`/.netlify/functions/audio-proxy?src=${encodeURIComponent(url)}`);
+  if (!res.ok) throw new Error(`portrait server responded ${res.status}`);
+  const blob = await res.blob();
+  const type = blob.type || "";
+  const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${String(speaker).replace(/[^\w .\-']/g, "")}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return { filename: a.download, mb: blob.size / 1e6 };
+}
+
 const initialsOf = (name) =>
   normName(name)
     .split(/\s+/)

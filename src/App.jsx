@@ -3,60 +3,6 @@ import React, { useState, useRef, useEffect } from "react";
 import ConferencePicker from "./components/ConferencePicker.jsx";
 import LyricCreator from "./components/LyricCreator.jsx";
 import SceneOrganizer from "./components/SceneOrganizer.jsx";
-import SpeakerFace, { fullPortraitUrlFor, loadPortraits } from "./components/SpeakerFace.jsx";
-
-// Full-resolution portrait download for the song's intro slide — fetched
-// through the audio-proxy (the image hosts don't send CORS headers).
-function PortraitCard({ speaker }) {
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [hasPortrait, setHasPortrait] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    setStatus("");
-    loadPortraits().then(() => { if (alive) setHasPortrait(!!fullPortraitUrlFor(speaker)); });
-    return () => { alive = false; };
-  }, [speaker]);
-  if (!hasPortrait) return null;
-
-  async function download() {
-    if (busy) return;
-    setBusy(true);
-    setStatus("Fetching the full-size portrait…");
-    try {
-      await loadPortraits();
-      const url = fullPortraitUrlFor(speaker);
-      const res = await fetch(`/.netlify/functions/audio-proxy?src=${encodeURIComponent(url)}`);
-      if (!res.ok) throw new Error(`portrait server responded ${res.status}`);
-      const blob = await res.blob();
-      const type = blob.type || res.headers.get("content-type") || "";
-      const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${speaker.replace(/[^\w .\-']/g, "")}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      setStatus(`✓ Downloaded ${a.download} (${(blob.size / 1e6).toFixed(1)} MB)`);
-    } catch (e) {
-      setStatus(`Couldn't fetch the portrait: ${e.message}`);
-    }
-    setBusy(false);
-  }
-
-  return (
-    <div className="portrait-card">
-      <SpeakerFace name={speaker} size={56} />
-      <div className="portrait-card-body">
-        <button className="picker-talk-listen" onClick={download} disabled={busy}>
-          {busy ? "Fetching…" : "⬇ Full-size portrait (for the intro slide)"}
-        </button>
-        {status && <span className="note" style={{ margin: 0 }}>{status}</span>}
-      </div>
-    </div>
-  );
-}
 
 const PROJECT_VERSION = 2;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -293,14 +239,11 @@ export default function App() {
       <div style={{ display: tab === "choose" ? "block" : "none" }}>
         <ConferencePicker onTalkLoaded={handleTalkLoaded} />
         {talkMeta.title && (
-          <>
-            <p className="note" style={{ textAlign: "center", marginTop: 12 }}>
-              Loaded: <strong>{talkMeta.title}</strong>
-              {talkMeta.speaker ? ` — ${talkMeta.speaker}` : ""}.{" "}
-              Now on the Lyric Creator tab.
-            </p>
-            {talkMeta.speaker && <PortraitCard speaker={talkMeta.speaker} />}
-          </>
+          <p className="note" style={{ textAlign: "center", marginTop: 12 }}>
+            Loaded: <strong>{talkMeta.title}</strong>
+            {talkMeta.speaker ? ` — ${talkMeta.speaker}` : ""}.{" "}
+            Now on the Lyric Creator tab.
+          </p>
         )}
       </div>
 

@@ -12,8 +12,34 @@ import {
   generateStoryboard,
   storyboardAvailable,
 } from "../lib/api.js";
+import { downloadFullPortrait, fullPortraitUrlFor, loadPortraits } from "./SpeakerFace.jsx";
 
 export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, onStateChange }) {
+  const [portraitAvail, setPortraitAvail] = useState(false);
+  const [portraitMsg, setPortraitMsg] = useState("");
+  const [portraitBusy, setPortraitBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setPortraitMsg("");
+    if (!talkMeta?.speaker) { setPortraitAvail(false); return; }
+    loadPortraits().then(() => {
+      if (alive) setPortraitAvail(!!fullPortraitUrlFor(talkMeta.speaker));
+    });
+    return () => { alive = false; };
+  }, [talkMeta?.speaker]);
+
+  async function downloadPortrait() {
+    if (portraitBusy) return;
+    setPortraitBusy(true);
+    setPortraitMsg("Fetching the full-size portrait…");
+    try {
+      const { filename, mb } = await downloadFullPortrait(talkMeta.speaker);
+      setPortraitMsg(`✓ Downloaded ${filename} (${mb.toFixed(1)} MB) — for the intro slide.`);
+    } catch (e) {
+      setPortraitMsg(`Couldn't fetch the portrait: ${e.message}`);
+    }
+    setPortraitBusy(false);
+  }
   const [styleBible, setStyleBible] = useState(null);
   const [scenes, setScenes] = useState([]); // expanded scenes
   const [images, setImages] = useState({});
@@ -1371,8 +1397,19 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             Download Lyrics (.docx)
           </button>
         )}
+        {portraitAvail && (
+          <button
+            className="btn btn-ghost"
+            onClick={downloadPortrait}
+            disabled={portraitBusy}
+            title={`Download ${talkMeta.speaker}'s full-size portrait — for the song's intro slide`}
+          >
+            {portraitBusy ? "Fetching…" : "Download Portrait"}
+          </button>
+        )}
       </div>
 
+      {portraitMsg && <p className="note" style={{ marginTop: 12 }}>{portraitMsg}</p>}
       {busy && progress && (
         <p className="note" style={{ marginTop: 12 }}>{progress}</p>
       )}
