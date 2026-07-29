@@ -1441,3 +1441,69 @@ textarea.lyrics { min-height: 320px; font-size: 16px; line-height: 1.7; }
   align-items: flex-start;
 }
 .quote-with-face > .quote-body { flex: 1 1 auto; min-width: 0; }
+
+/* ---- watch mode (floating video) ---- */
+.listen-video-float {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(880px, 94vw);
+  max-width: none;
+  height: auto;
+  max-height: 58vh;
+  z-index: 56;
+  background: #000;
+  border-radius: 12px;
+  border: 1px solid var(--gold-soft);
+  box-shadow: 0 -14px 44px rgba(0, 0, 0, 0.6);
+}
+
+/* Watch + read-along together: video left, text right on wide screens */
+@media (min-width: 1000px) {
+  .listen-video-float.with-reader {
+    left: max(8px, calc(50vw - 476px));
+    transform: none;
+    width: min(420px, 42vw);
+  }
+  .reader-panel.with-video {
+    left: auto;
+    right: max(8px, calc(50vw - 476px));
+    margin: 0;
+    width: 520px;
+    max-width: 520px;
+  }
+}
+/* Narrow screens: the video docks small in the top corner while you read */
+@media (max-width: 999.9px) {
+  .listen-video-float.with-reader {
+    top: 8px;
+    bottom: auto !important;
+    left: auto;
+    right: 8px;
+    transform: none;
+    width: min(48vw, 320px);
+  }
+}
+
+/* Printed-summary block at the top of the reader — shown, never timed */
+.reader-kicker {
+  margin: 12px 16px 4px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: rgba(8, 11, 28, 0.35);
+}
+.reader-kicker-tag {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+  margin-bottom: 4px;
+}
+.reader-kicker p {
+  margin: 0;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-soft);
+}

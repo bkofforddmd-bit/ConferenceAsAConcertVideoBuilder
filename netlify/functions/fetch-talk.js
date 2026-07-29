@@ -208,12 +208,16 @@ async function fetchViaHtml({ pathname }) {
   const scope = scopeToArticleBody(html);
   const byline = extractByline(html);
   const speaker = composeSpeaker(byline, "", byline);
+  // The one-line summary shown under the title (<p class="kicker">) appears
+  // in print but is never spoken — callers need it labeled so read-along
+  // timing can skip it.
+  const kickerM = html.match(/<p[^>]*class="[^"]*\bkicker\b[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
   return {
     title,
     speaker,
     speakerName: stripHtml(byline).replace(/^By\s+/i, "").replace(/^(President|Elder|Sister|Brother|Bishop|Presiding Bishop|Acting President)\s+/i, ""),
     speakerTitle: detectTitle(byline),
-    kicker: "",
+    kicker: kickerM ? stripHtml(kickerM[1]) : "",
     paragraphs: htmlToParagraphs(scope),
   };
 }

@@ -984,9 +984,14 @@ export default function ConferencePicker({ onTalkLoaded }) {
   const barRef = useRef(null);
 
   // Lines that appear in the printed text but aren't spoken in the audio
-  // (byline, office) — dropping them keeps the timing model honest.
-  function spokenParagraphs(paragraphs, speakerName) {
-    return (paragraphs || []).filter((p) => {
+  // (kicker summary + its scripture cite, byline, office) — dropping them
+  // keeps the timing model honest. Returns the spoken paragraphs plus the
+  // print-only summary so the reader can still show it, clearly labeled.
+  function splitSpokenParagraphs(paragraphs, speakerName, kicker) {
+    const norm = (s) => String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
+    const kickerNorm = norm(kicker);
+    let cite = "";
+    const spoken = (paragraphs || []).filter((p, i) => {
       const s = p.trim();
       if (!s) return false;
       if (/^By\s+(President|Elder|Sister|Brother|Bishop)\b/i.test(s)) return false;
@@ -994,8 +999,16 @@ export default function ConferencePicker({ onTalkLoaded }) {
       if (/^(First|Second) Counselor in the First Presidency/i.test(s)) return false;
       if (/^(President of The Church|Presiding Bishop|Acting President of the Quorum)/i.test(s)) return false;
       if (speakerName && s === speakerName) return false;
+      // Front matter only: the summary paragraph and its bare "(Alma 41:7)"
+      // style citation are printed, never read aloud.
+      if (i < 6) {
+        if (kickerNorm && norm(s) === kickerNorm) return false;
+        if (/^\([^()]{1,60}\)$/.test(s)) { cite = cite || s; return false; }
+      }
       return true;
     });
+    const summary = kicker ? `${kicker}${cite ? ` ${cite}` : ""}` : "";
+    return { spoken, summary };
   }
 
   async function loadReaderDoc(talk) {
@@ -1013,9 +1026,15 @@ export default function ConferencePicker({ onTalkLoaded }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Couldn't load the talk text.");
+      const { spoken, summary } = splitSpokenParagraphs(
+        data.paragraphs,
+        data.speakerName || talk.speaker,
+        (data.kicker || "").trim()
+      );
       const doc = {
         title: data.title || talk.title,
-        paragraphs: spokenParagraphs(data.paragraphs, data.speakerName || talk.speaker),
+        paragraphs: spoken,
+        summary,
       };
       readerCacheRef.current.set(talk.uri, doc);
       setReaderDoc({ ...doc, uri: talk.uri, status: "ready" });
@@ -1827,7 +1846,7 @@ ${rows}</body></html>`;
       return;
     }
     setPlayerError("");
-    setReaderOpen(false);
+    // The reader stays open — read along while the video plays.
     setJournalPanel(null);
     setClipPanel(null);
     setWatchOpen(true);
@@ -2872,7 +2891,7 @@ ${rows}</body></html>`;
       {/* ------------------- FOLLOW-ALONG READER ------------------- */}
       {readerOpen && player && nowPlaying && (
         <div
-          className="reader-panel"
+          className={`reader-panel${watchOpen ? " with-video" : ""}`}
           style={{ bottom: barH }}
           onWheel={() => { userScrollAtRef.current = Date.now(); }}
           onTouchMove={() => { userScrollAtRef.current = Date.now(); }}
@@ -2915,6 +2934,12 @@ ${rows}</body></html>`;
               onMouseUp={handleReaderSelection}
               onTouchEnd={handleReaderSelection}
             >
+              {readerDoc.summary && (
+                <div className="reader-kicker">
+                  <span className="reader-kicker-tag">Printed summary — not part of the audio</span>
+                  <p>{readerDoc.summary}</p>
+                </div>
+              )}
               {readerDoc.paragraphs.map((p, i) => (
                 <p
                   key={i}
@@ -3022,26 +3047,8 @@ ${rows}</body></html>`;
             controls
             playsInline
             preload="none"
-            className="listen-audio"
-            style={
-              watchOpen
-                ? {
-                    position: "fixed",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    bottom: barH + 8,
-                    width: "min(880px, 94vw)",
-                    maxWidth: "none",
-                    height: "auto",
-                    maxHeight: "58vh",
-                    zIndex: 56,
-                    background: "#000",
-                    borderRadius: 12,
-                    border: "1px solid var(--gold-soft)",
-                    boxShadow: "0 -14px 44px rgba(0,0,0,0.6)",
-                  }
-                : undefined
-            }
+            className={`listen-audio${watchOpen ? " listen-video-float" : ""}${watchOpen && readerOpen ? " with-reader" : ""}`}
+            style={watchOpen ? { bottom: barH + 8 } : undefined}
             onEnded={handleEnded}
             onTimeUpdate={handleTimeUpdate}
             onPause={() => writeBookmark()}
