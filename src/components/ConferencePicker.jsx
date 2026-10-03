@@ -26,6 +26,7 @@ import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
 import { cutClipToWav, fmtClock } from "../lib/audio-clip.js";
 import { recordClipToVideo } from "../lib/video-clip.js";
 import SpeakerFace from "./SpeakerFace.jsx";
+import SonosButton from "./SonosButton.jsx";
 
 const YEARS = [];
 for (let y = new Date().getFullYear(); y >= 1971; y--) YEARS.push(String(y));
@@ -2157,6 +2158,7 @@ ${rows}</body></html>`;
           >
             {nowPlaying && nowPlaying.uri === t.uri ? "♪ Playing" : "▶ Listen"}
           </button>
+          <SonosButton className="picker-talk-listen" talk={t.uri} small />
           <a
             className="picker-talk-read"
             href={officialUrl(t.uri)}
@@ -3094,6 +3096,14 @@ ${rows}</body></html>`;
           >
             {nowPlaying && loadingUri === nowPlaying.uri ? "…" : "🎵"}
           </button>
+          {player && (
+            <SonosButton
+              className="listen-btn"
+              label="🔊"
+              title="Play this list on the house Sonos, from this talk onward (home Wi-Fi only)"
+              talks={player.queue.slice(player.idx, player.idx + 40).map((t) => t.uri)}
+            />
+          )}
           <button
             className="listen-btn"
             title="Next talk"
