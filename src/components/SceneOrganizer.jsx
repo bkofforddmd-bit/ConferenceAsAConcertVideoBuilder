@@ -1298,10 +1298,18 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
   }
 
   function downloadAll() {
-    Object.keys(saved)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .forEach((n, i) => setTimeout(() => downloadImage(n), i * 250));
+    const queue = [];
+    if (endcards.intro?.saved && endcards.intro?.image) queue.push(() => downloadCardImage("intro"));
+    Object.keys(saved).map(Number).sort((a, b) => a - b).forEach((n) => queue.push(() => downloadImage(n)));
+    if (endcards.outro?.saved && endcards.outro?.image) queue.push(() => downloadCardImage("outro"));
+    queue.forEach((fn, i) => setTimeout(fn, i * 250));
+  }
+
+  // Intro/outro cards join the Master Folder with a flag on the card itself
+  // (scene saves are keyed by scene number, so the cards keep their own slot).
+  function saveCard(kind) {
+    if (!endcards[kind]?.image) return;
+    setEndcards((p) => ({ ...p, [kind]: { ...p[kind], saved: true } }));
   }
 
   if (!lyrics) {
@@ -1316,7 +1324,8 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     );
   }
 
-  const savedCount = Object.keys(saved).length;
+  const savedCards = ["intro", "outro"].filter((k) => endcards[k]?.saved && endcards[k]?.image);
+  const savedCount = Object.keys(saved).length + savedCards.length;
 
   return (
     <section className="panel">
@@ -1541,6 +1550,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
           onDescribe={() => genCardDescription("intro")}
           onUpload={(e) => handleCardUpload("intro", e)}
           onDownloadImage={() => downloadCardImage("intro")}
+          onSave={() => saveCard("intro")}
           onDownloadText={() => downloadCardText("intro")}
         />
       )}
@@ -1752,6 +1762,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
           onDescribe={() => genCardDescription("outro")}
           onUpload={(e) => handleCardUpload("outro", e)}
           onDownloadImage={() => downloadCardImage("outro")}
+          onSave={() => saveCard("outro")}
           onDownloadText={() => downloadCardText("outro")}
         />
       )}
@@ -1767,6 +1778,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             </button>
           </div>
           <div className="gallery" style={{ marginTop: 14 }}>
+            {savedCards.includes("intro") && (
+              <figure key="intro">
+                <img src={endcards.intro.image} alt="Intro card" />
+                <figcaption>Intro card</figcaption>
+              </figure>
+            )}
             {Object.keys(saved)
               .map(Number)
               .sort((a, b) => a - b)
@@ -1776,6 +1793,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
                   <figcaption>Scene {n}</figcaption>
                 </figure>
               ))}
+            {savedCards.includes("outro") && (
+              <figure key="outro">
+                <img src={endcards.outro.image} alt="Outro card" />
+                <figcaption>Outro card</figcaption>
+              </figure>
+            )}
           </div>
         </div>
       )}
@@ -1783,13 +1806,14 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
   );
 }
 
-function EndCard({ kind, label, text, fullPrompt, card, busy, descBusy, notes, onNotesChange, onGenerate, onDescribe, onUpload, onDownloadImage, onDownloadText }) {
+function EndCard({ kind, label, text, fullPrompt, card, busy, descBusy, notes, onNotesChange, onGenerate, onDescribe, onUpload, onDownloadImage, onDownloadText, onSave }) {
   const img = card?.image;
   const description = card?.description || "";
+  const isSaved = Boolean(card?.saved && img);
   return (
     <div className="scene-card endcard">
       <div className="scene-head">
-        <span className="scene-no">{label}</span>
+        <span className="scene-no">{label}{isSaved && <span className="saved-badge">saved ✓</span>}</span>
         <span className="lyric-tag">{kind === "intro" ? "before Scene 1" : "after last scene"}</span>
       </div>
 
@@ -1821,7 +1845,7 @@ function EndCard({ kind, label, text, fullPrompt, card, busy, descBusy, notes, o
         <img className="scene-image" src={img} alt={label} />
       ) : (
         <div className="scene-image placeholder">
-          No image yet — copy the prompt into ChatGPT, make the card there, then upload it below
+          No image yet — generate it below, upload one, or use the drawn text card from the Video step
         </div>
       )}
 
@@ -1860,13 +1884,16 @@ function EndCard({ kind, label, text, fullPrompt, card, busy, descBusy, notes, o
         <button className="btn btn-ghost" onClick={onDownloadImage} disabled={!img}>
           Download image
         </button>
-        <button className="btn btn-ghost" onClick={onGenerate} disabled={busy} title="Image generation can be slow and may time out; copy+upload is more reliable">
+        <button className="btn btn-ghost" onClick={onGenerate} disabled={busy} title="Generate the card image here (about a minute)">
           {busy && <span className="spinner" />}
           {busy
             ? "Generating…"
             : img
             ? ((notes || "").trim() ? "Regenerate with notes" : "Regenerate here")
-            : "Try generating here"}
+            : "Generate card image"}
+        </button>
+        <button className="btn btn-primary" onClick={onSave} disabled={!img || isSaved} title="Keep this card in the Master Folder alongside the saved scenes">
+          {isSaved ? "In master folder ✓" : "Save to master folder"}
         </button>
       </div>
     </div>

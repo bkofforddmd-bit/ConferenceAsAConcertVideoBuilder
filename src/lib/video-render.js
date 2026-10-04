@@ -184,6 +184,16 @@ export function lyricAt(seg, t, mode = "one") {
 // A designed-looking title/closing card drawn from text alone, for projects
 // whose intro/outro card images haven't been generated. Navy-to-air-blue
 // gradient with a soft horizon glow, Michroma-style title, Inter credits.
+// Render a drawn text card to a PNG data URL (so it can become the project's
+// real intro/outro card image, saved and exported like any other).
+export function textCardToDataUrl(card, W = 1536, H = 1024) {
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  drawTextCard(ctx, card || {}, W, H);
+  return canvas.toDataURL("image/png");
+}
+
 function drawTextCard(ctx, card, W, H) {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, "#00205B");

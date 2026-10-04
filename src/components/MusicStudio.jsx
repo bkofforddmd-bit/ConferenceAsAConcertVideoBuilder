@@ -147,6 +147,36 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
     if (abortRef.current) abortRef.current.abort();
   }
 
+  // Bring in a song made elsewhere (Suno, a studio recording, anything) as a
+  // take of this project — it then works exactly like a generated one.
+  const [uploadBusy, setUploadBusy] = useState(false);
+  async function uploadSong(file) {
+    if (!file) return;
+    setError("");
+    setUploadBusy(true);
+    try {
+      const blob = file.type ? file : new Blob([file], { type: "audio/mpeg" });
+      const id = "u_" + Date.now().toString(36);
+      const mediaKey = `${projectId}:song:${id}`;
+      await putMedia(mediaKey, blob, { provider: "upload", name: file.name });
+      const durationSec = await new Promise((res) => {
+        const a = document.createElement("audio");
+        const u = URL.createObjectURL(blob);
+        a.onloadedmetadata = () => { res(a.duration || 0); URL.revokeObjectURL(u); };
+        a.onerror = () => { res(0); URL.revokeObjectURL(u); };
+        a.src = u;
+      });
+      if (!durationSec) throw new Error("That file couldn't be played as audio. Use an .mp3, .wav or .m4a.");
+      const version = { id, provider: "upload", title: title || file.name.replace(/\.[a-z0-9]+$/i, ""), style: "", vocals: "", mediaKey, mimeType: blob.type, durationSec, createdAt: Date.now(), fileName: file.name };
+      setSong((prev) => ({ versions: [...((prev && prev.versions) || []), version], activeId: id }));
+      setStatus(`Added "${file.name}" — ${fmtDur(durationSec)}.`);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
   function download() {
     if (!audioUrl || !active) return;
     const a = document.createElement("a");
@@ -236,6 +266,10 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
               {busy ? `Generating… ${elapsed}s` : versions.length ? "Generate another version" : "Generate the song"}
             </button>
             {busy && <button className="btn btn-ghost" onClick={cancel}>Cancel</button>}
+            <label className="btn btn-ghost" style={{ cursor: "pointer" }} title="Use a song made elsewhere (.mp3, .wav, .m4a) instead of generating one">
+              {uploadBusy ? "Adding…" : "Upload a song file"}
+              <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" style={{ display: "none" }} onChange={(e) => { uploadSong(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+            </label>
           </div>
           {status && (
             <div className="status-line">
@@ -256,7 +290,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
             <div className="song-player">
               <div className="song-title">{active.title}</div>
               <div className="song-meta">
-                {fmtDur(active.durationSec)} · {active.provider === "lyria" ? "Google Lyria 3.5" : "MiniMax Music"}
+                {fmtDur(active.durationSec)} · {active.provider === "lyria" ? "Google Lyria 3.5" : active.provider === "upload" ? `uploaded${active.fileName ? ` (${active.fileName})` : ""}` : "MiniMax Music"}
                 {active.vocals ? ` · ${active.vocals}` : ""}
               </div>
               <audio ref={audioRef} controls src={audioUrl} />

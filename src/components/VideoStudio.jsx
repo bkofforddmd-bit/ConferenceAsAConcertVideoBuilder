@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from "../lib/api.js";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
-import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS } from "../lib/video-render.js";
+import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming } from "../lib/lyric-sync.js";
 
 function fmt(sec) {
@@ -102,7 +102,7 @@ function motionPromptFor(scene) {
 export default function VideoStudio({
   projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
-  config, onContinue,
+  config, onContinue, onSetCardImage,
 }) {
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
@@ -732,7 +732,19 @@ export default function VideoStudio({
                       <input type="checkbox" checked={cd.on} onChange={(e) => cd.toggle(e.target.checked)} />
                       <span className="clip-name">{cd.label}</span>
                     </label>
-                    {!cd.has && <span className="note" style={{ margin: 0 }}>Drawn from the title & credits. Generate the card image on the Storyboard step for a designed one.</span>}
+                    {!cd.has && (
+                      <span className="note" style={{ margin: 0 }}>
+                        Drawn from the title & credits. Generate the card image on the Storyboard step for a designed one
+                        {onSetCardImage && (
+                          <>
+                            {" "}— or{" "}
+                            <button className="btn btn-ghost btn-sm" onClick={() => onSetCardImage(cd.key, textCardToDataUrl(cd.key === "intro" ? introCard : outroCard))} title="Turn this drawn card into the project's card image so it can be saved to the master folder and exported">
+                              keep this drawn card as the image
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    )}
                     {cd.on && <ShotsEditor {...shotsProps(cd.key)} primaryTitle="Camera motion over the card" />}
                   </div>
                 </div>

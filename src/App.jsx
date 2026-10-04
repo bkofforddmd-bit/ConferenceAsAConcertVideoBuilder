@@ -23,7 +23,8 @@ import ProjectsPanel from "./components/ProjectsPanel.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
 import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
-import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId } from "./lib/project-store.js";
+import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId, getMedia } from "./lib/project-store.js";
+import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
 
 const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -265,6 +266,68 @@ export default function App() {
     }
   }
 
+  // Let other steps (the Video step's drawn cards) write into the storyboard's
+  // state: merge, mirror, and hand SceneOrganizer the merged state to restore.
+  function patchSceneState(fn) {
+    const merged = fn(sceneStateRef.current || EMPTY_SCENE);
+    sceneStateRef.current = merged;
+    setSceneSnap(merged);
+    setRestoreState({ ...merged, _loadedAt: Date.now() });
+  }
+  function setCardImage(kind, dataUrl) {
+    patchSceneState((s) => ({ ...s, endcards: { ...(s.endcards || {}), [kind]: { ...((s.endcards || {})[kind] || {}), image: dataUrl } } }));
+  }
+
+  // ---- export to a folder (Google Drive for Desktop, Dropbox, local…) ----
+  const [folder, setFolder] = useState({ status: folderSupported() ? "none" : "unsupported", name: "", handle: null });
+  const [exportMsg, setExportMsg] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportResult, setExportResult] = useState(null);
+  useEffect(() => { getFolderState().then(setFolder); }, []);
+
+  async function pickFolder() {
+    try { setFolder(await chooseFolder()); setExportMsg(""); } catch {}
+  }
+  async function reconnectPickedFolder() {
+    if (!folder.handle) return;
+    if (await reconnectFolder(folder.handle)) setFolder({ ...folder, status: "granted" });
+  }
+  async function exportToFolder() {
+    if (!folder.handle || folder.status !== "granted") return;
+    setExportBusy(true);
+    setExportResult(null);
+    setExportMsg("Gathering files…");
+    try {
+      const s = sceneStateRef.current || EMPTY_SCENE;
+      const images = [];
+      if (s.endcards?.intro?.image) images.push({ name: "00_Intro", dataUrl: s.endcards.intro.image });
+      const ordered = (s.scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+      for (const scn of ordered) {
+        const n = scn.sceneNumber;
+        const img = (s.saved || {})[n] || (s.images || {})[n];
+        if (img) images.push({ name: `${String(n).padStart(2, "0")}_Scene${n}`, dataUrl: img });
+      }
+      if (s.endcards?.outro?.image) images.push({ name: "99_Outro", dataUrl: s.endcards.outro.image });
+      const act = (song.versions || []).find((v) => v.id === song.activeId);
+      const songRec = act && act.mediaKey ? await getMedia(act.mediaKey) : null;
+      const vidRec = render && render.mediaKey ? await getMedia(render.mediaKey) : null;
+      const result = await exportBundle(folder.handle, {
+        title: projectTitle(),
+        projectJson: JSON.stringify(buildProject()),
+        lyrics: finalLyrics,
+        images,
+        song: songRec ? songRec.blob : null,
+        video: vidRec ? vidRec.blob : null,
+      }, setExportMsg);
+      setExportResult(result);
+      setExportMsg(`Saved to "${folder.name}/${result.folderName}" — ${result.files.length} files.`);
+    } catch (e) {
+      setExportMsg(`Export failed: ${e.message || e}`);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   // ---- step availability ----
   const sc = sceneSnap || EMPTY_SCENE;
   const done = {
@@ -448,6 +511,7 @@ export default function App() {
               setRender={setRender}
               config={config}
               onContinue={() => setStep("export")}
+              onSetCardImage={setCardImage}
             />
           )}
 
@@ -456,6 +520,13 @@ export default function App() {
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={setStep}
               onDownloadJson={downloadProject}
+              folder={folder}
+              onPickFolder={pickFolder}
+              onReconnectFolder={reconnectPickedFolder}
+              onExportFolder={exportToFolder}
+              exportBusy={exportBusy}
+              exportMsg={exportMsg}
+              exportResult={exportResult}
             />
           )}
         </>
@@ -486,8 +557,9 @@ export default function App() {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
+  const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
   const imgCount = Object.keys((sc && sc.images) || {}).length;
   const clipCount = Object.values(clips || {}).filter((c) => c && c.mediaKey).length;
@@ -507,7 +579,7 @@ function ExportPanel({ project, onGo, onDownloadJson }) {
     {
       title: "Storyboard",
       ok: scenes.length > 0,
-      body: scenes.length ? `${scenes.length} scenes · ${imgCount} images · ${clipCount} clips. PowerPoint, image .zip, lyrics .docx and the speaker portrait download from the Storyboard step.` : "No scenes yet.",
+      body: scenes.length ? `${scenes.length} scenes · ${imgCount} images · ${cardsSaved} of 2 cards · ${clipCount} clips. PowerPoint, image .zip, lyrics .docx and the speaker portrait download from the Storyboard step.` : "No scenes yet.",
       action: { label: "Go to Storyboard", go: "scenes" },
     },
     {
@@ -524,6 +596,37 @@ function ExportPanel({ project, onGo, onDownloadJson }) {
         <button className="btn btn-ghost btn-sm" onClick={onDownloadJson}>Download project .json</button>
       </div>
       <p className="sub">Everything this concert produced, in one place. {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
+
+      <div className="music-card" style={{ marginBottom: 16 }}>
+        <h3>Save everything to a folder {folder.status === "granted" ? <span className="chip ok">{folder.name}</span> : folder.status === "prompt" ? <span className="chip warn">{folder.name} — reconnect</span> : <span className="chip">no folder yet</span>}</h3>
+        <p className="note" style={{ marginTop: 0 }}>
+          Writes a dated folder named after the song into the folder you choose — your Google Drive folder
+          (with Google Drive for Desktop installed), Dropbox, OneDrive, or anywhere on this computer:
+          <strong> project.json</strong>, <strong>lyrics.txt</strong>, an <strong>images</strong> folder
+          (intro card, every scene, outro card), the <strong>song</strong>, and the <strong>video</strong>.
+          Chrome or Edge required.
+        </p>
+        {folder.status === "unsupported" ? (
+          <p className="note">This browser can't write to folders. Use Chrome or Edge, or download the pieces individually below.</p>
+        ) : (
+          <div className="row" style={{ gap: 8 }}>
+            {folder.status === "prompt" && <button className="btn btn-ghost btn-sm" onClick={onReconnectFolder}>🔓 Reconnect "{folder.name}"</button>}
+            <button className="btn btn-ghost btn-sm" onClick={onPickFolder}>{folder.status === "none" ? "Choose folder…" : "Change folder…"}</button>
+            <button className="btn btn-primary" onClick={onExportFolder} disabled={exportBusy || folder.status !== "granted"}>
+              {exportBusy && <span className="spinner" />}
+              {exportBusy ? "Saving…" : "Save everything now"}
+            </button>
+          </div>
+        )}
+        {exportMsg && <p className="note" style={{ color: exportMsg.startsWith("Export failed") ? "var(--danger)" : "var(--success)" }}>{exportMsg}</p>}
+        {exportResult && (
+          <div className="note" style={{ marginTop: 6 }}>
+            {exportResult.files.map((f) => <div key={f}>✓ {f}</div>)}
+            {exportResult.skipped.map((f) => <div key={f} style={{ opacity: 0.7 }}>– skipped: {f}</div>)}
+          </div>
+        )}
+      </div>
+
       <div className="export-grid">
         {items.map((it) => (
           <div className="export-card" key={it.title}>
