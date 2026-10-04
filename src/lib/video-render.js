@@ -349,7 +349,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           } else {
             // Ken Burns on the still, per the shot's motion setting.
             const p = Math.max(0, Math.min(1, (t - s.start) / Math.max(0.01, s.end - s.start)));
-            const mv = motionAt(s.motion || "auto", p, i, s.card ? 0.5 : 1);
+            const mv = motionAt(s.motion || "auto", p, i, s.isCard ? 0.5 : 1);
             drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
           }
           ctx.restore();

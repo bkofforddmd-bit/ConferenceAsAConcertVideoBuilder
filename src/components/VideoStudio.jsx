@@ -21,6 +21,78 @@ function fmt(sec) {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 }
 
+// Relative hold lengths for shots within a scene (or card) time slot.
+const WEIGHTS = [
+  { v: 0.5, l: "½× hold" },
+  { v: 1, l: "1× hold" },
+  { v: 1.5, l: "1½× hold" },
+  { v: 2, l: "2× hold" },
+  { v: 3, l: "3× hold" },
+];
+
+// Split [start, end) among shots in proportion to their weights.
+function splitByWeight(shots, start, end) {
+  const total = shots.reduce((a, s) => a + (Number(s.weight) || 1), 0) || 1;
+  let t = start;
+  return shots.map((s, k) => {
+    const share = ((end - start) * (Number(s.weight) || 1)) / total;
+    const seg = { ...s, start: t, end: k === shots.length - 1 ? end : t + share };
+    t += share;
+    return seg;
+  });
+}
+
+// Controls for the shots of one scene or card: motion + hold for the primary
+// picture, and the list of added images (motion, hold, order, remove, add).
+function ShotsEditor({ id, extrasList, extraUrls, motion, weight, busy, onMotion, onWeight, onAdd, onUpdate, onMove, onRemove, primaryTitle }) {
+  return (
+    <>
+      <div className="row" style={{ gap: 8 }}>
+        <label className="row" style={{ gap: 6 }} title={primaryTitle || "Camera motion over this picture"}>
+          <span className="note" style={{ margin: 0 }}>Motion</span>
+          <select value={motion || "auto"} onChange={(e) => onMotion(e.target.value)} style={{ fontSize: 12, padding: "3px 6px" }}>
+            {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
+          </select>
+        </label>
+        {(extrasList || []).length > 0 && (
+          <select value={weight || 1} onChange={(e) => onWeight(Number(e.target.value))} style={{ fontSize: 12, padding: "3px 6px" }} title="How long the first picture holds compared with the added shots">
+            {WEIGHTS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
+          </select>
+        )}
+      </div>
+      {(extrasList || []).length > 0 && (
+        <div className="extra-shots">
+          {(extrasList || []).map((x, k, arr) => (
+            <div className="extra-shot" key={x.id}>
+              {extraUrls[x.id] ? <img src={extraUrls[x.id]} alt="" /> : <div className="extra-thumb-blank">…</div>}
+              <div className="extra-shot-body">
+                <span className="note" style={{ margin: 0 }}>Shot {k + 2}{x.name ? ` · ${x.name.slice(0, 22)}` : ""}</span>
+                <span className="row" style={{ gap: 4 }}>
+                  <select value={x.motion || "auto"} onChange={(e) => onUpdate(x.id, { motion: e.target.value })} style={{ fontSize: 12, padding: "3px 6px" }}>
+                    {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
+                  </select>
+                  <select value={x.weight || 1} onChange={(e) => onUpdate(x.id, { weight: Number(e.target.value) })} style={{ fontSize: 12, padding: "3px 6px" }} title="How long this shot holds compared with the others">
+                    {WEIGHTS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
+                  </select>
+                </span>
+                <span className="row" style={{ gap: 4 }}>
+                  <button className="btn btn-ghost btn-sm" disabled={k === 0} onClick={() => onMove(x.id, -1)} title="Earlier">↑</button>
+                  <button className="btn btn-ghost btn-sm" disabled={k === arr.length - 1} onClick={() => onMove(x.id, 1)} title="Later">↓</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => onRemove(x.id)} title="Remove this shot">✕</button>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", alignSelf: "flex-start" }} title="Add one or more images that play after this picture, sharing its time">
+        {busy ? "Adding…" : "+ Add images"}
+        <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { onAdd(e.target.files); e.target.value = ""; }} />
+      </label>
+    </>
+  );
+}
+
 function motionPromptFor(scene) {
   const d = (scene.description || scene.imagePrompt || "").trim();
   return `Gentle, reverent cinematic motion. ${d.slice(0, 500)} Keep every character, face and composition exactly as in the image; slow camera drift; natural subtle movement (breeze, light, fabric); no new objects, no text.`;
@@ -146,6 +218,24 @@ export default function VideoStudio({
   function setSceneMotion(sceneNumber, motion) {
     setTimeline({ ...tl, motion: { ...(tl.motion || {}), [sceneNumber]: motion } });
   }
+  function setPrimaryWeight(key, w) {
+    setTimeline({ ...tl, weight: { ...(tl.weight || {}), [key]: w } });
+  }
+  // Props bundle for ShotsEditor, keyed by scene number or "intro"/"outro".
+  const shotsProps = (key) => ({
+    id: key,
+    extrasList: extras[key] || [],
+    extraUrls,
+    motion: (tl.motion || {})[key] || "auto",
+    weight: (tl.weight || {})[key] || 1,
+    busy: Boolean(extraBusy[key]),
+    onMotion: (mo) => setSceneMotion(key, mo),
+    onWeight: (w) => setPrimaryWeight(key, w),
+    onAdd: (files) => addExtras(key, files),
+    onUpdate: (id, patch) => updateExtra(key, id, patch),
+    onMove: (id, dir) => moveExtra(key, id, dir),
+    onRemove: (id) => removeExtra(key, id),
+  });
   const hasIntro = Boolean(endcards && endcards.intro && endcards.intro.image);
   const hasOutro = Boolean(endcards && endcards.outro && endcards.outro.image);
 
@@ -220,11 +310,24 @@ export default function VideoStudio({
     const starts = tl.starts || {};
     const lineStarts = tl.lineStarts || {};
     const list = ordered.map((s) => ({ s, start: starts[s.sceneNumber] ?? 0 })).sort((a, b) => a.start - b.start);
+    const weights = tl.weight || {};
+    const extraShots = (key) => (extras[key] || [])
+      .map((x) => ({ kind: "image", src: extraUrls[x.id] || "", motion: x.motion || "auto", weight: x.weight || 1 }))
+      .filter((x) => x.src);
+    // Primary picture + added images, each holding in proportion to its weight.
+    const pushShots = (primary, key, start, end, common, label) => {
+      const shots = [{ ...primary, weight: weights[key] || 1 }, ...extraShots(key)].filter((x) => x.src);
+      splitByWeight(shots, start, end).forEach((seg, k) => {
+        segs.push({ ...seg, ...common, label: shots.length > 1 ? `${label} · ${k + 1}/${shots.length}` : label });
+      });
+    };
+
     const introEnd = list.length ? list[0].start : Math.min(totalSec, tl.introSec);
     if (includeIntro && introEnd > 0.2) {
-      segs.push(hasIntro
-        ? { kind: "image", src: endcards.intro.image, start: 0, end: introEnd, label: "Intro", lyrics: "", card: true }
-        : { kind: "textcard", src: "text", card: introCard, start: 0, end: introEnd, label: "Intro", lyrics: "", card: true });
+      const primary = hasIntro
+        ? { kind: "image", src: endcards.intro.image, motion: (tl.motion || {}).intro || "auto" }
+        : { kind: "textcard", src: "text", card: introCard, motion: (tl.motion || {}).intro || "auto" };
+      pushShots(primary, "intro", 0, introEnd, { lyrics: "", isCard: true }, "Intro");
     }
     const outroStart = includeOutro
       ? (list.length ? Math.max(list[list.length - 1].start + 1, totalSec - tl.outroSec) : Math.max(0, totalSec - tl.outroSec))
@@ -236,26 +339,15 @@ export default function VideoStudio({
       const n = s.sceneNumber;
       const clip = clips && clips[n];
       const primarySrc = clip && clip.mediaKey && clipUrls[n] ? clipUrls[n] : (images[n] || "");
-      // The scene's own image/clip, then any images added here — equal shares of the scene's time.
-      const shots = [
-        { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "auto" },
-        ...((extras[n] || []).map((x) => ({ kind: "image", src: extraUrls[x.id] || "", motion: x.motion || "auto" })).filter((x) => x.src)),
-      ].filter((x) => x.src);
-      const common = { lyrics: s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, card: false };
-      const share = (end - start) / Math.max(1, shots.length);
-      shots.forEach((sh, k) => {
-        segs.push({
-          ...sh, ...common,
-          start: start + k * share,
-          end: k === shots.length - 1 ? end : start + (k + 1) * share,
-          label: shots.length > 1 ? `Scene ${n} · ${k + 1}/${shots.length}` : `Scene ${n}`,
-        });
-      });
+      const primary = { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "auto" };
+      const common = { lyrics: s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, isCard: false };
+      pushShots(primary, n, start, end, common, `Scene ${n}`);
     }
     if (includeOutro && totalSec - outroStart > 0.2) {
-      segs.push(hasOutro
-        ? { kind: "image", src: endcards.outro.image, start: outroStart, end: totalSec, label: "Outro", lyrics: "", card: true }
-        : { kind: "textcard", src: "text", card: outroCard, start: outroStart, end: totalSec, label: "Outro", lyrics: "", card: true });
+      const primary = hasOutro
+        ? { kind: "image", src: endcards.outro.image, motion: (tl.motion || {}).outro || "auto" }
+        : { kind: "textcard", src: "text", card: outroCard, motion: (tl.motion || {}).outro || "auto" };
+      pushShots(primary, "outro", outroStart, totalSec, { lyrics: "", isCard: true }, "Outro");
     }
     return segs.filter((x) => x.src);
   }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta, extraUrls]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -529,36 +621,7 @@ export default function VideoStudio({
                       <button className="btn btn-ghost btn-sm" onClick={() => setClips((p) => { const x = { ...p }; delete x[n]; return x; })}>Use still</button>
                     )}
                   </div>
-                  <label className="row" style={{ gap: 6 }} title={c && c.mediaKey ? "Camera motion used after the clip finishes, while the last frame holds" : "Camera motion over this still"}>
-                    <span className="note" style={{ margin: 0 }}>Motion</span>
-                    <select value={(tl.motion || {})[n] || "auto"} onChange={(e) => setSceneMotion(n, e.target.value)} style={{ fontSize: 12, padding: "3px 6px" }}>
-                      {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
-                    </select>
-                  </label>
-                  {(extras[n] || []).length > 0 && (
-                    <div className="extra-shots">
-                      {(extras[n] || []).map((x, k, arr) => (
-                        <div className="extra-shot" key={x.id}>
-                          {extraUrls[x.id] ? <img src={extraUrls[x.id]} alt="" /> : <div className="extra-thumb-blank">…</div>}
-                          <div className="extra-shot-body">
-                            <span className="note" style={{ margin: 0 }}>Shot {k + 2}{x.name ? ` · ${x.name.slice(0, 22)}` : ""}</span>
-                            <select value={x.motion || "auto"} onChange={(e) => updateExtra(n, x.id, { motion: e.target.value })} style={{ fontSize: 12, padding: "3px 6px" }}>
-                              {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
-                            </select>
-                            <span className="row" style={{ gap: 4 }}>
-                              <button className="btn btn-ghost btn-sm" disabled={k === 0} onClick={() => moveExtra(n, x.id, -1)} title="Earlier">↑</button>
-                              <button className="btn btn-ghost btn-sm" disabled={k === arr.length - 1} onClick={() => moveExtra(n, x.id, 1)} title="Later">↓</button>
-                              <button className="btn btn-ghost btn-sm" onClick={() => removeExtra(n, x.id)} title="Remove this shot">✕</button>
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", alignSelf: "flex-start" }} title="Add one or more images that play after this scene's own picture, sharing its time">
-                    {extraBusy[n] ? "Adding…" : "+ Add images to this scene"}
-                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { addExtras(n, e.target.files); e.target.value = ""; }} />
-                  </label>
+                  <ShotsEditor {...shotsProps(n)} primaryTitle={c && c.mediaKey ? "Camera motion used after the clip finishes, while the last frame holds" : "Camera motion over this still"} />
                 </div>
               </div>
             );
@@ -606,7 +669,7 @@ export default function VideoStudio({
               {segments.map((s, i) => (
                 <div
                   key={i}
-                  className={`timeline-seg${s.card ? " card" : s.kind === "video" ? " clip" : ""}`}
+                  className={`timeline-seg${s.isCard ? " card" : s.kind === "video" ? " clip" : ""}`}
                   style={{ left: `${(s.start / totalSec) * 100}%`, width: `${Math.max(0.5, ((s.end - s.start) / totalSec) * 100)}%` }}
                   title={`${s.label} · ${fmt(s.start)}–${fmt(s.end)}`}
                 >
@@ -629,15 +692,32 @@ export default function VideoStudio({
                 <div className="timeline-row"><span className="lbl2">Outro card length</span><input type="number" min="0" step="0.5" value={tl.outroSec} onChange={(e) => setTimeline({ ...tl, outroSec: Number(e.target.value) || 0 })} /> s</div>
               )}
             </div>
-            <div className="row" style={{ gap: 14, marginTop: 10 }}>
-              <label className="row" style={{ gap: 6 }}>
-                <input type="checkbox" checked={includeIntro} onChange={(e) => setTimeline({ ...tl, includeIntro: e.target.checked })} />
-                <span className="note" style={{ margin: 0 }}>Intro card {hasIntro ? <span className="chip ok">designed image</span> : <span className="chip">text card — generate the image on the Storyboard step for a designed one</span>}</span>
-              </label>
-              <label className="row" style={{ gap: 6 }}>
-                <input type="checkbox" checked={includeOutro} onChange={(e) => setTimeline({ ...tl, includeOutro: e.target.checked })} />
-                <span className="note" style={{ margin: 0 }}>Outro card {hasOutro ? <span className="chip ok">designed image</span> : <span className="chip">text card</span>}</span>
-              </label>
+            <div className="clip-grid" style={{ marginTop: 12 }}>
+              {[
+                { key: "intro", label: "Intro card", on: includeIntro, has: hasIntro, img: hasIntro ? endcards.intro.image : "", toggle: (v) => setTimeline({ ...tl, includeIntro: v }) },
+                { key: "outro", label: "Outro card", on: includeOutro, has: hasOutro, img: hasOutro ? endcards.outro.image : "", toggle: (v) => setTimeline({ ...tl, includeOutro: v }) },
+              ].map((cd) => (
+                <div className={`clip-card${cd.on ? "" : " off"}`} key={cd.key}>
+                  <div className="clip-media">
+                    {cd.img ? <img src={cd.img} alt="" /> : (
+                      <div className="textcard-preview">
+                        <span className="textcard-kicker">{cd.key === "intro" ? "Conference As A Concert" : ""}</span>
+                        <span className="textcard-title">{(meta && meta.songTitle) || "Song title"}</span>
+                        <span className="textcard-line">{cd.key === "intro" ? (meta && meta.speaker ? `Adapted from a talk given by ${meta.speaker}` : "") : "If this message touched your heart…"}</span>
+                      </div>
+                    )}
+                    <span className={`clip-tag${cd.has ? " ok" : ""}`}>{cd.has ? "designed image" : "text card"}</span>
+                  </div>
+                  <div className="clip-body">
+                    <label className="row" style={{ gap: 6 }}>
+                      <input type="checkbox" checked={cd.on} onChange={(e) => cd.toggle(e.target.checked)} />
+                      <span className="clip-name">{cd.label}</span>
+                    </label>
+                    {!cd.has && <span className="note" style={{ margin: 0 }}>Drawn from the title & credits. Generate the card image on the Storyboard step for a designed one.</span>}
+                    {cd.on && <ShotsEditor {...shotsProps(cd.key)} primaryTitle="Camera motion over the card" />}
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="row" style={{ gap: 14, marginTop: 10 }}>
               <label className="row" style={{ gap: 6 }}>
