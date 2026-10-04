@@ -533,14 +533,44 @@ function persistMyAnalyses(list) {
 // ===========================================================================
 // INSIGHTS MODE (speaker journey + era focus)
 // ===========================================================================
+// Topic names arrive all-lowercase from the source page; capitalize like the picker does.
+function prettyTopic(name) {
+  if (name !== name.toLowerCase()) return name;
+  return name.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUri, chooseTalk, loadingUri, sharedId }) {
-  const [tab, setTab] = useState("speaker"); // speaker | era
+  const [tab, setTab] = useState("speaker"); // speaker | construction | era | topic
   const [speakerQuery, setSpeakerQuery] = useState("");
   const [speaker, setSpeaker] = useState(null);
   const [tfKey, setTfKey] = useState("hinckley");
   const [tfFrom, setTfFrom] = useState("1990");
   const [tfTo, setTfTo] = useState("1994");
   const [scope, setScope] = useState("apostles"); // apostles | all
+
+  // ---- topic insights: the Church's curated topic pages (public/topics-index.json) ----
+  const [topicsIdx, setTopicsIdx] = useState(null);
+  const [topicQuery, setTopicQuery] = useState("");
+  const [topicSlug, setTopicSlug] = useState(null);
+  const [topicTf, setTopicTf] = useState("all"); // all | presidency key | custom
+  const [topicScope, setTopicScope] = useState("all"); // all | apostles
+  React.useEffect(() => {
+    if (tab !== "topic" || topicsIdx) return;
+    fetch("/topics-index.json")
+      .then((r) => r.json())
+      .then((data) => {
+        const topics = (data.topics || []).map((t) => ({ ...t, name: prettyTopic(t.name) })).sort((a, b) => a.name.localeCompare(b.name));
+        setTopicsIdx({ ...data, topics });
+      })
+      .catch(() => setTopicsIdx({ topics: [] }));
+  }, [tab, topicsIdx]);
+  const topicMatches = useMemo(() => {
+    if (!topicsIdx) return [];
+    const q = topicQuery.trim().toLowerCase();
+    const list = q ? topicsIdx.topics.filter((t) => t.name.toLowerCase().includes(q)) : topicsIdx.topics;
+    return list.slice(0, 40);
+  }, [topicsIdx, topicQuery]);
+  const selectedTopic = useMemo(() => (topicsIdx && topicSlug ? topicsIdx.topics.find((t) => t.slug === topicSlug) : null), [topicsIdx, topicSlug]);
 
   const [phase, setPhase] = useState("idle"); // idle | notes | writing | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0, cached: 0, failed: 0 });
@@ -631,7 +661,10 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   }, [index, speakerQuery]);
 
   const timeframe = useMemo(() => {
-    if (tfKey === "custom") {
+    // The topic tab keeps its own timeframe choice (defaulting to all years).
+    const key = tab === "topic" ? topicTf : tfKey;
+    if (key === "all") return { from: 0, to: 999912, label: "all years" };
+    if (key === "custom") {
       const f = parseInt(tfFrom, 10), t = parseInt(tfTo, 10);
       return {
         from: Number.isFinite(f) ? f * 100 : 0,
@@ -639,10 +672,10 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         label: `${tfFrom}–${tfTo}`,
       };
     }
-    const p = (presidencies || []).find((x) => x.key === tfKey);
+    const p = (presidencies || []).find((x) => x.key === key);
     if (!p) return { from: 0, to: 999912, label: "all years" };
     return { from: p.from, to: p.to ?? 999912, label: p.label };
-  }, [tfKey, tfFrom, tfTo, presidencies]);
+  }, [tab, tfKey, topicTf, tfFrom, tfTo, presidencies]);
 
   // The talk set the analysis would run over (chronological, oldest first).
   const targetTalks = useMemo(() => {
@@ -651,6 +684,22 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
     if (tab === "speaker" || tab === "construction") {
       if (!speaker) return [];
       talks = index.talks.filter((t) => t.speaker === speaker);
+    } else if (tab === "topic") {
+      if (!selectedTopic) return [];
+      talks = [];
+      for (const i of selectedTopic.t || []) {
+        const t = index.talks[i];
+        if (!t) continue;
+        const n = confNum(t.year, t.month);
+        if (n < timeframe.from || n > timeframe.to) continue;
+        if (topicScope === "apostles") {
+          const tenure = APOSTLE_MAP.get(t.speaker);
+          if (!tenure) continue;
+          const y = Number(t.year);
+          if (y < tenure[0] || y > tenure[1]) continue;
+        }
+        talks.push(t);
+      }
     } else {
       talks = index.talks.filter((t) => {
         const n = confNum(t.year, t.month);
@@ -665,7 +714,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       });
     }
     return [...talks].sort((a, b) => confNum(a.year, a.month) - confNum(b.year, b.month));
-  }, [index, tab, speaker, timeframe, scope]);
+  }, [index, tab, speaker, timeframe, scope, selectedTopic, topicScope]);
 
   // Construction studies a manageable sample: the most recent talks, in full.
   const constructionSample = useMemo(
@@ -678,6 +727,8 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
       ? speaker || ""
       : tab === "construction"
       ? (speaker ? `${speaker} · talk construction` : "")
+      : tab === "topic"
+      ? (selectedTopic ? `${selectedTopic.name}${timeframe.label === "all years" ? "" : ` · ${timeframe.label}`}${topicScope === "apostles" ? " · the Apostles" : ""}` : "")
       : `${scope === "apostles" ? "The Apostles" : "All speakers"} · ${timeframe.label}`;
 
   function cancel() {
@@ -911,6 +962,9 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         <button className={`picker-mode-btn ${tab === "era" ? "active" : ""}`} onClick={() => setTab("era")} disabled={busy}>
           Era focus
         </button>
+        <button className={`picker-mode-btn ${tab === "topic" ? "active" : ""}`} onClick={() => setTab("topic")} disabled={busy}>
+          Topic study
+        </button>
       </div>
 
       {loaded && loaded.sharedId && sharedId && (
@@ -977,6 +1031,86 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </>
       )}
 
+      {tab === "topic" && !busy && (
+        <>
+          {!selectedTopic ? (
+            <>
+              <label className="picker-field" style={{ width: "100%" }}>
+                <span className="picker-label">Gospel topic</span>
+                <input
+                  type="text"
+                  className="picker-search-input"
+                  placeholder="e.g. Faith, Repentance, Family, Sabbath…"
+                  value={topicQuery}
+                  onChange={(e) => setTopicQuery(e.target.value)}
+                />
+              </label>
+              {!topicsIdx ? (
+                <p className="note">Loading the topic list…</p>
+              ) : (
+                <div className="topic-chips">
+                  {topicMatches.map((t) => (
+                    <button key={t.slug} className="picker-example-chip" onClick={() => setTopicSlug(t.slug)}>
+                      {t.name}<span className="topic-chip-count">{(t.t || []).length}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="note">
+                Topics are the Church's own curated General Conference topic pages — every talk it files under each one.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="topic-selected">
+                <span className="picker-group-name">{selectedTopic.name}</span>
+                <span className="picker-chip-count">{targetTalks.length} talks</span>
+                <button className="picker-example-chip" onClick={() => { setTopicSlug(null); setTopicQuery(""); setEssay(""); setPhase("idle"); }}>
+                  ← change topic
+                </button>
+              </div>
+              <div className="topic-timeframe">
+                <label className="picker-field">
+                  <span className="picker-label">Timeframe</span>
+                  <select className="picker-select" value={topicTf} onChange={(e) => setTopicTf(e.target.value)}>
+                    <option value="all">All years</option>
+                    {(presidencies || []).map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                    <option value="custom">Custom year range…</option>
+                  </select>
+                </label>
+                {topicTf === "custom" && (
+                  <>
+                    <label className="picker-field">
+                      <span className="picker-label">From</span>
+                      <input type="text" className="picker-select" style={{ width: 90 }} value={tfFrom} onChange={(e) => setTfFrom(e.target.value)} />
+                    </label>
+                    <label className="picker-field">
+                      <span className="picker-label">To</span>
+                      <input type="text" className="picker-select" style={{ width: 90 }} value={tfTo} onChange={(e) => setTfTo(e.target.value)} />
+                    </label>
+                  </>
+                )}
+                <label className="picker-field">
+                  <span className="picker-label">Speakers</span>
+                  <select className="picker-select" value={topicScope} onChange={(e) => setTopicScope(e.target.value)}>
+                    <option value="all">All conference speakers</option>
+                    <option value="apostles">First Presidency & the Twelve</option>
+                  </select>
+                </label>
+              </div>
+              {targetTalks.length > 60 && (
+                <p className="note">
+                  {targetTalks.length} talks is a big study — narrow the timeframe or speakers for a sharper essay (and a smaller first-run cost), or go ahead for the full sweep.
+                </p>
+              )}
+              {targetTalks.length < 2 && <p className="note">Fewer than two talks match — widen the timeframe or speakers.</p>}
+            </>
+          )}
+        </>
+      )}
+
       {tab === "era" && !busy && (
         <div className="topic-timeframe">
           <label className="picker-field">
@@ -1010,10 +1144,10 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </div>
       )}
 
-      {!busy && tab !== "construction" && targetTalks.length >= 2 && (tab === "era" || speaker) && (
+      {!busy && tab !== "construction" && targetTalks.length >= 2 && (tab === "era" || (tab === "topic" ? selectedTopic : speaker)) && (
         <div className="ins-launch">
           <button className="btn btn-primary" onClick={analyze}>
-            ✨ Analyze {tab === "speaker" ? `${speaker}’s journey` : `this era`} ({targetTalks.length} talks)
+            ✨ Analyze {tab === "speaker" ? `${speaker}’s journey` : tab === "topic" ? `how “${selectedTopic.name}” has been taught` : `this era`} ({targetTalks.length} talks)
           </button>
           <span className="note" style={{ margin: 0 }}>
             First run may cost {estimate(targetTalks.length)} in API credits and take a few

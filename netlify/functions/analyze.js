@@ -7,6 +7,8 @@
 //                    (input: per-talk study notes from summarize-talk.js)
 //   "era"          — what speakers emphasized during a period
 //                    (input: study notes)
+//   "topic"        — how one gospel topic has been taught across the years
+//                    (input: study notes on the talks the Church files under it)
 //   "construction" — HOW a speaker builds a talk: openings, scripture and
 //                    story deployment, transitions, testimony, closings,
 //                    signature devices — ending with a reusable template
@@ -59,6 +61,32 @@ const SYSTEMS = {
     "- Include one section on what is NOTABLY ABSENT or fading compared to",
     "  what you'd expect — themes conspicuous by their rarity.",
     "- Close with '## The era in a sentence' — one distilled sentence.",
+    "Be specific and evidence-based, never generic. Cite generously — every",
+    "paragraph should carry at least one [n].",
+  ].join("\n"),
+  topic: [
+    "You are a thoughtful scholar of General Conference teaching. You will",
+    "receive study notes on the conference talks the Church itself files under",
+    "ONE gospel topic, in chronological order, and you write an essay on how",
+    "that topic has been TAUGHT across the years: the doctrine as framed, the",
+    "emphases, the recurring scriptures and stories, and how the teaching has",
+    "developed or shifted over time and between speakers.",
+    "",
+    "Structure the essay in markdown:",
+    "- Open with a 2-3 sentence overview: what the Church's teaching on this",
+    "  topic most consistently affirms, and the biggest way it has developed.",
+    "- '## The core teaching' — the doctrinal heart that every era shares,",
+    "  with the clearest statements cited as [n].",
+    "- Then 3-5 sections (## headings) on the major threads or framings of",
+    "  the topic — e.g. a principle, a warning, a promise, a practice — each",
+    "  grounded in specific talks cited as [n], noting which speakers carried",
+    "  it and how their framing differed.",
+    "- '## How the teaching has developed' — chronological: what was",
+    "  emphasized early, what emerged later, new vocabulary or scriptures,",
+    "  responses to new circumstances. Cite the pivot talks.",
+    "- '## Voices to hear' — 3-5 talks that best represent the topic, each",
+    "  with one sentence on why, cited as [n].",
+    "- Close with '## The topic in a sentence' — one distilled sentence.",
     "Be specific and evidence-based, never generic. Cite generously — every",
     "paragraph should carry at least one [n].",
   ].join("\n"),
@@ -130,6 +158,8 @@ export default async (req) => {
       ? `Speaker: ${label}\nTalks in chronological order:\n\n`
       : kind === "era"
       ? `Era: ${label}\nTalks (chronological):\n\n`
+      : kind === "topic"
+      ? `Topic: ${label}\nTalks the Church files under this topic (chronological):\n\n`
       : `Speaker: ${label}\nFull talk texts (chronological):\n\n`;
 
   // The big source block is byte-identical on every round and carries a
