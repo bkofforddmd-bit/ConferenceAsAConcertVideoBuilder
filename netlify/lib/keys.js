@@ -68,15 +68,35 @@ export function decodeFalJob(token) {
 // complains about multiple credentials, retry once as a Bearer token.
 export async function googleFetch(url, key, init = {}) {
   const base = { ...init };
-  const attempt = async (headers) => fetch(url, { ...base, headers: { ...(init.headers || {}), ...headers } });
-  const first = key.startsWith("AQ.") ? { Authorization: `Bearer ${key}` } : { "x-goog-api-key": key };
-  const second = key.startsWith("AQ.") ? { "x-goog-api-key": key } : { Authorization: `Bearer ${key}` };
-  let resp = await attempt(first);
-  if (resp.status === 400 || resp.status === 401) {
-    const text = await resp.clone().text();
-    if (/Multiple authentication credentials|API key not valid|UNAUTHENTICATED/i.test(text)) {
-      resp = await attempt(second);
-    }
+  const styles = {
+    header: () => ({ u: url, h: { "x-goog-api-key": key } }),
+    bearer: () => ({ u: url, h: { Authorization: `Bearer ${key}` } }),
+    query: () => ({ u: url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key), h: {} }),
+  };
+  // Order by what each key style is most likely to accept.
+  const order = key.startsWith("AQ.") ? ["bearer", "header", "query"] : ["header", "query", "bearer"];
+  const retryable = /Multiple authentication credentials|API key not valid|UNAUTHENTICATED|invalid authentication credentials/i;
+
+  let resp = null;
+  let lastText = "";
+  for (const name of order) {
+    const { u, h } = styles[name]();
+    resp = await fetch(u, { ...base, headers: { ...(init.headers || {}), ...h } });
+    if (resp.status !== 400 && resp.status !== 401) return resp;
+    lastText = await resp.clone().text();
+    if (!retryable.test(lastText)) return resp;
+  }
+  // Every style failed on authentication. Explain the one case we can name.
+  if (/Multiple authentication credentials/i.test(lastText)) {
+    const hint = key.startsWith("AQ.")
+      ? "Your Google key starts with \"AQ.\" — Google's newer key format, which this Google service rejects. " +
+        "Create a key that starts with \"AIza\" at aistudio.google.com/apikey (choose an existing Google Cloud project), " +
+        "then replace GEMINI_API_KEY on Netlify (or in Settings) and try again."
+      : "Google rejected the key as ambiguous. Create a fresh key at aistudio.google.com/apikey and replace GEMINI_API_KEY.";
+    return new Response(JSON.stringify({ error: { message: hint, code: "invalid_key_format", google: lastText.slice(0, 200) } }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
   }
   return resp;
 }
