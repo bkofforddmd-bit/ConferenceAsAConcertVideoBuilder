@@ -73,7 +73,7 @@
   line-height: 1.7;
 }
 .masthead-tag small { display: block; font-family: "Inter", sans-serif; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--cloud); opacity: 0.85; }
-.ascent-mark { filter: drop-shadow(0 2px 10px rgba(143,180,230,0.45)); flex: 0 0 auto; }
+.ascent-mark { filter: drop-shadow(0 2px 12px rgba(143,180,230,0.55)); flex: 0 0 auto; display: block; }
 
 /* ---- Primary navigation ---- */
 .topnav {

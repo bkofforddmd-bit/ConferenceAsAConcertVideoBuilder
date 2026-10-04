@@ -363,7 +363,7 @@ export default function App() {
             <Lockup />
           </a>
           <div className="masthead-tag">
-            Higher Ground Through Higher Sound
+            Higher Ground Through Holier Sound
             <small>Turn General Conference into cinematic music experiences.</small>
           </div>
         </div>

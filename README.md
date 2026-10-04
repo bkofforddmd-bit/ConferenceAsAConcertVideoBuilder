@@ -1,6 +1,6 @@
 # Conference As A Concert Studio
 
-*Higher Ground Through Higher Sound.* Turn a General Conference talk into an
+*Higher Ground Through Holier Sound.* Turn a General Conference talk into an
 original song, a consistent visual storyboard, animated clips, and a finished
 music video — all inside one app.
 
