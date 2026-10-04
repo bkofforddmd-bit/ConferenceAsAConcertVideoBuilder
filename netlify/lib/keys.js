@@ -61,6 +61,26 @@ export function decodeFalJob(token) {
   }
 }
 
+// Google accepts an API key either as the x-goog-api-key header or as a Bearer
+// token, but rejects a request that looks like it carries both ("Multiple
+// authentication credentials received"). Newer AI Studio keys (prefix "AQ.")
+// trip this on some endpoints. Try the header style first, and if Google
+// complains about multiple credentials, retry once as a Bearer token.
+export async function googleFetch(url, key, init = {}) {
+  const base = { ...init };
+  const attempt = async (headers) => fetch(url, { ...base, headers: { ...(init.headers || {}), ...headers } });
+  const first = key.startsWith("AQ.") ? { Authorization: `Bearer ${key}` } : { "x-goog-api-key": key };
+  const second = key.startsWith("AQ.") ? { "x-goog-api-key": key } : { Authorization: `Bearer ${key}` };
+  let resp = await attempt(first);
+  if (resp.status === 400 || resp.status === 401) {
+    const text = await resp.clone().text();
+    if (/Multiple authentication credentials|API key not valid|UNAUTHENTICATED/i.test(text)) {
+      resp = await attempt(second);
+    }
+  }
+  return resp;
+}
+
 export function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,

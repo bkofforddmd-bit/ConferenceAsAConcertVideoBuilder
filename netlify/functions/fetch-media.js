@@ -24,8 +24,11 @@ export default async (req) => {
   const range = req.headers.get("range");
   if (range) headers.range = range;
   // Google's file downloads need the API key; pass it through if the browser supplied one.
-  const gkey = req.headers.get("x-user-gemini-key") || process.env.GEMINI_API_KEY || "";
-  if (/googleapis\.com/i.test(url) && gkey) headers["x-goog-api-key"] = gkey;
+  const gkey = (req.headers.get("x-user-gemini-key") || process.env.GEMINI_API_KEY || "").trim();
+  if (/googleapis\.com/i.test(url) && gkey) {
+    if (gkey.startsWith("AQ.")) headers.Authorization = `Bearer ${gkey}`;
+    else headers["x-goog-api-key"] = gkey;
+  }
 
   let upstream;
   try {

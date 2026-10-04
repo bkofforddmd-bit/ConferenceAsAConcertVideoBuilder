@@ -10,7 +10,7 @@
 //
 // Job ids are "<provider>:<provider job id>" so music-status knows where to look.
 
-import { keyFor, json, readJson, encodeFalJob } from "../lib/keys.js";
+import { keyFor, json, readJson, encodeFalJob, googleFetch } from "../lib/keys.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const FAL_QUEUE = "https://queue.fal.run/fal-ai/minimax-music/v2";
@@ -54,9 +54,9 @@ export default async (req) => {
     };
     if (format === "wav") payload.response_format = { type: "audio", format: "wav" };
 
-    const resp = await fetch(GEMINI_URL, {
+    const resp = await googleFetch(GEMINI_URL, key, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
     const text = await resp.text();

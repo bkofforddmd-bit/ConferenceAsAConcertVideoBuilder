@@ -11,7 +11,7 @@
 //
 // Images arrive as data URLs (base64 PNG/JPEG) straight from the storyboard.
 
-import { keyFor, json, readJson, encodeFalJob } from "../lib/keys.js";
+import { keyFor, json, readJson, encodeFalJob, googleFetch } from "../lib/keys.js";
 
 const FAL_KLING = "https://queue.fal.run/fal-ai/kling-video/v3/pro/image-to-video";
 const VEO_MODEL = "veo-3.1-fast-generate-preview";
@@ -75,11 +75,12 @@ export default async (req) => {
     };
     const last = endImage ? splitDataUrl(endImage) : null;
     if (last) instance.lastFrame = { inlineData: { mimeType: last.mime, data: last.data } };
-    const resp = await fetch(
+    const resp = await googleFetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${VEO_MODEL}:predictLongRunning`,
+      key,
       {
         method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           instances: [instance],
           parameters: {

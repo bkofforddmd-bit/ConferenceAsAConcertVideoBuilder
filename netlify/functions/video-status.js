@@ -5,7 +5,7 @@
 // The browser then downloads videoUrl (through fetch-media.js, which adds the
 // Google key for Veo downloads and sidesteps missing CORS headers).
 
-import { keyFor, json, readJson, decodeFalJob } from "../lib/keys.js";
+import { keyFor, json, readJson, decodeFalJob, googleFetch } from "../lib/keys.js";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -43,7 +43,7 @@ export default async (req) => {
   if (provider === "veo") {
     const key = keyFor(req, "gemini");
     if (!key) return json({ error: "No Google Gemini key." }, 400);
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/${id}`, { headers: { "x-goog-api-key": key } });
+    const resp = await googleFetch(`https://generativelanguage.googleapis.com/v1beta/${id}`, key, { method: "GET" });
     const text = await resp.text();
     if (!resp.ok) return json({ status: "failed", error: `Google returned ${resp.status}`, detail: text.slice(0, 400) });
     let data;

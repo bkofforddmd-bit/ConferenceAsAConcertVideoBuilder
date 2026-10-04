@@ -7,7 +7,7 @@
 // Lyria returns the audio as base64 inside the interaction; fal returns a
 // CDN URL (the browser fetches it, via fetch-media.js if CORS gets in the way).
 
-import { keyFor, json, readJson, decodeFalJob } from "../lib/keys.js";
+import { keyFor, json, readJson, decodeFalJob, googleFetch } from "../lib/keys.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
@@ -23,9 +23,7 @@ export default async (req) => {
   if (provider === "lyria") {
     const key = keyFor(req, "gemini");
     if (!key) return json({ error: "No Google Gemini key." }, 400);
-    const resp = await fetch(`${GEMINI_URL}/${encodeURIComponent(id)}`, {
-      headers: { "x-goog-api-key": key },
-    });
+    const resp = await googleFetch(`${GEMINI_URL}/${encodeURIComponent(id)}`, key, { method: "GET" });
     const text = await resp.text();
     if (!resp.ok) return json({ status: "failed", error: `Google returned ${resp.status}`, detail: text.slice(0, 600) });
     let data;
