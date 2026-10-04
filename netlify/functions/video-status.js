@@ -5,9 +5,7 @@
 // The browser then downloads videoUrl (through fetch-media.js, which adds the
 // Google key for Veo downloads and sidesteps missing CORS headers).
 
-import { keyFor, json, readJson } from "../lib/keys.js";
-
-const FAL_KLING = "https://queue.fal.run/fal-ai/kling-video/v3/pro/image-to-video";
+import { keyFor, json, readJson, decodeFalJob } from "../lib/keys.js";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -21,7 +19,9 @@ export default async (req) => {
   if (provider === "fal-kling") {
     const key = keyFor(req, "fal");
     if (!key) return json({ error: "No fal.ai key." }, 400);
-    const sresp = await fetch(`${FAL_KLING}/requests/${encodeURIComponent(id)}/status`, { headers: { Authorization: `Key ${key}` } });
+    const job = decodeFalJob(id);
+    if (!job) return json({ status: "failed", error: "Bad fal.ai job id — animate this scene again." });
+    const sresp = await fetch(job.s, { headers: { Authorization: `Key ${key}` } });
     const stext = await sresp.text();
     if (!sresp.ok) return json({ status: "failed", error: `fal.ai returned ${sresp.status}`, detail: stext.slice(0, 400) });
     let sdata;
@@ -30,7 +30,7 @@ export default async (req) => {
     if (st === "IN_QUEUE") return json({ status: "queued", position: sdata.queue_position });
     if (st === "IN_PROGRESS") return json({ status: "running" });
     if (st !== "COMPLETED") return json({ status: "failed", error: `fal.ai reported ${st || "unknown"}` });
-    const rresp = await fetch(`${FAL_KLING}/requests/${encodeURIComponent(id)}`, { headers: { Authorization: `Key ${key}` } });
+    const rresp = await fetch(job.r, { headers: { Authorization: `Key ${key}` } });
     const rtext = await rresp.text();
     if (!rresp.ok) return json({ status: "failed", error: `fal.ai result returned ${rresp.status}`, detail: rtext.slice(0, 400) });
     let rdata;

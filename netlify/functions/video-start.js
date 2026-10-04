@@ -11,7 +11,7 @@
 //
 // Images arrive as data URLs (base64 PNG/JPEG) straight from the storyboard.
 
-import { keyFor, json, readJson } from "../lib/keys.js";
+import { keyFor, json, readJson, encodeFalJob } from "../lib/keys.js";
 
 const FAL_KLING = "https://queue.fal.run/fal-ai/kling-video/v3/pro/image-to-video";
 const VEO_MODEL = "veo-3.1-fast-generate-preview";
@@ -61,7 +61,7 @@ export default async (req) => {
     let data;
     try { data = JSON.parse(text); } catch { return json({ error: "Unexpected reply from fal.ai", detail: text.slice(0, 400) }, 502); }
     if (!data.request_id) return json({ error: "fal.ai did not return a request id", detail: text.slice(0, 400) }, 502);
-    return json({ jobId: `fal-kling:${data.request_id}`, status: "queued" });
+    return json({ jobId: `fal-kling:${encodeFalJob(data, FAL_KLING)}`, status: "queued" });
   }
 
   if (provider === "veo") {

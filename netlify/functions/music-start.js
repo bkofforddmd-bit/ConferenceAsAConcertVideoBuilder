@@ -10,7 +10,7 @@
 //
 // Job ids are "<provider>:<provider job id>" so music-status knows where to look.
 
-import { keyFor, json, readJson } from "../lib/keys.js";
+import { keyFor, json, readJson, encodeFalJob } from "../lib/keys.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const FAL_QUEUE = "https://queue.fal.run/fal-ai/minimax-music/v2";
@@ -86,7 +86,7 @@ export default async (req) => {
     let data;
     try { data = JSON.parse(text); } catch { return json({ error: "Unexpected reply from fal.ai", detail: text.slice(0, 400) }, 502); }
     if (!data.request_id) return json({ error: "fal.ai did not return a request id", detail: text.slice(0, 400) }, 502);
-    return json({ jobId: `minimax:${data.request_id}`, status: "queued" });
+    return json({ jobId: `minimax:${encodeFalJob(data, FAL_QUEUE)}`, status: "queued" });
   }
 
   return json({ error: `Unknown music provider "${provider}"` }, 400);

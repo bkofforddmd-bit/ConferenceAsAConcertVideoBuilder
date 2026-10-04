@@ -37,6 +37,30 @@ export function serviceLabels() {
   return out;
 }
 
+// fal.ai queue jobs: fal tells us the exact status/result URLs when a request
+// is submitted (they do NOT simply mirror the submit URL), so we carry those
+// URLs inside the job id instead of rebuilding them later.
+export function encodeFalJob(submitData, submitUrl) {
+  const id = submitData.request_id;
+  // Fallback if fal ever omits the URLs: the app root is owner/alias (first two
+  // path segments), e.g. fal-ai/minimax-music/v2 → fal-ai/minimax-music.
+  const root = submitUrl.replace(/^https:\/\/queue\.fal\.run\//, "").split("/").slice(0, 2).join("/");
+  const s = submitData.status_url || `https://queue.fal.run/${root}/requests/${id}/status`;
+  const r = submitData.response_url || `https://queue.fal.run/${root}/requests/${id}`;
+  return Buffer.from(JSON.stringify({ id, s, r }), "utf8").toString("base64url");
+}
+
+export function decodeFalJob(token) {
+  try {
+    const obj = JSON.parse(Buffer.from(String(token), "base64url").toString("utf8"));
+    const ok = (u) => typeof u === "string" && /^https:\/\/queue\.fal\.run\//.test(u);
+    if (!obj || !ok(obj.s) || !ok(obj.r)) return null;
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
 export function json(obj, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(obj), {
     status,

@@ -7,10 +7,9 @@
 // Lyria returns the audio as base64 inside the interaction; fal returns a
 // CDN URL (the browser fetches it, via fetch-media.js if CORS gets in the way).
 
-import { keyFor, json, readJson } from "../lib/keys.js";
+import { keyFor, json, readJson, decodeFalJob } from "../lib/keys.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
-const FAL_QUEUE = "https://queue.fal.run/fal-ai/minimax-music/v2";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -66,7 +65,9 @@ export default async (req) => {
   if (provider === "minimax") {
     const key = keyFor(req, "fal");
     if (!key) return json({ error: "No fal.ai key." }, 400);
-    const sresp = await fetch(`${FAL_QUEUE}/requests/${encodeURIComponent(id)}/status`, {
+    const job = decodeFalJob(id);
+    if (!job) return json({ status: "failed", error: "Bad fal.ai job id — start the song again." });
+    const sresp = await fetch(job.s, {
       headers: { Authorization: `Key ${key}` },
     });
     const stext = await sresp.text();
@@ -78,7 +79,7 @@ export default async (req) => {
     if (st === "IN_PROGRESS") return json({ status: "running" });
     if (st !== "COMPLETED") return json({ status: "failed", error: `fal.ai reported ${st || "unknown"}` });
 
-    const rresp = await fetch(`${FAL_QUEUE}/requests/${encodeURIComponent(id)}`, {
+    const rresp = await fetch(job.r, {
       headers: { Authorization: `Key ${key}` },
     });
     const rtext = await rresp.text();
