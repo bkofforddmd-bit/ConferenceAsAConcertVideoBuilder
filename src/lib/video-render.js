@@ -110,6 +110,27 @@ function drawLyrics(ctx, text, W, H, alpha) {
   ctx.restore();
 }
 
+// Which lyric text is on screen at time t for segment s, and how faded.
+// mode: "one" (a line at a time, default), "two" (pairs), "all" (whole stanza).
+// Lines share the scene's time slot equally, each fading in and out.
+export function lyricAt(s, t, mode = "one") {
+  const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
+  if (!lines.length) return { text: "", alpha: 0 };
+  const size = mode === "all" ? lines.length : mode === "two" ? 2 : 1;
+  const groups = [];
+  for (let i = 0; i < lines.length; i += size) groups.push(lines.slice(i, i + size).join("\n"));
+  const dur = Math.max(0.01, s.end - s.start);
+  const n = groups.length;
+  const slot = dur / n;
+  let idx = Math.floor((t - s.start) / slot);
+  idx = Math.max(0, Math.min(n - 1, idx));
+  const gs = s.start + idx * slot;
+  const ge = gs + slot;
+  const fade = Math.min(0.45, slot / 4);
+  const alpha = Math.max(0, Math.min(1, (t - gs) / fade, (ge - t) / fade));
+  return { text: groups[idx], alpha, index: idx, count: n };
+}
+
 function drawWatermark(ctx, text, W, H) {
   if (!text) return;
   ctx.save();
@@ -221,9 +242,8 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           }
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
-            const inA = Math.min(1, (t - s.start) / 0.5);
-            const outA = Math.min(1, (s.end - t) / 0.5);
-            drawLyrics(ctx, s.lyrics, W, H, Math.min(inA, outA));
+            const l = lyricAt(s, t, plan.lyricsMode || "one");
+            drawLyrics(ctx, l.text, W, H, l.alpha);
           }
         }
         // Pause any clip that isn't on screen so it doesn't burn CPU.

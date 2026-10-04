@@ -11,8 +11,6 @@ export default function SettingsPanel({ config, onClose }) {
   const [keys, setKeys] = useState(loadKeys);
   const [reveal, setReveal] = useState({});
   const [savedMsg, setSavedMsg] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState(null);
 
   useEffect(() => { setKeys(loadKeys()); }, []);
 
@@ -58,20 +56,6 @@ export default function SettingsPanel({ config, onClose }) {
     }
     setConnResult(out);
     setConnChecking(false);
-  }
-
-  async function checkGoogle() {
-    saveKeys(keys);
-    setChecking(true);
-    setCheckResult(null);
-    try {
-      const resp = await fetch("/.netlify/functions/diag-google", { headers: keyHeaders() });
-      setCheckResult(await resp.json());
-    } catch (e) {
-      setCheckResult({ error: String(e && e.message ? e.message : e) });
-    } finally {
-      setChecking(false);
-    }
   }
 
   function save() {
@@ -134,10 +118,6 @@ export default function SettingsPanel({ config, onClose }) {
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn btn-primary" onClick={save}>Save keys</button>
         {savedMsg && <span className="note" style={{ margin: 0, color: "var(--success)" }}>{savedMsg}</span>}
-        <button className="btn btn-ghost" onClick={checkGoogle} disabled={checking} title="Sends one tiny request to Google with the active key and shows what Google answers">
-          {checking && <span className="spinner" />}
-          Check Google key
-        </button>
         <button className="btn btn-ghost" onClick={checkConnection} disabled={connChecking} title="Tests several kinds of requests to this app's own server to find what a network or security filter is blocking">
           {connChecking && <span className="spinner" />}
           Check connection
@@ -159,17 +139,6 @@ export default function SettingsPanel({ config, onClose }) {
           </table>
           <p className="note">Any 4xx status is fine here — it means the request reached the server. "Failed to fetch" means it never arrived. Copy this to Claude.</p>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, color: "var(--silver)" }}>{connResult.browser}</pre>
-        </div>
-      )}
-      {checkResult && (
-        <div className="music-card" style={{ marginTop: 12 }}>
-          <h3>Google key check</h3>
-          <p className="note" style={{ marginTop: 0 }}>
-            Active key: starts with <strong>{checkResult.keyPrefix}</strong>, {checkResult.keyLength} characters
-            {checkResult.keyPrefix === "AQ." ? " (Google AI Studio auth key)" : checkResult.keyPrefix === "AIz" ? " (classic Google API key)" : " — this does not look like a Gemini API key"}.
-          </p>
-          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(checkResult, null, 2)}</pre>
-          <p className="note">Copy this block to Claude if the song still fails — it contains no secrets.</p>
         </div>
       )}
 

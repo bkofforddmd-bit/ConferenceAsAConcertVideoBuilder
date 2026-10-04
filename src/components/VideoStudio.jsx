@@ -232,7 +232,7 @@ export default function VideoStudio({
     setRenderPct(0);
     const watermark = "";
     const job = renderMusicVideo(
-      { width: 1920, height: 1080, fps: 30, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, watermark },
+      { width: 1920, height: 1080, fps: 30, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -410,10 +410,22 @@ export default function VideoStudio({
                 <div className="timeline-row"><span className="lbl2">Outro card length</span><input type="number" min="0" step="0.5" value={tl.outroSec} onChange={(e) => setTimeline({ ...tl, outroSec: Number(e.target.value) || 0 })} /> s</div>
               )}
             </div>
-            <label className="row" style={{ gap: 6, marginTop: 10 }}>
-              <input type="checkbox" checked={overlayOn} onChange={(e) => { setOverlayOn(e.target.checked); setTimeline({ ...tl, lyricsOverlay: e.target.checked }); }} />
-              <span className="note" style={{ margin: 0 }}>Show each scene's lyrics on screen (lyric-video style)</span>
-            </label>
+            <div className="row" style={{ gap: 14, marginTop: 10 }}>
+              <label className="row" style={{ gap: 6 }}>
+                <input type="checkbox" checked={overlayOn} onChange={(e) => { setOverlayOn(e.target.checked); setTimeline({ ...tl, lyricsOverlay: e.target.checked }); }} />
+                <span className="note" style={{ margin: 0 }}>Show lyrics on screen</span>
+              </label>
+              {overlayOn && (
+                <label className="row" style={{ gap: 6 }} title="How much of each scene's lyric shows at once. Lines share the scene's time evenly and fade between.">
+                  <span className="note" style={{ margin: 0 }}>Show</span>
+                  <select value={tl.lyricsMode || "one"} onChange={(e) => setTimeline({ ...tl, lyricsMode: e.target.value })}>
+                    <option value="one">one line at a time</option>
+                    <option value="two">two lines at a time</option>
+                    <option value="all">the whole stanza</option>
+                  </select>
+                </label>
+              )}
+            </div>
           </>
         ) : (
           <p className="note">Generate the song in step 3 and the timeline appears here.</p>
