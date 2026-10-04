@@ -10,10 +10,10 @@
 //      in the song, and records an MP4 (Chrome/Edge) you can download.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { videoStart, videoStatus, pollJob, fetchMediaBlob } from "../lib/api.js";
-import { putMedia, getMedia } from "../lib/project-store.js";
+import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from "../lib/api.js";
+import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
-import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime } from "../lib/video-render.js";
+import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS } from "../lib/video-render.js";
 
 function fmt(sec) {
   if (!isFinite(sec)) return "0:00";
@@ -81,6 +81,71 @@ export default function VideoStudio({
 
   // ---- timeline ----
   const tl = timeline || { starts: {}, introSec: 4, outroSec: 6, lyricsOverlay: true };
+
+  // ---- extra shots: additional images added to a scene in the Video step ----
+  // tl.extras = { [scene]: [ { id, mediaKey, motion } ] }  (blobs live in IndexedDB)
+  // tl.motion = { [scene]: motionId }  (camera motion for the scene's own still)
+  const extras = tl.extras || {};
+  const [extraUrls, setExtraUrls] = useState({});
+  useEffect(() => {
+    const urls = {};
+    let alive = true;
+    (async () => {
+      for (const list of Object.values(extras)) {
+        for (const x of list || []) {
+          if (!x || !x.mediaKey) continue;
+          const rec = await getMedia(x.mediaKey);
+          if (rec) urls[x.id] = URL.createObjectURL(rec.blob);
+        }
+      }
+      if (alive) setExtraUrls(urls);
+      else Object.values(urls).forEach((u) => URL.revokeObjectURL(u));
+    })();
+    return () => { alive = false; Object.values(urls).forEach((u) => URL.revokeObjectURL(u)); };
+  }, [JSON.stringify(Object.entries(extras).map(([k, v]) => [k, (v || []).map((x) => x && x.mediaKey)]))]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [extraBusy, setExtraBusy] = useState({});
+  async function addExtras(sceneNumber, fileList) {
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    setExtraBusy((p) => ({ ...p, [sceneNumber]: true }));
+    try {
+      const added = [];
+      for (const f of files) {
+        const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result || "")); r.onerror = rej; r.readAsDataURL(f); });
+        const small = await shrinkImage(dataUrl, 1920, 0.92);
+        const blob = await (await fetch(small)).blob();
+        const id = "x_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+        const mediaKey = `${projectId}:extra:${id}`;
+        await putMedia(mediaKey, blob, { scene: sceneNumber, name: f.name });
+        added.push({ id, mediaKey, motion: "auto", name: f.name });
+      }
+      setTimeline({ ...tl, extras: { ...extras, [sceneNumber]: [...(extras[sceneNumber] || []), ...added] } });
+    } catch (e) {
+      setError(`Add images: ${e.message}`);
+    } finally {
+      setExtraBusy((p) => ({ ...p, [sceneNumber]: false }));
+    }
+  }
+  function updateExtra(sceneNumber, id, patch) {
+    setTimeline({ ...tl, extras: { ...extras, [sceneNumber]: (extras[sceneNumber] || []).map((x) => (x.id === id ? { ...x, ...patch } : x)) } });
+  }
+  function moveExtra(sceneNumber, id, dir) {
+    const list = (extras[sceneNumber] || []).slice();
+    const i = list.findIndex((x) => x.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    setTimeline({ ...tl, extras: { ...extras, [sceneNumber]: list } });
+  }
+  function removeExtra(sceneNumber, id) {
+    const x = (extras[sceneNumber] || []).find((e) => e.id === id);
+    if (x && x.mediaKey) deleteMedia(x.mediaKey).catch(() => {});
+    setTimeline({ ...tl, extras: { ...extras, [sceneNumber]: (extras[sceneNumber] || []).filter((e) => e.id !== id) } });
+  }
+  function setSceneMotion(sceneNumber, motion) {
+    setTimeline({ ...tl, motion: { ...(tl.motion || {}), [sceneNumber]: motion } });
+  }
   const hasIntro = Boolean(endcards && endcards.intro && endcards.intro.image);
   const hasOutro = Boolean(endcards && endcards.outro && endcards.outro.image);
 
@@ -167,9 +232,25 @@ export default function VideoStudio({
     for (let i = 0; i < list.length; i++) {
       const { s, start } = list[i];
       const next = i + 1 < list.length ? list[i + 1].start : outroStart;
-      const clip = clips && clips[s.sceneNumber];
-      const src = clip && clip.mediaKey && clipUrls[s.sceneNumber] ? clipUrls[s.sceneNumber] : (images[s.sceneNumber] || "");
-      segs.push({ kind: clip && clipUrls[s.sceneNumber] ? "video" : "image", src, start, end: Math.max(start, next), label: `Scene ${s.sceneNumber}`, lyrics: s.lyrics || "", lineStarts: lineStarts[s.sceneNumber] || null, card: false });
+      const end = Math.max(start, next);
+      const n = s.sceneNumber;
+      const clip = clips && clips[n];
+      const primarySrc = clip && clip.mediaKey && clipUrls[n] ? clipUrls[n] : (images[n] || "");
+      // The scene's own image/clip, then any images added here — equal shares of the scene's time.
+      const shots = [
+        { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "auto" },
+        ...((extras[n] || []).map((x) => ({ kind: "image", src: extraUrls[x.id] || "", motion: x.motion || "auto" })).filter((x) => x.src)),
+      ].filter((x) => x.src);
+      const common = { lyrics: s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, card: false };
+      const share = (end - start) / Math.max(1, shots.length);
+      shots.forEach((sh, k) => {
+        segs.push({
+          ...sh, ...common,
+          start: start + k * share,
+          end: k === shots.length - 1 ? end : start + (k + 1) * share,
+          label: shots.length > 1 ? `Scene ${n} · ${k + 1}/${shots.length}` : `Scene ${n}`,
+        });
+      });
     }
     if (includeOutro && totalSec - outroStart > 0.2) {
       segs.push(hasOutro
@@ -177,7 +258,7 @@ export default function VideoStudio({
         : { kind: "textcard", src: "text", card: outroCard, start: outroStart, end: totalSec, label: "Outro", lyrics: "", card: true });
     }
     return segs.filter((x) => x.src);
-  }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta, extraUrls]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- tap-along per LINE: play the song, press Next for every lyric line ----
   const lineList = useMemo(() => {
@@ -448,6 +529,36 @@ export default function VideoStudio({
                       <button className="btn btn-ghost btn-sm" onClick={() => setClips((p) => { const x = { ...p }; delete x[n]; return x; })}>Use still</button>
                     )}
                   </div>
+                  <label className="row" style={{ gap: 6 }} title={c && c.mediaKey ? "Camera motion used after the clip finishes, while the last frame holds" : "Camera motion over this still"}>
+                    <span className="note" style={{ margin: 0 }}>Motion</span>
+                    <select value={(tl.motion || {})[n] || "auto"} onChange={(e) => setSceneMotion(n, e.target.value)} style={{ fontSize: 12, padding: "3px 6px" }}>
+                      {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
+                    </select>
+                  </label>
+                  {(extras[n] || []).length > 0 && (
+                    <div className="extra-shots">
+                      {(extras[n] || []).map((x, k, arr) => (
+                        <div className="extra-shot" key={x.id}>
+                          {extraUrls[x.id] ? <img src={extraUrls[x.id]} alt="" /> : <div className="extra-thumb-blank">…</div>}
+                          <div className="extra-shot-body">
+                            <span className="note" style={{ margin: 0 }}>Shot {k + 2}{x.name ? ` · ${x.name.slice(0, 22)}` : ""}</span>
+                            <select value={x.motion || "auto"} onChange={(e) => updateExtra(n, x.id, { motion: e.target.value })} style={{ fontSize: 12, padding: "3px 6px" }}>
+                              {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
+                            </select>
+                            <span className="row" style={{ gap: 4 }}>
+                              <button className="btn btn-ghost btn-sm" disabled={k === 0} onClick={() => moveExtra(n, x.id, -1)} title="Earlier">↑</button>
+                              <button className="btn btn-ghost btn-sm" disabled={k === arr.length - 1} onClick={() => moveExtra(n, x.id, 1)} title="Later">↓</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => removeExtra(n, x.id)} title="Remove this shot">✕</button>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer", alignSelf: "flex-start" }} title="Add one or more images that play after this scene's own picture, sharing its time">
+                    {extraBusy[n] ? "Adding…" : "+ Add images to this scene"}
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { addExtras(n, e.target.files); e.target.value = ""; }} />
+                  </label>
                 </div>
               </div>
             );

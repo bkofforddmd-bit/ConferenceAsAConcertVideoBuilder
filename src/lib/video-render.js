@@ -110,10 +110,45 @@ function drawLyrics(ctx, text, W, H, alpha) {
   ctx.restore();
 }
 
+// Camera motion for a still over its on-screen time. p = 0..1 progress,
+// i = segment index (for the alternating "auto" drift). Returns the
+// zoom / pan values drawCover understands (pan −1..1 = which edge is shown;
+// a pan "left" moves the camera left, revealing more of the left side).
+export const MOTIONS = [
+  { id: "auto", label: "Gentle drift (auto)" },
+  { id: "zoomIn", label: "Slow zoom in" },
+  { id: "zoomOut", label: "Slow zoom out" },
+  { id: "left", label: "Pan left" },
+  { id: "right", label: "Pan right" },
+  { id: "up", label: "Tilt up" },
+  { id: "down", label: "Tilt down" },
+  { id: "none", label: "Hold still" },
+];
+export function motionAt(motion, p, i = 0, strength = 1) {
+  const q = Math.max(0, Math.min(1, p));
+  const e = q < 0.5 ? 2 * q * q : 1 - Math.pow(-2 * q + 2, 2) / 2; // ease in-out
+  const z = 0.08 * strength;
+  switch (motion) {
+    case "zoomIn": return { zoom: 1 + z * e, panX: 0, panY: 0 };
+    case "zoomOut": return { zoom: 1 + z * (1 - e), panX: 0, panY: 0 };
+    case "left": return { zoom: 1 + 0.1 * strength, panX: -1 + 2 * e, panY: 0 };
+    case "right": return { zoom: 1 + 0.1 * strength, panX: 1 - 2 * e, panY: 0 };
+    case "up": return { zoom: 1 + 0.04 * strength, panX: 0, panY: -1 + 2 * e };
+    case "down": return { zoom: 1 + 0.04 * strength, panX: 0, panY: 1 - 2 * e };
+    case "none": return { zoom: 1, panX: 0, panY: 0 };
+    default: {
+      const dir = i % 2 === 0 ? 1 : -1;
+      return { zoom: 1 + 0.06 * strength * q, panX: 0.35 * dir * (q - 0.5), panY: 0.2 * (0.5 - q) };
+    }
+  }
+}
+
 // Which lyric text is on screen at time t for segment s, and how faded.
 // mode: "one" (a line at a time, default), "two" (pairs), "all" (whole stanza).
 // Lines share the scene's time slot equally, each fading in and out.
-export function lyricAt(s, t, mode = "one") {
+export function lyricAt(seg, t, mode = "one") {
+  // A scene split into several shots shares one lyric span across them.
+  const s = seg.lyricSpan ? { ...seg, start: seg.lyricSpan.start, end: seg.lyricSpan.end } : seg;
   const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
   if (!lines.length) return { text: "", alpha: 0 };
 
@@ -302,14 +337,20 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
             drawTextCard(ctx, s.card || {}, W, H);
           } else if (s.kind === "video") {
             if (el.paused && !el.ended && !el._started) { el._started = true; el.currentTime = 0; el.play().catch(() => {}); }
-            // Once the clip has played out, hold its last frame with a slow push-in.
-            const over = el.ended ? Math.max(0, t - (s.start + (el.duration || 0))) : 0;
-            drawCover(ctx, el, W, H, 1 + Math.min(0.08, over * 0.006));
+            // Once the clip has played out, hold its last frame with the scene's motion.
+            if (el.ended) {
+              const clipEnd = s.start + (el.duration || 0);
+              const p = Math.max(0, Math.min(1, (t - clipEnd) / Math.max(0.01, s.end - clipEnd)));
+              const mv = motionAt(s.motion === "auto" || !s.motion ? "zoomIn" : s.motion, p, i, 0.6);
+              drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+            } else {
+              drawCover(ctx, el, W, H);
+            }
           } else {
-            // Ken Burns: slow 6% zoom with a gentle drift, direction alternating by scene.
+            // Ken Burns on the still, per the shot's motion setting.
             const p = Math.max(0, Math.min(1, (t - s.start) / Math.max(0.01, s.end - s.start)));
-            const dir = i % 2 === 0 ? 1 : -1;
-            drawCover(ctx, el, W, H, 1 + 0.06 * p, 0.35 * dir * (p - 0.5), 0.2 * (0.5 - p));
+            const mv = motionAt(s.motion || "auto", p, i, s.card ? 0.5 : 1);
+            drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
           }
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
