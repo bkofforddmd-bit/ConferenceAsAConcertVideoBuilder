@@ -16,6 +16,41 @@ export default function SettingsPanel({ config, onClose }) {
 
   useEffect(() => { setKeys(loadKeys()); }, []);
 
+  const [connChecking, setConnChecking] = useState(false);
+  const [connResult, setConnResult] = useState(null);
+
+  // Probes the app's own functions with different methods/sizes/paths so a
+  // "Failed to fetch" can be pinned to a cause (network filter, size limit…).
+  async function checkConnection() {
+    setConnChecking(true);
+    setConnResult(null);
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const id = "img_chk_" + Date.now().toString(36);
+    const tests = [
+      ["GET config", () => fetch("/.netlify/functions/config")],
+      ["GET art-status", () => fetch(`/.netlify/functions/art-status?id=${id}`)],
+      ["POST art-ref (tiny image)", () => fetch("/.netlify/functions/art-ref", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id, dataUrl: png }) })],
+      ["POST art-job-background (no prompt)", () => fetch("/.netlify/functions/art-job-background", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id, prompt: "" }) })],
+      ["POST art-job-background (long prompt, 20 KB)", () => fetch("/.netlify/functions/art-job-background", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id + "b", prompt: "", pad: "x".repeat(20000) }) })],
+      ["POST art-sync (empty)", () => fetch("/.netlify/functions/art-sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: "" }) })],
+      ["POST generate-scene-detail (empty)", () => fetch("/.netlify/functions/generate-scene-detail", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) })],
+      ["POST art-ref (300 KB image)", () => fetch("/.netlify/functions/art-ref", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id + "c", dataUrl: "data:image/jpeg;base64," + "A".repeat(300 * 1024) }) })],
+      ["POST with x-user key headers", () => fetch("/.netlify/functions/art-status?id=" + id, { method: "GET", headers: keyHeaders() })],
+    ];
+    const out = { when: new Date().toISOString(), browser: navigator.userAgent, online: navigator.onLine, results: [] };
+    for (const [name, run] of tests) {
+      const t0 = Date.now();
+      try {
+        const r = await run();
+        out.results.push({ test: name, status: r.status, ms: Date.now() - t0 });
+      } catch (e) {
+        out.results.push({ test: name, error: String(e && e.message ? e.message : e), ms: Date.now() - t0 });
+      }
+    }
+    setConnResult(out);
+    setConnChecking(false);
+  }
+
   async function checkGoogle() {
     saveKeys(keys);
     setChecking(true);
@@ -94,7 +129,29 @@ export default function SettingsPanel({ config, onClose }) {
           {checking && <span className="spinner" />}
           Check Google key
         </button>
+        <button className="btn btn-ghost" onClick={checkConnection} disabled={connChecking} title="Tests several kinds of requests to this app's own server to find what a network or security filter is blocking">
+          {connChecking && <span className="spinner" />}
+          Check connection
+        </button>
       </div>
+      {connResult && (
+        <div className="music-card" style={{ marginTop: 12 }}>
+          <h3>Connection check</h3>
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+            <tbody>
+              {connResult.results.map((r) => (
+                <tr key={r.test} style={{ borderTop: "1px solid var(--line)" }}>
+                  <td style={{ padding: "6px 4px" }}>{r.test}</td>
+                  <td style={{ padding: "6px 4px", color: r.error ? "var(--danger)" : "var(--success)", whiteSpace: "nowrap" }}>{r.error ? `✗ ${r.error}` : `✓ ${r.status}`}</td>
+                  <td style={{ padding: "6px 4px", color: "var(--silver)", whiteSpace: "nowrap" }}>{r.ms} ms</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">Any 4xx status is fine here — it means the request reached the server. "Failed to fetch" means it never arrived. Copy this to Claude.</p>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, color: "var(--silver)" }}>{connResult.browser}</pre>
+        </div>
+      )}
       {checkResult && (
         <div className="music-card" style={{ marginTop: 12 }}>
           <h3>Google key check</h3>
