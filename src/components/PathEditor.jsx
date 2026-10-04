@@ -7,7 +7,7 @@
 // add holds by duplicating a keyframe. Preview plays the path at real speed.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { EASES, DEFAULT_PATH, pathRectAt, clampRect } from "../lib/video-render.js";
+import { EASES, DEFAULT_PATH, pathRectAt, clampRect, lyricAt } from "../lib/video-render.js";
 
 const PRESETS = [
   { id: "push", label: "Push in (centre)", kf: [{ t: 0, cx: 0.5, cy: 0.5, w: 1 }, { t: 1, cx: 0.5, cy: 0.5, w: 0.75 }] },
@@ -18,7 +18,24 @@ const PRESETS = [
   { id: "holdthen", label: "Hold, then push in late", kf: [{ t: 0, cx: 0.5, cy: 0.5, w: 1 }, { t: 0.6, cx: 0.5, cy: 0.5, w: 1 }, { t: 1, cx: 0.5, cy: 0.5, w: 0.7 }] },
 ];
 
-export default function PathEditor({ src, initialPath, durationSec = 8, title, onSave, onClose }) {
+export default function PathEditor({ src, initialPath, durationSec = 8, title, onSave, onClose, segment = null, audioUrl = "", lyricsMode = "one" }) {
+  // Song time for a progress p through this shot, and the lyric on screen then.
+  const shotStart = segment ? segment.start : 0;
+  const shotLen = segment ? Math.max(0.01, segment.end - segment.start) : durationSec;
+  const lyricFor = (p) => (segment && segment.lyrics ? lyricAt(segment, shotStart + p * shotLen, lyricsMode) : { text: "", alpha: 0 });
+  // Where lines change inside this shot (for the markers on the time strip).
+  const lineMarks = useMemo(() => {
+    if (!segment || !segment.lyrics) return [];
+    const out = [];
+    let last = null;
+    for (let i = 0; i <= 200; i++) {
+      const p = i / 200;
+      const l = lyricAt(segment, shotStart + p * shotLen, lyricsMode);
+      if (l.text && l.text !== last) { out.push({ p, text: l.text }); last = l.text; }
+    }
+    return out;
+  }, [segment, lyricsMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const audioRef = useRef(null);
   const [kfs, setKfs] = useState(() => (initialPath && initialPath.keyframes ? initialPath.keyframes : DEFAULT_PATH.keyframes).map((k) => ({ ease: "inout", ...k })));
   const [sel, setSel] = useState(0);
   const [img, setImg] = useState(null);
@@ -113,19 +130,30 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
     update(sel, { w: cur.w * (e.deltaY > 0 ? 1.04 : 0.96) });
   }
 
-  // Preview at real speed.
+  // Preview at real speed — with the song playing this shot's stretch when we have it.
   function startPreview() {
     setPreview(true);
+    const a = audioRef.current;
+    const useAudio = Boolean(a && audioUrl && segment);
+    if (useAudio) { try { a.currentTime = shotStart; a.play().catch(() => {}); } catch {} }
     const t0 = performance.now();
     const tick = () => {
-      const p = Math.min(1, (performance.now() - t0) / 1000 / Math.max(0.5, durationSec));
+      const p = useAudio && !a.paused
+        ? Math.max(0, Math.min(1, (a.currentTime - shotStart) / shotLen))
+        : Math.min(1, (performance.now() - t0) / 1000 / Math.max(0.5, shotLen));
       setPreviewP(p);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
-      else setTimeout(() => setPreview(false), 400);
+      else { if (useAudio) a.pause(); setTimeout(() => setPreview(false), 400); }
     };
     rafRef.current = requestAnimationFrame(tick);
   }
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+  function stopPreview() {
+    cancelAnimationFrame(rafRef.current);
+    const a = audioRef.current; if (a) a.pause();
+    setPreview(false);
+  }
+  useEffect(() => () => { cancelAnimationFrame(rafRef.current); const a = audioRef.current; if (a) a.pause(); }, []);
+  const shownLyric = lyricFor(preview ? previewP : (cur ? cur.t : 0));
 
   const zoomPct = Math.round((1 / r.w) * 100);
   const timeOf = (t) => `${(t * durationSec).toFixed(1)}s`;
@@ -138,9 +166,14 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
             <div className="sync-kicker">🎥 Camera path</div>
             <div className="sync-title">{title || "Shot"} · on screen {durationSec.toFixed(1)} s</div>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={startPreview} disabled={preview}>▶ Preview</button>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Close</button>
+          {preview ? (
+            <button className="btn btn-ghost btn-sm" onClick={stopPreview}>■ Stop</button>
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={startPreview} title={audioUrl && segment ? "Plays this stretch of the song with the camera move and lyrics" : "Plays the camera move at real speed"}>▶ Preview{audioUrl && segment ? " with song" : ""}</button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => { stopPreview(); onClose(); }}>✕ Close</button>
         </div>
+        {audioUrl && <audio ref={audioRef} src={audioUrl} preload="auto" style={{ display: "none" }} />}
 
         <div className="path-stage" ref={stageRef} style={{ height: stageH || 360 }}>
           {img && <img src={src} alt="" draggable={false} />}
@@ -162,16 +195,32 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
               <span className="path-ghost-label">{n + 1}</span>
             </div>
           ))}
+          {img && shownLyric.text && (
+            <div className="path-lyric" style={{ left: box.left, width: box.width, top: box.top + box.height * 0.78, opacity: Math.max(0.25, shownLyric.alpha), fontSize: Math.max(11, box.width * 0.035) }}>
+              {shownLyric.text}
+            </div>
+          )}
         </div>
 
         <div className="path-strip">
           <div className="path-track">
+            {lineMarks.map((m, i) => (
+              <div key={i} className="path-linemark" style={{ left: `${m.p * 100}%` }} title={`♪ ${m.text} (from ${timeOf(m.p)})`} onClick={() => update(sel, { t: m.p })}>
+                <span>♪</span>
+              </div>
+            ))}
             {sorted.map((k, n) => (
               <button key={k.i} className={`path-dot${k.i === sel ? " sel" : ""}`} style={{ left: `${k.t * 100}%` }} onClick={() => setSel(k.i)} title={`Keyframe ${n + 1} at ${timeOf(k.t)}`}>{n + 1}</button>
             ))}
             {preview && <div className="timeline-head" style={{ left: `${previewP * 100}%` }} />}
           </div>
           <div className="row" style={{ justifyContent: "space-between", fontSize: 11, color: "var(--silver)" }}><span>0 s</span><span>{durationSec.toFixed(1)} s</span></div>
+          {segment && segment.lyrics && (
+            <div className="path-lyric-now">
+              ♪ {shownLyric.text || "(no line yet)"}
+              {lineMarks.length > 1 && <span className="note" style={{ margin: "0 0 0 10px" }}>· ♪ marks on the strip show where lines change — click one to put this keyframe there</span>}
+            </div>
+          )}
         </div>
 
         <div className="path-controls">

@@ -254,7 +254,7 @@ export default function VideoStudio({
     }
     if (!src) { setError("This shot has no picture yet."); return; }
     const seg = segments.find((s) => s.src === src) || null;
-    setPathEdit({ key, extraId: extraId || null, src, title, durationSec: seg ? Math.max(0.5, seg.end - seg.start) : 6, path });
+    setPathEdit({ key, extraId: extraId || null, src, title, durationSec: seg ? Math.max(0.5, seg.end - seg.start) : 6, path, segment: seg });
   }
   function savePath(path) {
     const { key, extraId } = pathEdit;
@@ -595,6 +595,9 @@ export default function VideoStudio({
           initialPath={pathEdit.path}
           durationSec={pathEdit.durationSec}
           title={pathEdit.title}
+          segment={pathEdit.segment}
+          audioUrl={audioUrl}
+          lyricsMode={tl.lyricsMode || "one"}
           onSave={savePath}
           onClose={() => setPathEdit(null)}
         />
