@@ -299,6 +299,32 @@
   padding: 12px;
 }
 
+/* ---- Topic timeline chart (Insights → Topic study) ---- */
+.topic-timeline {
+  margin: 12px 0 6px; padding: 12px 14px;
+  background: rgba(4, 12, 30, 0.45); border: 1px solid var(--line); border-radius: 12px;
+}
+.topic-timeline-title { font-weight: 600; color: var(--cloud); font-size: 14px; }
+.topic-timeline-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--silver); }
+.topic-timeline-legend .sw { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.topic-timeline-legend .sw.apr { background: var(--air); }
+.topic-timeline-legend .sw.oct { background: var(--sky); }
+.topic-timeline-legend .sw.share { background: none; border-top: 2px solid var(--warning); height: 0; }
+.topic-timeline-scroll { overflow-x: auto; margin-top: 8px; }
+.topic-timeline-svg { width: 100%; min-width: 640px; height: auto; display: block; }
+.topic-timeline-svg .grid { stroke: rgba(143, 180, 230, 0.15); stroke-width: 1; }
+.topic-timeline-svg .axis { fill: var(--silver); font-size: 11px; font-family: "Inter", system-ui, sans-serif; }
+.topic-timeline-svg .bar .apr { fill: var(--air); }
+.topic-timeline-svg .bar .oct { fill: var(--sky); }
+.topic-timeline-svg .bar .hit { fill: transparent; cursor: pointer; }
+.topic-timeline-svg .bar:hover .apr, .topic-timeline-svg .bar:hover .oct { fill: var(--cloud); }
+.topic-timeline-svg .bar.dim .apr { fill: rgba(46, 95, 169, 0.35); }
+.topic-timeline-svg .bar.dim .oct { fill: rgba(143, 180, 230, 0.3); }
+.topic-timeline-svg .share { fill: none; stroke: var(--warning); stroke-width: 1.5; opacity: 0.9; pointer-events: none; }
+.topic-timeline-svg .pres-band rect { fill: rgba(143, 180, 230, 0.12); stroke: rgba(143, 180, 230, 0.35); cursor: pointer; }
+.topic-timeline-svg .pres-band:hover rect { fill: rgba(143, 180, 230, 0.3); }
+.topic-timeline-svg .pres-label { fill: var(--silver); font-size: 10px; font-family: "Inter", system-ui, sans-serif; pointer-events: none; }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;

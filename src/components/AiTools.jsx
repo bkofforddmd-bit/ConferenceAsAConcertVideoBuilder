@@ -533,6 +533,115 @@ function persistMyAnalyses(list) {
 // ===========================================================================
 // INSIGHTS MODE (speaker journey + era focus)
 // ===========================================================================
+// ---- Topic timeline: talks per year for one topic, April/October stacked ----
+// `talks` = the topic's talks (already scope-filtered, all years);
+// `allByYear` = every conference talk per year, for the share line.
+function TopicTimeline({ talks, allByYear, timeframe, presidencies, onPickYear, onPickPresidency }) {
+  const years = useMemo(() => {
+    const ys = Object.keys(allByYear).map(Number);
+    const min = Math.min(...ys), max = Math.max(...ys);
+    const out = [];
+    for (let y = min; y <= max; y++) out.push(y);
+    return out;
+  }, [allByYear]);
+  const byYear = useMemo(() => {
+    const m = new Map();
+    for (const t of talks) {
+      const y = Number(t.year);
+      const cur = m.get(y) || { apr: 0, oct: 0 };
+      if (String(t.month) === "10") cur.oct++; else cur.apr++;
+      m.set(y, cur);
+    }
+    return m;
+  }, [talks]);
+  if (!years.length || !talks.length) return null;
+
+  const W = 920, H = 230, L = 36, R = 10, T = 14, B = 46;
+  const plotW = W - L - R, plotH = H - T - B;
+  const bw = plotW / years.length;
+  const maxCount = Math.max(1, ...years.map((y) => { const c = byYear.get(y); return c ? c.apr + c.oct : 0; }));
+  const yScale = (n) => plotH - (n / maxCount) * plotH;
+  const inRange = (y) => y * 100 + 4 >= timeframe.from && y * 100 + 4 <= timeframe.to || y * 100 + 10 >= timeframe.from && y * 100 + 10 <= timeframe.to;
+  const total = talks.length;
+  const peak = years.reduce((best, y) => { const c = byYear.get(y); const n = c ? c.apr + c.oct : 0; return n > best.n ? { y, n } : best; }, { y: null, n: 0 });
+  const decade = (y) => y % 10 === 0;
+
+  // share line: topic talks ÷ all talks that year
+  const sharePts = years.map((y, i) => {
+    const c = byYear.get(y); const n = c ? c.apr + c.oct : 0;
+    const all = allByYear[y] || 0;
+    const s = all ? n / all : 0;
+    return [L + i * bw + bw / 2, T + plotH - s * plotH * 4]; // 25% share = full height
+  });
+  const maxShare = Math.max(0, ...years.map((y) => { const c = byYear.get(y); const n = c ? c.apr + c.oct : 0; const all = allByYear[y] || 0; return all ? n / all : 0; }));
+
+  return (
+    <div className="topic-timeline">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+        <div className="topic-timeline-title">Talks on this topic by year <span className="note" style={{ margin: 0 }}>· {total} talks · peak {peak.y} ({peak.n})</span></div>
+        <div className="topic-timeline-legend">
+          <span><i className="sw apr" /> April</span>
+          <span><i className="sw oct" /> October</span>
+          <span><i className="sw share" /> share of that year's talks (max {Math.round(maxShare * 100)}%)</span>
+        </div>
+      </div>
+      <div className="topic-timeline-scroll">
+      <svg viewBox={`0 0 ${W} ${H}`} className="topic-timeline-svg" role="img" aria-label="Talks on this topic per year">
+        {/* gridlines */}
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            <line x1={L} x2={W - R} y1={T + yScale(maxCount * f)} y2={T + yScale(maxCount * f)} className="grid" />
+            <text x={L - 6} y={T + yScale(maxCount * f) + 4} className="axis" textAnchor="end">{Math.round(maxCount * f)}</text>
+          </g>
+        ))}
+        {/* presidency bands */}
+        {(presidencies || []).map((p) => {
+          const y0 = Math.floor(p.from / 100), y1 = p.to ? Math.floor(p.to / 100) : years[years.length - 1];
+          const i0 = years.indexOf(y0), i1 = years.indexOf(y1);
+          if (i0 < 0) return null;
+          const x0 = L + i0 * bw, x1 = L + ((i1 < 0 ? years.length - 1 : i1) + 1) * bw;
+          const name = p.label.replace(/^Pres\. /, "").replace(/\s*\(.*\)$/, "").split(" ").slice(-1)[0];
+          return (
+            <g key={p.key} className="pres-band" onClick={() => onPickPresidency && onPickPresidency(p.key)}>
+              <rect x={x0} y={H - B + 18} width={Math.max(0, x1 - x0 - 1)} height={14} rx={3} />
+              {x1 - x0 > 44 && <text x={(x0 + x1) / 2} y={H - B + 28} textAnchor="middle" className="pres-label">{name}</text>}
+              <title>{p.label} — click to study this presidency</title>
+            </g>
+          );
+        })}
+        {/* bars */}
+        {years.map((y, i) => {
+          const c = byYear.get(y) || { apr: 0, oct: 0 };
+          const n = c.apr + c.oct;
+          const x = L + i * bw + 1;
+          const w = Math.max(1, bw - 2);
+          const dim = !inRange(y);
+          return (
+            <g key={y} className={`bar${dim ? " dim" : ""}`} onClick={() => onPickYear && onPickYear(y)}>
+              <rect x={x} y={T} width={w} height={plotH} className="hit" />
+              {c.apr > 0 && <rect x={x} y={T + yScale(c.apr)} width={w} height={plotH - yScale(c.apr)} className="apr" />}
+              {c.oct > 0 && <rect x={x} y={T + yScale(n)} width={w} height={yScale(c.apr) - yScale(n)} className="oct" />}
+              <title>{`${y}: ${n} talk${n === 1 ? "" : "s"} (${c.apr} April, ${c.oct} October)${allByYear[y] ? ` · ${Math.round((n / allByYear[y]) * 100)}% of that year's ${allByYear[y]} talks` : ""} — click to study ${y}`}</title>
+            </g>
+          );
+        })}
+        {/* share line */}
+        <polyline className="share" points={sharePts.map(([x, y]) => `${x},${Math.max(T, y)}`).join(" ")} />
+        {/* year axis */}
+        {years.map((y, i) => (decade(y) || i === 0 || i === years.length - 1) && (
+          <text key={y} x={L + i * bw + bw / 2} y={H - B + 12} textAnchor="middle" className="axis">{y}</text>
+        ))}
+      </svg>
+      </div>
+      <p className="note" style={{ marginTop: 4 }}>
+        Bars count talks the Church files under this topic. The line shows the topic's share of all talks that year (how much of
+        conference it occupied, which evens out the longer conferences of earlier decades). Dimmed bars fall outside your timeframe —
+        click a bar to study that year, or a presidency band to study that presidency.
+      </p>
+    </div>
+  );
+}
+
 // Topic names arrive all-lowercase from the source page; capitalize like the picker does.
 function prettyTopic(name) {
   if (name !== name.toLowerCase()) return name;
@@ -571,6 +680,38 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
     return list.slice(0, 40);
   }, [topicsIdx, topicQuery]);
   const selectedTopic = useMemo(() => (topicsIdx && topicSlug ? topicsIdx.topics.find((t) => t.slug === topicSlug) : null), [topicsIdx, topicSlug]);
+  // The topic's talks across ALL years (scope-filtered) for the timeline, and
+  // every conference talk per year for the share line.
+  const topicAllTalks = useMemo(() => {
+    if (!index || !selectedTopic) return [];
+    const out = [];
+    for (const i of selectedTopic.t || []) {
+      const t = index.talks[i];
+      if (!t) continue;
+      if (topicScope === "apostles") {
+        const tenure = APOSTLE_MAP.get(t.speaker);
+        if (!tenure) continue;
+        const y = Number(t.year);
+        if (y < tenure[0] || y > tenure[1]) continue;
+      }
+      out.push(t);
+    }
+    return out;
+  }, [index, selectedTopic, topicScope]);
+  const allByYear = useMemo(() => {
+    const m = {};
+    if (!index) return m;
+    for (const t of index.talks) {
+      if (topicScope === "apostles") {
+        const tenure = APOSTLE_MAP.get(t.speaker);
+        if (!tenure) continue;
+        const y = Number(t.year);
+        if (y < tenure[0] || y > tenure[1]) continue;
+      }
+      m[Number(t.year)] = (m[Number(t.year)] || 0) + 1;
+    }
+    return m;
+  }, [index, topicScope]);
 
   const [phase, setPhase] = useState("idle"); // idle | notes | writing | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0, cached: 0, failed: 0 });
@@ -1100,6 +1241,14 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
                   </select>
                 </label>
               </div>
+              <TopicTimeline
+                talks={topicAllTalks}
+                allByYear={allByYear}
+                timeframe={timeframe}
+                presidencies={presidencies}
+                onPickYear={(y) => { setTopicTf("custom"); setTfFrom(String(y)); setTfTo(String(y)); }}
+                onPickPresidency={(key) => setTopicTf(key)}
+              />
               {targetTalks.length > 60 && (
                 <p className="note">
                   {targetTalks.length} talks is a big study — narrow the timeframe or speakers for a sharper essay (and a smaller first-run cost), or go ahead for the full sweep.
