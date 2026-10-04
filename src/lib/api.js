@@ -1,4 +1,6 @@
 // src/lib/api.js
+import { keyHeaders } from "./keys.js";
+
 const BASE = "/.netlify/functions";
 
 // Optional: a dedicated long-running image service (e.g. Render.com) that
@@ -15,7 +17,7 @@ const STORYBOARD_API_URL =
 async function postTo(url, payload) {
   const resp = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...keyHeaders() },
     body: JSON.stringify(payload),
   });
   const data = await resp.json().catch(() => ({}));
@@ -50,3 +52,55 @@ export const outlineFromImages = (payload) => post("outline-from-images", payloa
 // service. Returns null URL → caller should fall back to the multi-call flow.
 export const storyboardAvailable = () => !!STORYBOARD_API_URL;
 export const generateStoryboard = (payload) => postTo(STORYBOARD_API_URL, payload);
+
+// ---- Studio: configuration, music, video ----
+
+export async function getConfig() {
+  try {
+    const resp = await fetch(`${BASE}/config`);
+    const data = await resp.json();
+    return data && data.serverKeys ? data : { serverKeys: {}, providers: { music: [], video: [] } };
+  } catch {
+    return { serverKeys: {}, providers: { music: [], video: [] } };
+  }
+}
+
+export const musicStart = (payload) => post("music-start", payload);
+export const musicStatus = (jobId) => post("music-status", { jobId });
+export const videoStart = (payload) => post("video-start", payload);
+export const videoStatus = (jobId) => post("video-status", { jobId });
+
+// Poll a job until it completes. `onTick` gets each status reply.
+export async function pollJob(statusFn, jobId, { intervalMs = 5000, timeoutMs = 15 * 60 * 1000, onTick, signal } = {}) {
+  const started = Date.now();
+  let delay = intervalMs;
+  while (true) {
+    if (signal && signal.aborted) throw new Error("Cancelled.");
+    const s = await statusFn(jobId);
+    if (onTick) onTick(s);
+    if (s.status === "completed") return s;
+    if (s.status === "failed") throw new Error((s.error || "The job failed.") + (s.detail ? `\n${truncate(s.detail)}` : ""));
+    if (Date.now() - started > timeoutMs) throw new Error("Timed out waiting for the job.");
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 1.25, 15000);
+  }
+}
+
+// Download generated media as a Blob. Tries the URL directly (CDNs with CORS),
+// then falls back to the host-locked fetch-media proxy.
+export async function fetchMediaBlob(url) {
+  if (url.startsWith("data:")) {
+    const r = await fetch(url);
+    return r.blob();
+  }
+  try {
+    const direct = await fetch(url, { mode: "cors" });
+    if (direct.ok) return await direct.blob();
+  } catch {}
+  const proxied = await fetch(`${BASE}/fetch-media?src=${encodeURIComponent(url)}`, { headers: keyHeaders() });
+  if (!proxied.ok) {
+    const d = await proxied.json().catch(() => ({}));
+    throw new Error(d.error || `Could not download the media (${proxied.status}).`);
+  }
+  return proxied.blob();
+}

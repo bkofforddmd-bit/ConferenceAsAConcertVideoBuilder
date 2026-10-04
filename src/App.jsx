@@ -1,69 +1,175 @@
 // src/App.jsx
-import React, { useState, useRef, useEffect } from "react";
+//
+// Conference As A Concert Studio — application shell.
+//
+//   Library  → the ConferencePicker (speakers, topics, AI search, insights,
+//              quotes, talk builder, Becoming, browse) + the listen bar.
+//              ALWAYS mounted (hidden when not shown) so playback survives.
+//   Create   → the production pipeline, one step at a time:
+//              1 Talk · 2 Lyrics · 3 Music · 4 Storyboard · 5 Video · 6 Export
+//   Projects → named projects saved in this browser (IndexedDB) + .json files
+//   Settings → API keys
+//
+// The autosave still writes the same localStorage key the previous version
+// used (cmvs-autosave-v1), so anyone mid-project keeps their work.
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import ConferencePicker from "./components/ConferencePicker.jsx";
 import LyricCreator from "./components/LyricCreator.jsx";
 import SceneOrganizer from "./components/SceneOrganizer.jsx";
+import MusicStudio from "./components/MusicStudio.jsx";
+import VideoStudio from "./components/VideoStudio.jsx";
+import ProjectsPanel from "./components/ProjectsPanel.jsx";
+import SettingsPanel from "./components/SettingsPanel.jsx";
+import { Lockup } from "./components/Logo.jsx";
+import { getConfig } from "./lib/api.js";
+import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId } from "./lib/project-store.js";
 
-const PROJECT_VERSION = 2;
+const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
+const APP_ID = "conference-music-video-studio";
+
+const EMPTY_META = { title: "", speaker: "", speakerTitle: "", conferenceMonthYear: "", session: "", sourceUrl: "" };
+const EMPTY_SCENE = { styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} };
+const EMPTY_SONG = { versions: [], activeId: null };
+const EMPTY_TIMELINE = { starts: {}, introSec: 4, outroSec: 6, lyricsOverlay: true };
+
+const STEPS = [
+  { id: "talk", n: "01", name: "Talk", sub: "Choose the message" },
+  { id: "lyrics", n: "02", name: "Lyrics", sub: "Write the song" },
+  { id: "music", n: "03", name: "Music", sub: "Sing it" },
+  { id: "scenes", n: "04", name: "Storyboard", sub: "Scenes & images" },
+  { id: "video", n: "05", name: "Video", sub: "Clips, timing, render" },
+  { id: "export", n: "06", name: "Export", sub: "Download & share" },
+];
 
 export default function App() {
-  const [tab, setTab] = useState("choose");
+  const [view, setView] = useState("library"); // library | create | projects | settings
+  const [step, setStep] = useState("talk");
+
+  const [projectId, setProjectId] = useState(() => newProjectId());
   const [talkText, setTalkText] = useState("");
-  const [talkMeta, setTalkMeta] = useState({ title: "", speaker: "", speakerTitle: "", conferenceMonthYear: "", session: "", sourceUrl: "" });
+  const [talkMeta, setTalkMeta] = useState(EMPTY_META);
   const [lyrics, setLyrics] = useState("");
   const [finalLyrics, setFinalLyrics] = useState("");
   const [styleReference, setStyleReference] = useState("");
+  const [song, setSong] = useState(EMPTY_SONG);
+  const [clips, setClips] = useState({});
+  const [timeline, setTimeline] = useState(EMPTY_TIMELINE);
+  const [render, setRender] = useState(null);
 
-  const sceneStateRef = useRef({ styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} });
+  const sceneStateRef = useRef(EMPTY_SCENE);
+  const [sceneSnap, setSceneSnap] = useState(EMPTY_SCENE); // reactive mirror for Music/Video/Export
   const [restoreState, setRestoreState] = useState(null);
   const [restoredNote, setRestoredNote] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-
+  const [config, setConfig] = useState({ serverKeys: {}, providers: { music: [], video: [] } });
+  const [projectsRefresh, setProjectsRefresh] = useState(0);
   const fileInputRef = useRef(null);
 
-  // On first load, offer to restore the last auto-saved session (if any).
+  useEffect(() => { getConfig().then(setConfig); }, []);
+
+  // Stable callback: SceneOrganizer lists it in an effect's deps, so a new
+  // identity on every render would re-fire that effect and loop.
+  const onSceneStateChange = useCallback((s) => {
+    sceneStateRef.current = s;
+    setSceneSnap(s);
+  }, []);
+
+  // ---- restore the last session ----
   useEffect(() => {
     try {
       const raw = localStorage.getItem(AUTOSAVE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw);
-      if (saved && saved.app === "conference-music-video-studio") {
-        setTalkText(saved.talkText || "");
-        setTalkMeta(saved.talkMeta || { title: "", speaker: "", speakerTitle: "", conferenceMonthYear: "", session: "", sourceUrl: "" });
-        setLyrics(saved.lyrics || "");
-        setFinalLyrics(saved.finalLyrics || "");
-        setStyleReference(saved.styleReference || "");
-        const sc = saved.scene || sceneStateRef.current;
-        sceneStateRef.current = sc;
-        setRestoreState({ ...sc, _loadedAt: Date.now() });
-        if (saved.finalLyrics) setTab("scenes");
+      if (saved && saved.app === APP_ID) {
+        applyProject(saved);
         setRestoredNote(true);
+        if (saved.talkText || saved.lyrics) setView("create");
       }
     } catch {}
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-save to the browser periodically and on changes, so an accidental
-  // reload or closed tab doesn't lose work. This is local to the browser only.
+  function applyProject(p) {
+    setProjectId(p.projectId || newProjectId());
+    setTalkText(p.talkText || "");
+    setTalkMeta(p.talkMeta || EMPTY_META);
+    setLyrics(p.lyrics || "");
+    setFinalLyrics(p.finalLyrics || "");
+    setStyleReference(p.styleReference || "");
+    setSong(p.song && Array.isArray(p.song.versions) ? p.song : EMPTY_SONG);
+    setClips(p.clips && typeof p.clips === "object" ? p.clips : {});
+    setTimeline(p.timeline && typeof p.timeline === "object" ? { ...EMPTY_TIMELINE, ...p.timeline } : EMPTY_TIMELINE);
+    setRender(p.render || null);
+    const sc = p.scene || EMPTY_SCENE;
+    sceneStateRef.current = sc;
+    setSceneSnap(sc);
+    setRestoreState({ ...sc, _loadedAt: Date.now() });
+    // Land on the furthest step that has content.
+    if (p.render && p.render.mediaKey) setStep("export");
+    else if (p.song && p.song.versions && p.song.versions.length && sc.scenes && sc.scenes.length) setStep("video");
+    else if (sc.scenes && sc.scenes.length) setStep("scenes");
+    else if (p.finalLyrics) setStep("music");
+    else if (p.talkText) setStep("lyrics");
+    else setStep("talk");
+  }
+
+  function buildProject() {
+    return {
+      app: APP_ID,
+      version: PROJECT_VERSION,
+      savedAt: new Date().toISOString(),
+      projectId,
+      talkText, talkMeta, lyrics, finalLyrics, styleReference,
+      scene: sceneStateRef.current,
+      song, clips, timeline, render,
+    };
+  }
+
+  function projectTitle() {
+    const sc = sceneStateRef.current || {};
+    return (sc.meta && sc.meta.songTitle) || talkMeta.title || "Untitled project";
+  }
+
+  function projectSummary() {
+    const sc = sceneStateRef.current || {};
+    const firstImg = sc.endcards?.intro?.image || Object.values(sc.images || {})[0] || "";
+    return {
+      speaker: talkMeta.speaker || "",
+      thumb: firstImg ? firstImg.slice(0, 600000) : "", // data URL; capped so the list stays quick
+      stages: {
+        talk: Boolean(talkText),
+        lyrics: Boolean(finalLyrics),
+        song: Boolean(song.versions && song.versions.length),
+        scenes: Boolean(sc.scenes && sc.scenes.length),
+        clips: Object.values(clips || {}).some((c) => c && c.mediaKey),
+        video: Boolean(render && render.mediaKey),
+      },
+    };
+  }
+
+  // ---- autosave: localStorage (fast, same key as before) + IndexedDB (named project) ----
+  const hasContent = Boolean(talkText || lyrics || finalLyrics);
   useEffect(() => {
     const save = () => {
-      try {
-        const payload = {
-          app: "conference-music-video-studio",
-          version: PROJECT_VERSION,
-          savedAt: new Date().toISOString(),
-          talkText, lyrics, finalLyrics, styleReference,
-          talkMeta,
-          scene: sceneStateRef.current,
-        };
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
-      } catch {}
+      try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
     };
-    const id = setInterval(save, 5000);
+    const saveIdb = () => {
+      if (!hasContent) return;
+      idbSaveProject(projectId, projectTitle(), buildProject(), projectSummary()).catch(() => {});
+    };
+    const id = setInterval(() => { save(); saveIdb(); }, 5000);
     window.addEventListener("beforeunload", save);
     return () => { clearInterval(id); window.removeEventListener("beforeunload", save); };
-  }, [talkText, lyrics, finalLyrics, styleReference, talkMeta]);
+  }, [talkText, lyrics, finalLyrics, styleReference, talkMeta, song, clips, timeline, render, projectId, hasContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function saveNow() {
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
+    if (hasContent) await idbSaveProject(projectId, projectTitle(), buildProject(), projectSummary());
+    setProjectsRefresh((n) => n + 1);
+  }
+
+  // ---- talk chosen in the Library ----
   function handleTalkLoaded({ text, title, speaker, speakerTitle, year, month, session, sourceUrl }) {
     setTalkText(text);
     const monthName = month === "10" ? "October" : "April";
@@ -75,49 +181,54 @@ export default function App() {
       session: session || "",
       sourceUrl: sourceUrl || "",
     });
-    // Move straight into the existing lyric flow with the talk populated.
-    setTab("lyrics");
+    setView("create");
+    setStep("lyrics");
   }
 
   function finalize() {
     setFinalLyrics(lyrics);
-    setTab("scenes");
+    setStep("music");
   }
 
-  function startNewProject() {
-    const ok = window.confirm(
-      "Start a new project? This clears the current talk, lyrics, scenes, and images from the app. " +
-      "Make sure you've saved anything you want to keep (Save project)."
-    );
-    if (!ok) return;
+  const [confirmNew, setConfirmNew] = useState(false);
+  async function startNewProject() {
+    if (!confirmNew && hasContent) {
+      setConfirmNew(true);
+      setTimeout(() => setConfirmNew(false), 5000);
+      return;
+    }
+    setConfirmNew(false);
+    await saveNow(); // keep the old one in Projects
     try { localStorage.removeItem(AUTOSAVE_KEY); } catch {}
+    setProjectId(newProjectId());
     setTalkText("");
-    setTalkMeta({ title: "", speaker: "", speakerTitle: "", conferenceMonthYear: "", session: "", sourceUrl: "" });
+    setTalkMeta(EMPTY_META);
     setLyrics("");
     setFinalLyrics("");
     setStyleReference("");
-    const empty = { styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} };
-    sceneStateRef.current = empty;
-    setRestoreState({ ...empty, _loadedAt: Date.now() });
+    setSong(EMPTY_SONG);
+    setClips({});
+    setTimeline(EMPTY_TIMELINE);
+    setRender(null);
+    sceneStateRef.current = EMPTY_SCENE;
+    setSceneSnap(EMPTY_SCENE);
+    setRestoreState({ ...EMPTY_SCENE, _loadedAt: Date.now() });
     setRestoredNote(false);
-    setTab("choose");
+    setView("library");
+    setStep("talk");
   }
 
-  function saveProject() {
+  async function openProject(id) {
+    await saveNow();
+    const row = await idbLoadProject(id);
+    if (!row || !row.data) { setSaveMsg("Couldn't open that project."); return; }
+    applyProject(row.data);
+    setView("create");
+  }
+
+  function downloadProject() {
     try {
-      const sc = sceneStateRef.current || {};
-      const imgCount = Object.keys(sc.images || {}).length + Object.keys(sc.saved || {}).length;
-      const project = {
-        app: "conference-music-video-studio",
-        version: PROJECT_VERSION,
-        savedAt: new Date().toISOString(),
-        talkText,
-        talkMeta,
-        lyrics,
-        finalLyrics,
-        styleReference,
-        scene: sc,
-      };
+      const project = buildProject();
       const jsonStr = JSON.stringify(project);
       const sizeMB = (jsonStr.length / (1024 * 1024)).toFixed(1);
       const blob = new Blob([jsonStr], { type: "application/json" });
@@ -125,15 +236,15 @@ export default function App() {
       const a = document.createElement("a");
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       a.href = url;
-      a.download = `music-video-project-${stamp}.json`;
+      a.download = `${projectTitle().replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${stamp}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      setSaveMsg(`Saved (${sizeMB} MB, ${imgCount} image${imgCount === 1 ? "" : "s"}). Check your Downloads folder.`);
-      setTimeout(() => setSaveMsg(""), 6000);
+      setSaveMsg(`Downloaded (${sizeMB} MB). Note: songs and video clips stay in this browser — the .json carries the talk, lyrics, scenes and images.`);
+      setTimeout(() => setSaveMsg(""), 8000);
     } catch (e) {
-      setSaveMsg(`Save failed: ${e.message}. Try again.`);
+      setSaveMsg(`Download failed: ${e.message}.`);
     }
   }
 
@@ -143,133 +254,289 @@ export default function App() {
     try {
       const text = await file.text();
       const project = JSON.parse(text);
-      if (project.app !== "conference-music-video-studio") {
-        alert("That doesn't look like a Music Video Studio project file.");
-        return;
-      }
-      setTalkText(project.talkText || "");
-      setTalkMeta(project.talkMeta || { title: "", speaker: "", speakerTitle: "", conferenceMonthYear: "", session: "", sourceUrl: "" });
-      setLyrics(project.lyrics || "");
-      setFinalLyrics(project.finalLyrics || "");
-      setStyleReference(project.styleReference || "");
-      const sc = project.scene || { styleBible: null, scenes: [], images: {}, saved: {}, meta: {}, endcards: {} };
-      sceneStateRef.current = sc;
-      setRestoreState({ ...sc, _loadedAt: Date.now() });
-      setTab(project.finalLyrics ? "scenes" : "lyrics");
-    } catch (err) {
-      alert("Couldn't read that project file. Is it a valid .json export?");
+      if (project.app !== APP_ID) { setSaveMsg("That doesn't look like a Studio project file."); return; }
+      await saveNow();
+      applyProject({ ...project, projectId: project.projectId || newProjectId() });
+      setView("create");
+    } catch {
+      setSaveMsg("Couldn't read that project file. Is it a valid .json export?");
     } finally {
       e.target.value = "";
     }
   }
 
+  // ---- step availability ----
+  const sc = sceneSnap || EMPTY_SCENE;
+  const done = {
+    talk: Boolean(talkText),
+    lyrics: Boolean(finalLyrics),
+    music: Boolean(song.versions && song.versions.length),
+    scenes: Boolean(sc.scenes && sc.scenes.length && Object.keys(sc.images || {}).length),
+    video: Boolean(render && render.mediaKey),
+    export: false,
+  };
+  const enabled = {
+    talk: true,
+    lyrics: true,
+    music: Boolean(finalLyrics),
+    scenes: Boolean(finalLyrics),
+    video: Boolean(finalLyrics),
+    export: Boolean(finalLyrics),
+  };
+
+  function goStep(id) {
+    if (id === "talk") { setView("library"); return; }
+    setView("create");
+    setStep(id);
+  }
+
+  const activeSong = (song.versions || []).find((v) => v.id === song.activeId) || null;
+
   return (
     <div className="app-shell">
       <header className="masthead">
-        <img src="/logo.png" alt="Conference Music Video Studio" className="masthead-logo" />
-        <p>From talk, to song, to a consistent visual story.</p>
+        <div className="masthead-inner">
+          <a className="lockup" href="/" onClick={(e) => { e.preventDefault(); setView("library"); }}>
+            <Lockup />
+          </a>
+          <div className="masthead-tag">
+            Higher Ground Through Higher Sound
+            <small>Turn General Conference into cinematic music experiences.</small>
+          </div>
+        </div>
       </header>
 
-      <div className="project-bar">
-        <button className="btn btn-ghost" onClick={saveProject}>
-          Save project
+      <nav className="topnav" aria-label="Primary">
+        <button className={`topnav-btn${view === "library" ? " active" : ""}`} onClick={() => setView("library")}>
+          <span className="topnav-icon">📚</span> Library
         </button>
-        <button className="btn btn-ghost" onClick={startNewProject} title="Clear everything and begin a fresh project">
-          Start new
+        <button className={`topnav-btn${view === "create" ? " active" : ""}`} onClick={() => setView("create")}>
+          <span className="topnav-icon">✦</span> Create
+          {hasContent && <span className="topnav-badge">{STEPS.find((s) => s.id === step)?.name}</span>}
         </button>
-        <button
-          className="btn btn-ghost"
-          onClick={() => fileInputRef.current && fileInputRef.current.click()}
-        >
-          Load project
+        <button className={`topnav-btn${view === "projects" ? " active" : ""}`} onClick={() => { setView("projects"); setProjectsRefresh((n) => n + 1); }}>
+          <span className="topnav-icon">▦</span> Projects
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json,.json"
-          style={{ display: "none" }}
-          onChange={loadProjectFile}
-        />
-        <span className="note" style={{ margin: 0 }}>
-          Save downloads a .json with your talk, lyrics, scenes, and images. Load restores it.
-        </span>
-      </div>
+        <span className="topnav-spacer" />
+        <button className="topnav-btn" onClick={startNewProject} title="Save this project and start a fresh one">
+          {confirmNew ? "Click again to start fresh" : "+ New concert"}
+        </button>
+        <button className={`topnav-btn${view === "settings" ? " active" : ""}`} onClick={() => setView("settings")} title="API keys">
+          ⚙ Settings
+        </button>
+      </nav>
 
       {saveMsg && (
-        <div className="note" style={{ textAlign: "center", marginBottom: 12, color: "var(--gold)" }}>
-          {saveMsg}
-        </div>
+        <div className="note" style={{ textAlign: "center", marginBottom: 12, color: "var(--sky)" }}>{saveMsg}</div>
       )}
       {restoredNote && (
         <div className="note" style={{ textAlign: "center", marginBottom: 12 }}>
           Restored your last session automatically.{" "}
-          <button
-            className="btn btn-ghost"
-            style={{ padding: "2px 10px", fontSize: 13 }}
-            onClick={() => setRestoredNote(false)}
-          >
-            Dismiss
-          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setRestoredNote(false)}>Dismiss</button>
         </div>
       )}
 
-      <nav className="tabs">
-        <button
-          className={`tab ${tab === "choose" ? "active" : ""}`}
-          onClick={() => setTab("choose")}
-        >
-          1 · Choose Talk
-        </button>
-        <button
-          className={`tab ${tab === "lyrics" ? "active" : ""}`}
-          onClick={() => setTab("lyrics")}
-        >
-          2 · Lyric Creator
-        </button>
-        <button
-          className={`tab ${tab === "scenes" ? "active" : ""}`}
-          onClick={() => setTab("scenes")}
-          disabled={!finalLyrics}
-          title={!finalLyrics ? "Finalize lyrics first" : ""}
-        >
-          3 · Movie Scene Organizer
-        </button>
-      </nav>
-
-      <div style={{ display: tab === "choose" ? "block" : "none" }}>
-        <ConferencePicker onTalkLoaded={handleTalkLoaded} />
-        {talkMeta.title && (
-          <p className="note" style={{ textAlign: "center", marginTop: 12 }}>
-            Loaded: <strong>{talkMeta.title}</strong>
-            {talkMeta.speaker ? ` — ${talkMeta.speaker}` : ""}.{" "}
-            Now on the Lyric Creator tab.
-          </p>
+      {/* ---------------- LIBRARY (always mounted) ---------------- */}
+      <div style={{ display: view === "library" ? "block" : "none" }}>
+        {hasContent && (
+          <div className="talk-banner">
+            <div className="talk-banner-text">
+              <div className="talk-banner-title">Working on: {projectTitle()}</div>
+              <div className="talk-banner-meta">{talkMeta.speaker ? `${talkMeta.speaker} · ` : ""}{talkMeta.conferenceMonthYear || ""} — pick another talk to start a new concert, or continue.</div>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setView("create")}>Continue →</button>
+          </div>
         )}
+        <ConferencePicker onTalkLoaded={handleTalkLoaded} />
       </div>
 
-      <div style={{ display: tab === "lyrics" ? "block" : "none" }}>
-        <LyricCreator
-          talkText={talkText}
-          setTalkText={setTalkText}
-          lyrics={lyrics}
-          setLyrics={setLyrics}
-          styleReference={styleReference}
-          setStyleReference={setStyleReference}
-          onFinalize={finalize}
-          finalized={Boolean(finalLyrics) && finalLyrics === lyrics}
-        />
-      </div>
+      {/* ---------------- CREATE pipeline ---------------- */}
+      {view === "create" && (
+        <>
+          <div className="stepper" role="tablist">
+            {STEPS.map((s) => (
+              <button
+                key={s.id}
+                className={`step${step === s.id ? " active" : ""}`}
+                onClick={() => goStep(s.id)}
+                disabled={!enabled[s.id]}
+                title={!enabled[s.id] ? "Finalize lyrics first" : s.sub}
+              >
+                <span className="step-n">{s.n} {done[s.id] && <span className="done">✓</span>}</span>
+                <span className="step-name">{s.name}</span>
+                <span className="step-sub">{s.sub}</span>
+              </button>
+            ))}
+          </div>
 
-      <div style={{ display: tab === "scenes" ? "block" : "none" }}>
-        <SceneOrganizer
-          talkText={talkText}
-          lyrics={finalLyrics}
-          styleReference={styleReference}
-          talkMeta={talkMeta}
-          restoreState={restoreState}
-          onStateChange={(s) => { sceneStateRef.current = s; }}
+          {talkMeta.title ? (
+            <div className="talk-banner">
+              <div className="talk-banner-text">
+                <div className="talk-banner-title">{talkMeta.title}</div>
+                <div className="talk-banner-meta">{talkMeta.speaker}{talkMeta.conferenceMonthYear ? ` · ${talkMeta.conferenceMonthYear}` : ""}{talkMeta.session ? ` · ${talkMeta.session}` : ""}</div>
+              </div>
+              {talkMeta.sourceUrl && <a className="btn btn-ghost btn-sm" href={talkMeta.sourceUrl} target="_blank" rel="noopener noreferrer">Read ↗</a>}
+              <button className="btn btn-ghost btn-sm" onClick={() => setView("library")}>Change talk</button>
+            </div>
+          ) : (
+            <div className="talk-banner empty">
+              <div className="talk-banner-text">
+                <div className="talk-banner-title">No talk chosen yet</div>
+                <div className="talk-banner-meta">Pick one in the Library, or paste the text in the Lyrics step.</div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={() => setView("library")}>Open the Library</button>
+            </div>
+          )}
+
+          <div style={{ display: step === "lyrics" ? "block" : "none" }}>
+            <LyricCreator
+              talkText={talkText}
+              setTalkText={setTalkText}
+              lyrics={lyrics}
+              setLyrics={setLyrics}
+              styleReference={styleReference}
+              setStyleReference={setStyleReference}
+              onFinalize={finalize}
+              finalized={Boolean(finalLyrics) && finalLyrics === lyrics}
+            />
+          </div>
+
+          {step === "music" && (
+            <MusicStudio
+              projectId={projectId}
+              lyrics={finalLyrics}
+              styleBible={sc.styleBible}
+              styleReference={styleReference}
+              title={(sc.meta && sc.meta.songTitle) || talkMeta.title || ""}
+              song={song}
+              setSong={setSong}
+              config={config}
+              onContinue={() => setStep("scenes")}
+            />
+          )}
+
+          <div style={{ display: step === "scenes" ? "block" : "none" }}>
+            <SceneOrganizer
+              talkText={talkText}
+              lyrics={finalLyrics}
+              styleReference={styleReference}
+              talkMeta={talkMeta}
+              restoreState={restoreState}
+              onStateChange={onSceneStateChange}
+            />
+            {done.scenes && (
+              <div className="row end" style={{ marginBottom: 20 }}>
+                <button className="btn btn-primary" onClick={() => setStep("video")}>Continue → Video</button>
+              </div>
+            )}
+          </div>
+
+          {step === "video" && (
+            <VideoStudio
+              projectId={projectId}
+              scenes={sc.scenes || []}
+              images={{ ...(sc.images || {}), ...(sc.saved || {}) }}
+              endcards={sc.endcards || {}}
+              song={song}
+              meta={sc.meta || {}}
+              clips={clips}
+              setClips={setClips}
+              timeline={timeline}
+              setTimeline={setTimeline}
+              render={render}
+              setRender={setRender}
+              config={config}
+              onContinue={() => setStep("export")}
+            />
+          )}
+
+          {step === "export" && (
+            <ExportPanel
+              project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
+              onGo={setStep}
+              onDownloadJson={downloadProject}
+            />
+          )}
+        </>
+      )}
+
+      {view === "projects" && (
+        <ProjectsPanel
+          currentId={hasContent ? projectId : null}
+          refreshKey={projectsRefresh}
+          onOpen={openProject}
+          onNew={startNewProject}
+          onSaveNow={saveNow}
+          onDownload={downloadProject}
+          onUploadClick={() => fileInputRef.current && fileInputRef.current.click()}
         />
-      </div>
+      )}
+
+      {view === "settings" && <SettingsPanel config={config} onClose={() => setView(hasContent ? "create" : "library")} />}
+
+      <input ref={fileInputRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={loadProjectFile} />
+
+      <footer className="studio-foot">
+        Conference As A Concert Studio is an independent creative tool. It is not an official production of,
+        and is not endorsed by, The Church of Jesus Christ of Latter-day Saints. Talks © Intellectual Reserve, Inc.
+      </footer>
     </div>
+  );
+}
+
+// ---------------- Export ----------------
+function ExportPanel({ project, onGo, onDownloadJson }) {
+  const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
+  const scenes = (sc && sc.scenes) || [];
+  const imgCount = Object.keys((sc && sc.images) || {}).length;
+  const clipCount = Object.values(clips || {}).filter((c) => c && c.mediaKey).length;
+  const items = [
+    {
+      title: "Music video",
+      ok: Boolean(render && render.mediaKey),
+      body: render && render.mediaKey ? `Rendered ${new Date(render.createdAt).toLocaleDateString()} · ${render.sizeMB || "?"} MB ${String(render.ext || "mp4").toUpperCase()}` : "Not rendered yet.",
+      action: { label: render && render.mediaKey ? "Open Video step to download" : "Go to Video", go: "video" },
+    },
+    {
+      title: "Song audio",
+      ok: Boolean(activeSong),
+      body: activeSong ? `${activeSong.title} · ${Math.floor(activeSong.durationSec / 60)}:${String(Math.floor(activeSong.durationSec % 60)).padStart(2, "0")}` : "No song generated yet.",
+      action: { label: activeSong ? "Open Music step to download" : "Go to Music", go: "music" },
+    },
+    {
+      title: "Storyboard",
+      ok: scenes.length > 0,
+      body: scenes.length ? `${scenes.length} scenes · ${imgCount} images · ${clipCount} clips. PowerPoint, image .zip, lyrics .docx and the speaker portrait download from the Storyboard step.` : "No scenes yet.",
+      action: { label: "Go to Storyboard", go: "scenes" },
+    },
+    {
+      title: "Lyrics",
+      ok: Boolean(finalLyrics),
+      body: finalLyrics ? `${finalLyrics.split(/\n/).filter(Boolean).length} lines, finalized.` : "Not finalized.",
+      action: { label: "Go to Lyrics", go: "lyrics" },
+    },
+  ];
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Export</h2>
+        <button className="btn btn-ghost btn-sm" onClick={onDownloadJson}>Download project .json</button>
+      </div>
+      <p className="sub">Everything this concert produced, in one place. {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
+      <div className="export-grid">
+        {items.map((it) => (
+          <div className="export-card" key={it.title}>
+            <h3>{it.title} {it.ok ? <span className="chip ok">ready</span> : <span className="chip">pending</span>}</h3>
+            <p>{it.body}</p>
+            <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => onGo(it.action.go)}>{it.action.label}</button></div>
+          </div>
+        ))}
+      </div>
+      <p className="note" style={{ marginTop: 18 }}>
+        Before publishing: the intro and outro cards carry the disclaimer that this is not an official Church
+        production. Talks are © Intellectual Reserve, Inc.; the song is an original paraphrase. Review the
+        Church's terms of use for public distribution.
+      </p>
+    </section>
   );
 }

@@ -169,13 +169,13 @@ export default function LyricCreator({
               Apply revision
             </button>
             <button className="btn btn-primary" onClick={onFinalize} disabled={busy}>
-              {finalized ? "Lyrics finalized ✓" : "Finalize → Scene Organizer"}
+              {finalized ? "Lyrics finalized ✓" : "Finalize lyrics → Music"}
             </button>
           </div>
 
           <p className="note">
             You can keep editing directly in the box, ask for AI revisions, or
-            finalize to send these lyrics to the Movie Scene Organizer.
+            finalize to carry these lyrics into the Music and Storyboard steps.
           </p>
         </>
       )}
