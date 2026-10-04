@@ -119,8 +119,13 @@ export default async (req) => {
                     items: { type: "string" },
                     description: "3-6 short theme tags",
                   },
+                  context: {
+                    type: "string",
+                    description:
+                      "Circumstances of the time the speaker EXPLICITLY names or clearly alludes to — wars, disasters, economic conditions, social or moral trends, technology, Church announcements, policy changes, recent deaths — as a short phrase list (e.g. \"Gulf War; recession; new temples announced\"). Empty string if the talk names none.",
+                  },
                 },
-                required: ["summary", "themes"],
+                required: ["summary", "themes", "context"],
                 additionalProperties: false,
               },
             },
@@ -151,6 +156,7 @@ export default async (req) => {
       const record = {
         summary: String(parsed.summary || ""),
         themes: (parsed.themes || []).map(String).slice(0, 6),
+        context: String(parsed.context || "").slice(0, 300),
         model: MODEL,
         at: new Date().toISOString(),
       };

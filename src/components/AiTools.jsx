@@ -934,7 +934,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         analysisLabel,
         analyzed.map((t) => {
           const n = notes.get(t.uri);
-          return { title: t.title, speaker: t.speaker, when: whenOf(t), summary: n.summary, themes: n.themes };
+          return { title: t.title, speaker: t.speaker, when: whenOf(t), summary: n.summary, themes: n.themes, context: n.context || "" };
         })
       );
       finishAnalysis(essayText, citeList);

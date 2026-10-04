@@ -41,6 +41,17 @@ const SYSTEMS = {
     "  Ground every claim in specific talks, cited as [n] using the numbers",
     "  provided. Note pivot points: where a new theme appears, an old one",
     "  recedes, or their framing of a doctrine matures.",
+    "- '## The world at the time' — the circumstances the speakers were",
+    "  answering. Use each talk's DATE: name the real, dated events and",
+    "  conditions of those years (world and national events, economic and",
+    "  social currents, technology, and Church developments such as new",
+    "  scripture editions, proclamations, temple announcements, policy",
+    "  changes, or the death of a Church President) and show how specific",
+    "  talks respond to them, cited as [n]. Lean on the 'Context the speaker",
+    "  names' lines where present — those are explicit. Where you are",
+    "  inferring a link the talk does not state, say so ('likely',",
+    "  'seems to answer'). Never invent or misdate an event; if unsure of a",
+    "  date, describe the period instead.",
     "- Close with '## Signature threads' — 3-5 through-lines that persist",
     "  across their whole ministry, each with citations.",
     "Be specific and evidence-based, never generic. Cite generously — every",
@@ -60,6 +71,17 @@ const SYSTEMS = {
     "  numbers provided.",
     "- Include one section on what is NOTABLY ABSENT or fading compared to",
     "  what you'd expect — themes conspicuous by their rarity.",
+    "- '## The world at the time' — the circumstances the speakers were",
+    "  answering. Use each talk's DATE: name the real, dated events and",
+    "  conditions of those years (world and national events, economic and",
+    "  social currents, technology, and Church developments such as new",
+    "  scripture editions, proclamations, temple announcements, policy",
+    "  changes, or the death of a Church President) and show how specific",
+    "  talks respond to them, cited as [n]. Lean on the 'Context the speaker",
+    "  names' lines where present — those are explicit. Where you are",
+    "  inferring a link the talk does not state, say so ('likely',",
+    "  'seems to answer'). Never invent or misdate an event; if unsure of a",
+    "  date, describe the period instead.",
     "- Close with '## The era in a sentence' — one distilled sentence.",
     "Be specific and evidence-based, never generic. Cite generously — every",
     "paragraph should carry at least one [n].",
@@ -84,6 +106,17 @@ const SYSTEMS = {
     "- '## How the teaching has developed' — chronological: what was",
     "  emphasized early, what emerged later, new vocabulary or scriptures,",
     "  responses to new circumstances. Cite the pivot talks.",
+    "- '## The world at the time' — the circumstances the speakers were",
+    "  answering. Use each talk's DATE: name the real, dated events and",
+    "  conditions of those years (world and national events, economic and",
+    "  social currents, technology, and Church developments such as new",
+    "  scripture editions, proclamations, temple announcements, policy",
+    "  changes, or the death of a Church President) and show how specific",
+    "  talks respond to them, cited as [n]. Lean on the 'Context the speaker",
+    "  names' lines where present — those are explicit. Where you are",
+    "  inferring a link the talk does not state, say so ('likely',",
+    "  'seems to answer'). Never invent or misdate an event; if unsure of a",
+    "  date, describe the period instead.",
     "- '## Voices to hear' — 3-5 talks that best represent the topic, each",
     "  with one sentence on why, cited as [n].",
     "- Close with '## The topic in a sentence' — one distilled sentence.",
@@ -150,7 +183,8 @@ export default async (req) => {
       return `[${idx + 1}] "${t.title}" — ${t.speaker}, ${t.when}\n---\n${String(t.text || "").slice(0, 16000)}\n---`;
     }
     const themes = (t.themes || []).join(", ");
-    return `[${idx + 1}] "${t.title}" — ${t.speaker}, ${t.when}\n${t.summary}${themes ? `\nThemes: ${themes}` : ""}`;
+    const ctx = String(t.context || "").trim();
+    return `[${idx + 1}] "${t.title}" — ${t.speaker}, ${t.when}\n${t.summary}${themes ? `\nThemes: ${themes}` : ""}${ctx ? `\nContext the speaker names: ${ctx}` : ""}`;
   });
 
   const intro =
