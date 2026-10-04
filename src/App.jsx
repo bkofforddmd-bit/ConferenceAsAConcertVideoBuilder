@@ -439,6 +439,7 @@ export default function App() {
               endcards={sc.endcards || {}}
               song={song}
               meta={sc.meta || {}}
+              lyrics={finalLyrics}
               clips={clips}
               setClips={setClips}
               timeline={timeline}

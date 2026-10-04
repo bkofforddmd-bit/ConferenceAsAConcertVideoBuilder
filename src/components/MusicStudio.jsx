@@ -13,6 +13,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { musicStart, musicStatus, pollJob, fetchMediaBlob } from "../lib/api.js";
 import { putMedia, getMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
+import { parseSync } from "../lib/lyric-sync.js";
+import LyricSyncEditor from "./LyricSyncEditor.jsx";
+import SyncedLyrics from "./SyncedLyrics.jsx";
 
 const VOCAL_PRESETS = [
   "solo male baritone, soft choir joins on the chorus",
@@ -40,8 +43,20 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
+  const [syncOpen, setSyncOpen] = useState(false);
   const abortRef = useRef(null);
   const audioRef = useRef(null);
+
+  // Lyric sync lives on the song take: [[lineIndex, seconds], ...] over the
+  // full finalized lyrics (see lib/lyric-sync.js). The Video step times every
+  // scene and line from it.
+  function saveSync(arr) {
+    setSong((prev) => ({
+      ...prev,
+      versions: (prev.versions || []).map((v) => (v.id === prev.activeId ? { ...v, sync: arr, syncedAt: Date.now() } : v)),
+    }));
+    setSyncOpen(false);
+  }
 
   // Suggest a style from the style bible's music direction the first time.
   useEffect(() => {
@@ -142,9 +157,20 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
   }
 
   const versions = (song && song.versions) || [];
+  const activeSync = active ? parseSync(lyrics, active.sync) : null;
 
   return (
     <section className="panel">
+      {syncOpen && active && audioUrl && (
+        <LyricSyncEditor
+          title={active.title}
+          lyrics={lyrics}
+          audioUrl={audioUrl}
+          initialSync={active.sync}
+          onSave={saveSync}
+          onClose={() => setSyncOpen(false)}
+        />
+      )}
       <div className="panel-head">
         <h2>Music</h2>
         {active && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Storyboard</button>}
@@ -236,6 +262,10 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
               <audio ref={audioRef} controls src={audioUrl} />
               <div className="row">
                 <button className="btn btn-ghost btn-sm" onClick={download}>Download audio</button>
+                <button className={`btn ${activeSync ? "btn-ghost" : "btn-primary"} btn-sm`} onClick={() => { if (audioRef.current) audioRef.current.pause(); setSyncOpen(true); }} title="Tap along while the song plays to mark when each lyric line starts — the video is timed from this">
+                  {activeSync ? `⏱ Re-sync lyrics (${activeSync.length} lines)` : "⏱ Sync lyrics"}
+                </button>
+                {activeSync && <span className="chip ok">synced</span>}
               </div>
             </div>
           ) : (
@@ -255,7 +285,17 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
             </div>
           )}
           <h3 style={{ marginTop: 16 }}>Lyrics being sung</h3>
-          <div className="lyrics-preview">{lyrics || "—"}</div>
+          {activeSync && audioUrl ? (
+            <>
+              <SyncedLyrics audioRef={audioRef} lyrics={lyrics} sync={activeSync} height={260} />
+              <p className="note">Lines light up as they're sung; tap a line to jump there. The Video step uses these times for every scene and lyric line.</p>
+            </>
+          ) : (
+            <>
+              <div className="lyrics-preview">{lyrics || "—"}</div>
+              {active && audioUrl && <p className="note">Next: click <strong>⏱ Sync lyrics</strong> above and tap along once — that gives the video its exact scene and lyric timing.</p>}
+            </>
+          )}
         </div>
       </div>
     </section>

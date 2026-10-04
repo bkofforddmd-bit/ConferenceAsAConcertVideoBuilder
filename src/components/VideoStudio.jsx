@@ -14,6 +14,7 @@ import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from ".
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
 import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS } from "../lib/video-render.js";
+import { parseSync, deriveSceneTiming } from "../lib/lyric-sync.js";
 
 function fmt(sec) {
   if (!isFinite(sec)) return "0:00";
@@ -99,7 +100,7 @@ function motionPromptFor(scene) {
 }
 
 export default function VideoStudio({
-  projectId, scenes, images, endcards, song, meta,
+  projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
   config, onContinue,
 }) {
@@ -238,6 +239,19 @@ export default function VideoStudio({
   });
   const hasIntro = Boolean(endcards && endcards.intro && endcards.intro.image);
   const hasOutro = Boolean(endcards && endcards.outro && endcards.outro.image);
+
+  // ---- timing from the song's lyric sync (set on the Music step) ----
+  const songSync = songVersion ? parseSync(lyrics, songVersion.sync) : null;
+  const syncKey = songVersion && songSync ? `${songVersion.id}/${songSync.length}/${songVersion.syncedAt || 0}` : "";
+  function applySync() {
+    if (!songSync) return;
+    const d = deriveSceneTiming(ordered, lyrics, songSync, totalSec);
+    setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, lyricsMode: "one", syncFor: syncKey });
+  }
+  // A new or changed sync times the video automatically (once per sync).
+  useEffect(() => {
+    if (songSync && totalSec && ordered.length && tl.syncFor !== syncKey) applySync();
+  }, [syncKey, totalSec, ordered.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function autoTime() {
     if (!totalSec) return;
@@ -634,6 +648,11 @@ export default function VideoStudio({
         <div className="panel-head">
           <h3>2 · Timeline {totalSec ? <span className="chip">{fmt(totalSec)} song</span> : <span className="chip warn">needs the song</span>}</h3>
           <div className="row" style={{ gap: 8 }}>
+            {songSync && (
+              <button className="btn btn-primary btn-sm" onClick={applySync} disabled={!totalSec} title="Set every scene start and lyric line from the sync you tapped on the Music step">
+                ⏱ Time from lyric sync{tl.syncFor === syncKey ? " ✓" : ""}
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={autoTime} disabled={!totalSec}>Auto-time by lyrics</button>
             {tapIdx < 0 && lineTapIdx < 0 && (
               <>
