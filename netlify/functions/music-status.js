@@ -8,6 +8,7 @@
 // CDN URL (the browser fetches it, via fetch-media.js if CORS gets in the way).
 
 import { keyFor, json, readJson, decodeFalJob, googleFetch } from "../lib/keys.js";
+import { jobGet, validJobId } from "../lib/jobs.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
@@ -19,6 +20,18 @@ export default async (req) => {
   if (sep === -1) return json({ error: "Bad job id" }, 400);
   const provider = jobId.slice(0, sep);
   const id = jobId.slice(sep + 1);
+
+  // Lyria via our own background job (see music-job-background.js).
+  if (provider === "lyria-bg") {
+    if (!validJobId(id)) return json({ error: "Bad job id" }, 400);
+    const rec = await jobGet(id);
+    if (!rec) return json({ status: "queued" });
+    if (rec.status === "failed") return json({ status: "failed", error: rec.error, detail: rec.detail });
+    if (rec.status === "done") {
+      return json({ status: "completed", audioUrl: `/.netlify/functions/music-result?id=${encodeURIComponent(id)}`, mimeType: rec.mimeType || "audio/mpeg", lyrics: rec.lyrics || "" });
+    }
+    return json({ status: "running" });
+  }
 
   if (provider === "lyria") {
     const key = keyFor(req, "gemini");

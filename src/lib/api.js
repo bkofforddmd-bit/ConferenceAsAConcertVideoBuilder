@@ -192,7 +192,26 @@ export async function getConfig() {
   }
 }
 
-export const musicStart = (payload) => post("music-start", payload);
+// Lyria runs inside our own background job (Google's job-status endpoint
+// rejects the newer "AQ." keys), so it starts differently from fal-based
+// providers; both return a jobId that musicStatus understands.
+export async function musicStart(payload) {
+  if (payload && payload.provider === "lyria") {
+    const jobId = "song_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+    const resp = await withRetry(() => fetch(`${BASE}/music-job-background`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...keyHeaders() },
+      body: JSON.stringify({ ...payload, jobId }),
+    }), "music-job-background");
+    if (resp.status === 404) return post("music-start", payload); // old deploy
+    if (resp.status !== 202 && resp.status !== 200) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.error || `The song job couldn't start (${resp.status}).`);
+    }
+    return { jobId: `lyria-bg:${jobId}`, status: "queued" };
+  }
+  return post("music-start", payload);
+}
 export const musicStatus = (jobId) => post("music-status", { jobId });
 export const videoStart = (payload) => post("video-start", payload);
 export const videoStatus = (jobId) => post("video-status", { jobId });

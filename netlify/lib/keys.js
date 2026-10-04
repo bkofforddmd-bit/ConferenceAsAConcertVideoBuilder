@@ -88,11 +88,10 @@ export async function googleFetch(url, key, init = {}) {
   }
   // Every style failed on authentication. Explain the one case we can name.
   if (/Multiple authentication credentials/i.test(lastText)) {
-    const hint = key.startsWith("AQ.")
-      ? "Your Google key starts with \"AQ.\" — Google's newer key format, which this Google service rejects. " +
-        "Create a key that starts with \"AIza\" at aistudio.google.com/apikey (choose an existing Google Cloud project), " +
-        "then replace GEMINI_API_KEY on Netlify (or in Settings) and try again."
-      : "Google rejected the key as ambiguous. Create a fresh key at aistudio.google.com/apikey and replace GEMINI_API_KEY.";
+    const hint =
+      "Google's job-status endpoint rejected this key as \"multiple credentials\" — a known Google-side problem with " +
+      "its newer \"AQ.\" auth keys on that one endpoint. The app now avoids it for songs; if you see this, make sure " +
+      "the site is running the latest deploy, then try again.";
     return new Response(JSON.stringify({ error: { message: hint, code: "invalid_key_format", google: lastText.slice(0, 200) } }), {
       status: 400,
       headers: { "content-type": "application/json" },
