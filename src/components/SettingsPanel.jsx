@@ -5,14 +5,30 @@
 // to the app's own Netlify functions as headers — never to any other site.
 
 import React, { useEffect, useState } from "react";
-import { SERVICES, loadKeys, saveKeys } from "../lib/keys.js";
+import { SERVICES, loadKeys, saveKeys, keyHeaders } from "../lib/keys.js";
 
 export default function SettingsPanel({ config, onClose }) {
   const [keys, setKeys] = useState(loadKeys);
   const [reveal, setReveal] = useState({});
   const [savedMsg, setSavedMsg] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
 
   useEffect(() => { setKeys(loadKeys()); }, []);
+
+  async function checkGoogle() {
+    saveKeys(keys);
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const resp = await fetch("/.netlify/functions/diag-google", { headers: keyHeaders() });
+      setCheckResult(await resp.json());
+    } catch (e) {
+      setCheckResult({ error: String(e && e.message ? e.message : e) });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   function save() {
     saveKeys(keys);
@@ -74,7 +90,22 @@ export default function SettingsPanel({ config, onClose }) {
       <div className="row" style={{ marginTop: 16 }}>
         <button className="btn btn-primary" onClick={save}>Save keys</button>
         {savedMsg && <span className="note" style={{ margin: 0, color: "var(--success)" }}>{savedMsg}</span>}
+        <button className="btn btn-ghost" onClick={checkGoogle} disabled={checking} title="Sends one tiny request to Google with the active key and shows what Google answers">
+          {checking && <span className="spinner" />}
+          Check Google key
+        </button>
       </div>
+      {checkResult && (
+        <div className="music-card" style={{ marginTop: 12 }}>
+          <h3>Google key check</h3>
+          <p className="note" style={{ marginTop: 0 }}>
+            Active key: starts with <strong>{checkResult.keyPrefix}</strong>, {checkResult.keyLength} characters
+            {checkResult.keyPrefix === "AQ." ? " (Google AI Studio auth key)" : checkResult.keyPrefix === "AIz" ? " (classic Google API key)" : " — this does not look like a Gemini API key"}.
+          </p>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(checkResult, null, 2)}</pre>
+          <p className="note">Copy this block to Claude if the song still fails — it contains no secrets.</p>
+        </div>
+      )}
 
       <div className="settings-costs">
         <h3>What things cost (approximate, billed by each provider)</h3>
