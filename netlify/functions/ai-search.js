@@ -16,6 +16,8 @@
 // return {fallback: true} with sensible non-AI results so search still
 // works (plain keyword ranking).
 
+import { keyFor } from "../lib/keys.js";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-5";
 
@@ -31,7 +33,7 @@ export default async (req) => {
 
   const query = String(body.query || "").trim();
   if (!query) return json({ error: "Give me a topic to search for." }, 400);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = keyFor(req, "anthropic");
 
   if (body.action === "expand") {
     if (!apiKey) return json({ fallback: true, terms: [query] });

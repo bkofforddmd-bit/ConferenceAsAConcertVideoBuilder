@@ -3,6 +3,8 @@
 // Generates or revises song lyrics from a General Conference talk using Claude.
 // The ANTHROPIC_API_KEY stays server-side and is never exposed to the browser.
 
+import { keyFor } from "../lib/keys.js";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8";
 
@@ -11,9 +13,9 @@ export default async (req) => {
     return json({ error: "Method not allowed" }, 405);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = keyFor(req, "anthropic");
   if (!apiKey) {
-    return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
+    return json({ error: "No Anthropic key. Add one under Settings → API keys (or set ANTHROPIC_API_KEY on the site)." }, 500);
   }
 
   let body;

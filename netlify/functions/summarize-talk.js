@@ -11,6 +11,8 @@
 // ONCE — analyses get cheaper and faster the more the app is used. In local
 // dev without Blobs credentials an in-memory store keeps the flow testable.
 
+import { keyFor as serviceKey } from "../lib/keys.js";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-5";
 const CACHE_VERSION = 1; // bump to invalidate all cached summaries
@@ -84,8 +86,8 @@ export default async (req) => {
     const cached = await cacheGet(keyFor(uri));
     if (cached) return json({ summary: cached, cached: true });
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
+    const apiKey = serviceKey(req, "anthropic");
+    if (!apiKey) return json({ error: "No Anthropic key. Add one under Settings → API keys (or set ANTHROPIC_API_KEY on the site)." }, 500);
 
     try {
       const res = await fetch(ANTHROPIC_URL, {

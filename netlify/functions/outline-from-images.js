@@ -2,14 +2,16 @@
 // Retrofit a scene outline from finalized lyrics + described images.
 // One scene PER image. AI decides best order and which lyric lines pair with
 // each image, following the song's natural progression.
+import { keyFor } from "../lib/keys.js";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500);
+  const apiKey = keyFor(req, "anthropic");
+  if (!apiKey) return json({ error: "No Anthropic key. Add one under Settings → API keys (or set ANTHROPIC_API_KEY on the site)." }, 500);
 
   let body;
   try { body = await req.json(); }

@@ -9,6 +9,8 @@
 //
 // Returns a base64 data URL the frontend can display, save, and download.
 
+import { keyFor } from "../lib/keys.js";
+
 const GEN_URL = "https://api.openai.com/v1/images/generations";
 const EDIT_URL = "https://api.openai.com/v1/images/edits";
 const MODEL = "gpt-image-2";
@@ -16,8 +18,8 @@ const MODEL = "gpt-image-2";
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return json({ error: "Server missing OPENAI_API_KEY" }, 500);
+  const apiKey = keyFor(req, "openai");
+  if (!apiKey) return json({ error: "No OpenAI key. Add one under Settings → API keys (or set OPENAI_API_KEY on the site)." }, 500);
 
   let body;
   try {

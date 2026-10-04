@@ -42,8 +42,43 @@ export const generateStyleBible = (payload) => post("generate-style-bible", payl
 export const generateOutline = (payload) => post("generate-outline", payload);
 export const generateSceneDetail = (payload) => post("generate-scene-detail", payload);
 export const extractMeta = (payload) => post("extract-meta", payload);
-export const generateImage = (payload) =>
-  IMAGE_API_URL ? postTo(IMAGE_API_URL, payload) : post("generate-image", payload);
+// Scene images take 30–90 s, longer than a normal Netlify function may run, so
+// generation happens in a background function and the browser polls for the
+// result. If the background function isn't available (old deploy / plan), fall
+// back to the original synchronous call.
+export async function generateImage(payload) {
+  if (IMAGE_API_URL) return postTo(IMAGE_API_URL, payload);
+  const jobId = "img_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+  let started;
+  try {
+    started = await fetch(`${BASE}/generate-image-background`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...keyHeaders() },
+      body: JSON.stringify({ ...payload, jobId }),
+    });
+  } catch {
+    started = null;
+  }
+  if (!started || (started.status !== 202 && started.status !== 200)) {
+    return post("generate-image", payload);
+  }
+  const t0 = Date.now();
+  let delay = 3000;
+  while (Date.now() - t0 < 6 * 60 * 1000) {
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 1.2, 8000);
+    let s;
+    try {
+      const resp = await fetch(`${BASE}/image-status?id=${encodeURIComponent(jobId)}`, { headers: keyHeaders() });
+      s = await resp.json();
+    } catch {
+      continue; // transient network blip; keep polling
+    }
+    if (s.status === "done" && s.imageDataUrl) return { imageDataUrl: s.imageDataUrl };
+    if (s.status === "failed") throw new Error((s.error || "Image generation failed.") + (s.detail ? `\n${truncate(s.detail)}` : ""));
+  }
+  throw new Error("Timed out waiting for the image (6 minutes). Try again.");
+}
 export const describeImage = (payload) => post("describe-image", payload);
 export const matchImages = (payload) => post("match-images", payload);
 export const outlineFromImages = (payload) => post("outline-from-images", payload);
