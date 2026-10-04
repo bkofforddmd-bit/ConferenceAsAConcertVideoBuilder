@@ -50,13 +50,20 @@ export default async (req) => {
   // 2) poll it every way
   const url = `${BASE}/${encodeURIComponent(id)}`;
   const styles = {
+    noAuth: { u: url, h: {} },
+    noAuthWithRevision: { u: url, h: { "Api-Revision": "2026-05-20" } },
     header: { u: url, h: { "x-goog-api-key": key } },
-    headerWithRevision: { u: url, h: { "x-goog-api-key": key, "Api-Revision": "2026-05-20" } },
     bearer: { u: url, h: { Authorization: `Bearer ${key}` } },
     query: { u: `${url}?key=${encodeURIComponent(key)}`, h: {} },
-    headerRawId: { u: `${BASE}/${id}`, h: { "x-goog-api-key": key } },
   };
   for (const [name, s] of Object.entries(styles)) out.get[name] = await tryFetch(s.u, s.h, { method: "GET" });
-  out.idShape = { hasSlash: id.includes("/"), hasDot: id.includes("."), sample: id.slice(0, 6) + "…" };
+  // Does the id itself look like it embeds a credential? (base64 of a protobuf
+  // usually starts with "Ch"; report the decoded head's printable characters only)
+  let decodedHead = "";
+  try {
+    const b = Buffer.from(id.replace(/^v1_/, ""), "base64url").toString("latin1");
+    decodedHead = b.slice(0, 60).replace(/[^\x20-\x7E]/g, ".");
+  } catch {}
+  out.idShape = { length: id.length, prefix: id.slice(0, 3), decodedHead };
   return json(out);
 };
