@@ -65,33 +65,26 @@ export async function generateImage(payload) {
   // itself carries just the key.
   let refKey = "";
   if (referenceImageB64) {
-    try {
-      const small = await shrinkImage(referenceImageB64, 1536, 0.9);
-      const r = await postTo(`${BASE}/image-ref`, { jobId, dataUrl: small });
-      refKey = r.refKey || "";
-    } catch (e) {
-      throw new Error(`Couldn't send the reference image: ${e.message}`);
-    }
+    const small = await shrinkImage(referenceImageB64, 1536, 0.9);
+    const r = await withRetry(() => postTo(`${BASE}/art-ref`, { jobId, dataUrl: small }), "art-ref");
+    refKey = r.refKey || "";
   }
 
-  let started;
-  try {
-    started = await fetch(`${BASE}/generate-image-background`, {
+  // Start the background job. Network-level failures are retried a few times
+  // (a flaky connection shouldn't cost a whole image); if the function itself
+  // isn't there (old deploy), fall back to the original synchronous call.
+  const started = await withRetry(async () => {
+    const resp = await fetch(`${BASE}/art-job-background`, {
       method: "POST",
       headers: { "content-type": "application/json", ...keyHeaders() },
       body: JSON.stringify({ ...rest, jobId, refKey }),
     });
-  } catch {
-    started = null;
-  }
-  if (!started) {
-    // The request itself failed (blocked, offline, or a bad header). Say so
-    // plainly instead of retrying a slower path that will fail the same way.
-    return post("generate-image", payload);
-  }
+    return resp;
+  }, "art-job-background");
+  if (started.status === 404) return post("art-sync", payload);
   if (started.status !== 202 && started.status !== 200) {
-    // Old deploy or background functions unavailable: original synchronous call.
-    return post("generate-image", payload);
+    const d = await started.json().catch(() => ({}));
+    throw new Error(d.error || `The image job couldn't start (${started.status}).`);
   }
 
   const t0 = Date.now();
@@ -101,21 +94,44 @@ export async function generateImage(payload) {
     delay = Math.min(delay * 1.2, 8000);
     let s;
     try {
-      const resp = await fetch(`${BASE}/image-status?id=${encodeURIComponent(jobId)}`);
+      const resp = await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`);
       s = await resp.json();
     } catch {
       continue; // transient network blip; keep polling
     }
     if (s.status === "done") {
       if (s.imageDataUrl) return { imageDataUrl: s.imageDataUrl };
-      const r = await fetch(`${BASE}/image-result?id=${encodeURIComponent(jobId)}`);
-      if (!r.ok) throw new Error(`The image finished but couldn't be fetched (${r.status}).`);
+      const r = await withRetry(async () => {
+        const x = await fetch(`${BASE}/art-result?id=${encodeURIComponent(jobId)}`);
+        if (!x.ok) throw new Error(`The image finished but couldn't be fetched (${x.status}).`);
+        return x;
+      }, "art-result");
       const blob = await r.blob();
       return { imageDataUrl: await blobToDataUrl(blob) };
     }
     if (s.status === "failed") throw new Error((s.error || "Image generation failed.") + (s.detail ? `\n${truncate(s.detail)}` : ""));
   }
   throw new Error("Timed out waiting for the image (6 minutes). Try again.");
+}
+
+// Run `fn` up to `times`, backing off between attempts. Network-level
+// failures ("Failed to fetch") are what we're guarding against here.
+async function withRetry(fn, label, times = 3) {
+  let last;
+  for (let i = 0; i < times; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  const msg = last && last.message ? last.message : String(last);
+  throw new Error(
+    `${msg}\nThe request to "${label}" was refused by this browser ${times} times in a row while other requests ` +
+    `to the same site work. An ad-blocker, privacy extension, or security software is the usual cause — try the ` +
+    `site in a private/incognito window with extensions off, or on your phone.`
+  );
 }
 
 function blobToDataUrl(blob) {

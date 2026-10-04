@@ -1,10 +1,10 @@
-// netlify/functions/image-ref.js
+// netlify/functions/art-ref.js
 //
 // Stages a reference image (the previous scene, for "Lock consistency") in
 // Netlify storage before a scene-image job starts. Background functions only
 // accept ~256 KB of request body, far less than an image, so the browser
 // uploads the image here (synchronous functions take up to 6 MB) and passes
-// the returned key to generate-image-background instead.
+// the returned key to art-job-background instead.
 
 import { json, readJson } from "../lib/keys.js";
 import { blobSetText, validJobId } from "../lib/jobs.js";

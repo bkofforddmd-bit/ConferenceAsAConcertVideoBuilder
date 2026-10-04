@@ -1,6 +1,6 @@
-// netlify/functions/image-result.js
+// netlify/functions/art-result.js
 //
-// Streams a finished scene image (stored by generate-image-background.js) to
+// Streams a finished scene image (stored by art-job-background.js) to
 // the browser as raw PNG bytes. Streaming sidesteps the 6 MB cap on buffered
 // function responses that a base64 JSON reply could hit.
 

@@ -1,4 +1,4 @@
-// netlify/functions/generate-image-background.js
+// netlify/functions/art-job-background.js
 //
 // Scene image generation as a Netlify BACKGROUND function (up to 15 minutes).
 // gpt-image-2 takes 30–90 s per image — far past the limit of a normal
@@ -6,9 +6,9 @@
 //
 // Request body (kept tiny — background functions accept ~256 KB):
 //   { jobId, prompt, size, refKey? }
-// refKey points at a reference image the browser staged via image-ref.js.
-// The result goes to storage (out:<jobId>); image-status.js reports progress
-// and image-result.js streams the finished PNG.
+// refKey points at a reference image the browser staged via art-ref.js.
+// The result goes to storage (out:<jobId>); art-status.js reports progress
+// and art-result.js streams the finished PNG.
 //
 //   - Generation: prompt only                 -> /v1/images/generations
 //   - Reference-locked: prompt + prior image  -> /v1/images/edits

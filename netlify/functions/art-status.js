@@ -1,6 +1,6 @@
-// netlify/functions/image-status.js
+// netlify/functions/art-status.js
 //
-// Polls a scene-image job started by generate-image-background.js.
+// Polls a scene-image job started by art-job-background.js.
 //   { status: "queued" | "running" | "done" | "failed", imageDataUrl?, error? }
 // "queued" means no record exists yet (the background function hasn't started).
 
