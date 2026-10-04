@@ -78,22 +78,35 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
   const r = clampRect(rect, iw, ih);
   const box = { left: (r.cx - r.w / 2) * stageW, top: (r.cy - r.h / 2) * stageH, width: r.w * stageW, height: r.h * stageH };
 
-  // Drag to pan the selected keyframe's frame.
-  function onDown(e) {
+  // Drag any keyframe's frame (green = selected, dashed = the others) to pan
+  // it; dragging a dashed one selects it as it moves. The corner handle
+  // resizes (zooms) instead of moving.
+  function startDrag(e, idx, mode = "move") {
     if (preview) return;
     e.preventDefault();
+    e.stopPropagation();
+    const k = kfs[idx];
+    if (!k) return;
+    if (idx !== sel) setSel(idx);
     const p = e.touches ? e.touches[0] : e;
-    dragRef.current = { x: p.clientX, y: p.clientY, cx: cur.cx, cy: cur.cy };
+    dragRef.current = { x: p.clientX, y: p.clientY, cx: k.cx, cy: k.cy, w: k.w, idx, mode };
     const move = (ev) => {
       const q = ev.touches ? ev.touches[0] : ev;
       const d = dragRef.current;
       if (!d) return;
-      update(sel, { cx: d.cx + (q.clientX - d.x) / stageW, cy: d.cy + (q.clientY - d.y) / stageH });
+      if (ev.cancelable) ev.preventDefault();
+      if (d.mode === "resize") {
+        // dragging the corner outward widens the frame (zooms out), inward zooms in
+        update(d.idx, { w: d.w + ((q.clientX - d.x) / stageW) * 2 });
+      } else {
+        update(d.idx, { cx: d.cx + (q.clientX - d.x) / stageW, cy: d.cy + (q.clientY - d.y) / stageH });
+      }
     };
     const up = () => { dragRef.current = null; window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); window.removeEventListener("touchmove", move); window.removeEventListener("touchend", up); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     window.addEventListener("touchmove", move, { passive: false }); window.addEventListener("touchend", up);
   }
+  const onDown = (e) => startDrag(e, sel, "move");
   function onWheel(e) {
     if (preview) return;
     e.preventDefault();
@@ -132,12 +145,22 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
         <div className="path-stage" ref={stageRef} style={{ height: stageH || 360 }}>
           {img && <img src={src} alt="" draggable={false} />}
           {img && (
-            <div className={`path-frame${preview ? " preview" : ""}`} style={box} onMouseDown={onDown} onTouchStart={onDown} onWheel={onWheel} title="Drag to pan · scroll to zoom">
-              <span className="path-frame-label">{preview ? `${timeOf(previewP)}` : `Keyframe ${sorted.findIndex((x) => x.i === sel) + 1} · ${zoomPct}%`}</span>
+            <div className={`path-frame${preview ? " preview" : ""}`} style={box} onMouseDown={onDown} onTouchStart={onDown} onWheel={onWheel} title="Drag to pan · scroll or drag the corner to zoom">
+              <span className="path-frame-label">{preview ? `${timeOf(previewP)}` : `Keyframe ${sorted.findIndex((x) => x.i === sel) + 1} · ${zoomPct}% · ${timeOf(cur.t)}`}</span>
+              {!preview && <span className="path-handle" onMouseDown={(e) => startDrag(e, sel, "resize")} onTouchStart={(e) => startDrag(e, sel, "resize")} title="Drag to resize (zoom)" />}
             </div>
           )}
-          {!preview && sorted.map((k) => k.i !== sel && (
-            <div key={k.i} className="path-ghost" style={(() => { const g = clampRect(k, iw, ih); return { left: (g.cx - g.w / 2) * stageW, top: (g.cy - g.h / 2) * stageH, width: g.w * stageW, height: g.h * stageH }; })()} onClick={() => setSel(k.i)} />
+          {!preview && sorted.map((k, n) => k.i !== sel && (
+            <div
+              key={k.i}
+              className="path-ghost"
+              style={(() => { const g = clampRect(k, iw, ih); return { left: (g.cx - g.w / 2) * stageW, top: (g.cy - g.h / 2) * stageH, width: g.w * stageW, height: g.h * stageH }; })()}
+              onMouseDown={(e) => startDrag(e, k.i, "move")}
+              onTouchStart={(e) => startDrag(e, k.i, "move")}
+              title={`Keyframe ${n + 1} · drag to move it`}
+            >
+              <span className="path-ghost-label">{n + 1}</span>
+            </div>
           ))}
         </div>
 

@@ -376,7 +376,20 @@
   position: absolute; left: 6px; top: 6px; font-size: 11px; font-weight: 600;
   background: rgba(0, 32, 91, 0.85); color: var(--cloud); padding: 2px 8px; border-radius: 999px; white-space: nowrap;
 }
-.path-ghost { position: absolute; box-sizing: border-box; border: 1px dashed rgba(143, 180, 230, 0.7); border-radius: 3px; cursor: pointer; }
+.path-ghost {
+  position: absolute; box-sizing: border-box; border: 2px dashed rgba(143, 180, 230, 0.85);
+  border-radius: 3px; cursor: grab; z-index: 2;
+}
+.path-ghost:hover { border-color: var(--cloud); background: rgba(143, 180, 230, 0.08); }
+.path-ghost-label {
+  position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--navy); border: 2px solid var(--sky); color: var(--cloud);
+  font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+.path-handle {
+  position: absolute; right: -8px; bottom: -8px; width: 16px; height: 16px; border-radius: 3px;
+  background: var(--success); border: 2px solid var(--navy); cursor: nwse-resize;
+}
 .path-strip { margin-top: 10px; }
 .path-track {
   position: relative; height: 34px; border-radius: 8px;
