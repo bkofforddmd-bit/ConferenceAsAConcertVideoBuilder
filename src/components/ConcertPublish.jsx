@@ -8,9 +8,12 @@
 import React, { useEffect, useState } from "react";
 import { getMedia } from "../lib/project-store.js";
 import { parseSync } from "../lib/lyric-sync.js";
-import { publishToConcert, updateConcertEntry, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
+import { publishToConcert, updateConcertEntry, uploadVideoOnly, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
 
-export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference }) {
+export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference, render }) {
+  const hasVideo = Boolean(render && render.mediaKey);
+  const [includeVideo, setIncludeVideo] = useState(true);
+  const [youtube, setYoutube] = useState("");
   const active = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
   const sync = active ? parseSync(lyrics, active.sync) : null;
   const [pw, setPw] = useState(loadConcertPassword);
@@ -52,10 +55,17 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
     try {
       saveConcertPassword(pw.trim());
       const lyricTimings = sync ? syncToLyricTimings(lyrics, sync) : null;
+      // Send the rendered video too when the entry doesn't have one yet (or the render is newer).
+      let videoUrl = "";
+      if (hasVideo && includeVideo && !youtube.trim() && !target.videoUrl) {
+        const vrec = await getMedia(render.mediaKey);
+        if (vrec && vrec.blob) videoUrl = await uploadVideoOnly({ password: pw.trim(), title: f.title, video: vrec.blob, onStep: setStep });
+      }
+      setStep("Updating the library entry…");
       const entry = await updateConcertEntry({
         password: pw.trim(),
         id: target.id,
-        song: { ...f, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
+        song: { ...f, youtube: youtube.trim(), videoUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
       });
       setDone(entry);
       setStep("");
@@ -92,10 +102,16 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       if (!rec || !rec.blob) throw new Error("The song's audio isn't in this browser's storage. Re-open the project where it was made, or upload the file on the Music step.");
       saveConcertPassword(pw.trim());
       const lyricTimings = sync ? syncToLyricTimings(lyrics, sync) : null;
+      let videoBlob = null;
+      if (hasVideo && includeVideo && !youtube.trim()) {
+        const vrec = await getMedia(render.mediaKey);
+        if (vrec && vrec.blob) videoBlob = vrec.blob;
+      }
       const entry = await publishToConcert({
         password: pw.trim(),
-        song: { ...f, lyrics, duration: active.durationSec || 0, lyricTimings },
+        song: { ...f, youtube: youtube.trim(), lyrics, duration: active.durationSec || 0, lyricTimings },
         audio: rec.blob,
+        video: videoBlob,
         onStep: setStep,
       });
       setDone(entry);
@@ -126,6 +142,14 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
           <label className="field" style={{ margin: 0 }}><span className="lbl">Musical style (optional)</span><input type="text" value={f.style} onChange={up("style")} placeholder="Leave blank, or describe the actual sound" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Theme (optional)</span><input type="text" value={f.theme} onChange={up("theme")} placeholder="e.g. Faith, Endurance" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Blurb (optional)</span><input type="text" value={f.blurb} onChange={up("blurb")} placeholder="One sentence about the song" /></label>
+          <label className="field" style={{ margin: 0 }}><span className="lbl">YouTube link (optional)</span><input type="text" value={youtube} onChange={(e) => setYoutube(e.target.value)} placeholder="Paste once the video is on YouTube — it then plays instead of the file" /></label>
+          <label className="row" style={{ gap: 8, alignSelf: "end" }} title={hasVideo ? "Upload the rendered MP4 so the library plays the music video" : "Render the video on the Video step first"}>
+            <input type="checkbox" checked={hasVideo && includeVideo && !youtube.trim()} disabled={!hasVideo || Boolean(youtube.trim())} onChange={(e) => setIncludeVideo(e.target.checked)} />
+            <span className="note" style={{ margin: 0 }}>
+              Also publish the music video{hasVideo ? ` (${render.sizeMB || "?"} MB ${String(render.ext || "mp4").toUpperCase()})` : " — no render yet"}
+              {youtube.trim() ? " · skipped: the YouTube link will play instead" : ""}
+            </span>
+          </label>
         </div>
       </div>
 
@@ -156,7 +180,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       </div>
       {existing && !done && (
         <p className="note" style={{ color: "var(--sky)" }}>
-          Already in the library as "{existing.title}" ({existing.session || "no conference set"}, {existing.speaker || "no speaker"}). "Update details" fixes it in place.
+          Already in the library as "{existing.title}" ({existing.session || "no conference set"}, {existing.speaker || "no speaker"}{existing.videoUrl ? ", has video" : existing.youtube ? ", has YouTube" : ", no video"}). "Update details" fixes it in place{hasVideo && !existing.videoUrl && !existing.youtube ? " and adds the video" : ""}.
         </p>
       )}
       <p className="note">

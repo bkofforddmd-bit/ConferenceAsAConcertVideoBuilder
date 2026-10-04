@@ -100,6 +100,7 @@ export async function updateConcertEntry({ password, id, song }) {
     lyrics: song.lyrics || "",
     blurb: song.blurb || "",
   };
+  if (typeof song.videoUrl === "string" && song.videoUrl) entry.videoUrl = song.videoUrl; // omitted → library keeps its current one
   if (Array.isArray(song.lyricTimings)) entry.lyricTimings = song.lyricTimings;
   const saved = await relay(password, "update", { song: entry });
   return saved.entry || entry;
@@ -113,34 +114,83 @@ function extFor(mime) {
   return ".mp3";
 }
 
-// song: { title, talk, speaker, session, theme, style, talkUrl, lyrics, duration, blurb, lyricTimings }
-// audio: Blob. onStep(text) reports progress. Returns the saved catalog entry.
-export async function publishToConcert({ password, song, audio, onStep = () => {} }) {
-  onStep("Checking the band password…");
-  await relay(password, "verify", {});
-
-  onStep("Asking the Concert app for an upload link…");
-  const ct = audio.type && /^audio\//.test(audio.type) ? audio.type : "audio/mpeg";
-  const filename = `${(song.title || "song").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}${extFor(ct)}`;
-  const sign = await relay(password, "sign", { filename, contentType: ct, titleHint: song.title });
+// Upload one media file into the Concert storage: ask the Concert app for a
+// presigned link, PUT directly, or fall back to pieces + a Studio background
+// job. Returns the public URL.
+async function uploadMedia({ password, blob, contentType, filename, titleHint, label, onStep }) {
+  onStep(`Asking the Concert app for a ${label} upload link…`);
+  let sign;
+  try {
+    sign = await relay(password, "sign", { filename, contentType, titleHint });
+  } catch (e) {
+    if (/only audio/i.test(e.message)) throw new Error("The Concert library doesn't accept video yet — deploy the \"Studio video update\" to the Concert app first (index.html + upload.js), then try again.");
+    throw e;
+  }
   if (!sign.uploadUrl || !sign.publicUrl) throw new Error("The Concert app didn't return an upload link.");
 
-  onStep(`Uploading the song (${(audio.size / 1048576).toFixed(1)} MB)…`);
+  onStep(`Uploading the ${label} (${(blob.size / 1048576).toFixed(1)} MB)…`);
   let uploaded = false;
   try {
-    const put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "content-type": ct }, body: audio });
+    const put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "content-type": contentType }, body: blob });
     uploaded = put.ok;
   } catch {
     uploaded = false;
   }
-  if (!uploaded) {
+  if (!uploaded) await uploadInPieces({ blob, contentType, uploadUrl: sign.uploadUrl, label, onStep });
+  return sign.publicUrl;
+}
+
+// song: { title, talk, speaker, session, theme, style, talkUrl, youtube, lyrics, duration, blurb, lyricTimings }
+// audio: Blob; video: Blob|null. onStep(text) reports progress. Returns the saved catalog entry.
+export async function publishToConcert({ password, song, audio, video = null, onStep = () => {} }) {
+  onStep("Checking the band password…");
+  await relay(password, "verify", {});
+
+  const safe = (song.title || "song").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const ct = audio.type && /^audio\//.test(audio.type) ? audio.type : "audio/mpeg";
+  const audioUrl = await uploadMedia({ password, blob: audio, contentType: ct, filename: `${safe}${extFor(ct)}`, titleHint: song.title, label: "song", onStep });
+
+  let videoUrl = "";
+  if (video) {
+    const vct = video.type && /^video\//.test(video.type) ? video.type : "video/mp4";
+    const vext = vct.includes("webm") ? ".webm" : ".mp4";
+    videoUrl = await uploadMedia({ password, blob: video, contentType: vct, filename: `${safe}${vext}`, titleHint: song.title, label: "video", onStep });
+  }
+
+  onStep("Saving the song in the Concert library…");
+  const entry = {
+    title: song.title,
+    talk: song.talk || "",
+    speaker: song.speaker || "",
+    session: song.session || "",
+    theme: song.theme || "",
+    style: song.style || "",
+    talkUrl: song.talkUrl || "",
+    youtube: song.youtube || "",
+    audioUrl,
+    videoUrl,
+    previewStart: song.previewStart || 0,
+    duration: Math.round(song.duration || 0),
+    lyrics: song.lyrics || "",
+    blurb: song.blurb || "",
+  };
+  if (Array.isArray(song.lyricTimings)) entry.lyricTimings = song.lyricTimings;
+  const saved = await relay(password, "save", { song: entry });
+  return saved.entry || entry;
+}
+
+async function uploadInPieces({ blob, contentType, uploadUrl, label, onStep }) {
+  const audio = blob;
+  const sign = { uploadUrl };
+  const ct = contentType;
+  {
     // The Concert storage doesn't accept uploads straight from this site, so
     // send the song in pieces and let a Studio background job deliver it.
     const CHUNK = 3 * 1048576;
     const count = Math.ceil(audio.size / CHUNK);
     const uploadId = "up_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
     for (let n = 0; n < count; n++) {
-      onStep(`Uploading the song in pieces… ${n + 1} of ${count}`);
+      onStep(`Uploading the ${label} in pieces… ${n + 1} of ${count}`);
       const piece = audio.slice(n * CHUNK, Math.min(audio.size, (n + 1) * CHUNK));
       let ok = false, lastErr = "";
       for (let attempt = 0; attempt < 3 && !ok; attempt++) {
@@ -153,7 +203,7 @@ export async function publishToConcert({ password, song, audio, onStep = () => {
       }
       if (!ok) throw new Error(`Couldn't upload piece ${n + 1} of ${count}: ${lastErr}`);
     }
-    onStep("Pieces received — delivering the song to the Concert storage…");
+    onStep(`Pieces received — delivering the ${label} to the Concert storage…`);
     const jobId = "cj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
     const start = await fetch(`${BASE}/concert-assemble-background`, {
       method: "POST",
@@ -173,27 +223,17 @@ export async function publishToConcert({ password, song, audio, onStep = () => {
       try { s = await (await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`)).json(); } catch { continue; }
       if (s.status === "done") break;
       if (s.status === "failed") throw new Error((s.error || "Delivery failed.") + (s.detail ? ` ${s.detail}` : ""));
-      if (Date.now() - t0 > 10 * 60 * 1000) throw new Error("Timed out delivering the song to the Concert storage.");
+      if (Date.now() - t0 > 14 * 60 * 1000) throw new Error(`Timed out delivering the ${label} to the Concert storage.`);
     }
   }
+}
 
-  onStep("Saving the song in the Concert library…");
-  const entry = {
-    title: song.title,
-    talk: song.talk || "",
-    speaker: song.speaker || "",
-    session: song.session || "",
-    theme: song.theme || "",
-    style: song.style || "",
-    talkUrl: song.talkUrl || "",
-    youtube: song.youtube || "",
-    audioUrl: sign.publicUrl,
-    previewStart: song.previewStart || 0,
-    duration: Math.round(song.duration || 0),
-    lyrics: song.lyrics || "",
-    blurb: song.blurb || "",
-  };
-  if (Array.isArray(song.lyricTimings)) entry.lyricTimings = song.lyricTimings;
-  const saved = await relay(password, "save", { song: entry });
-  return saved.entry || entry;
+// Upload just the video for a song already in the library (returns its URL).
+export async function uploadVideoOnly({ password, title, video, onStep = () => {} }) {
+  onStep("Checking the band password…");
+  await relay(password, "verify", {});
+  const safe = (title || "song").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const vct = video.type && /^video\//.test(video.type) ? video.type : "video/mp4";
+  const vext = vct.includes("webm") ? ".webm" : ".mp4";
+  return uploadMedia({ password, blob: video, contentType: vct, filename: `${safe}${vext}`, titleHint: title, label: "video", onStep });
 }

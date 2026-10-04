@@ -371,7 +371,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
 
     const chunks = [];
-    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 192_000 });
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: plan.bitrate || 4_000_000, audioBitsPerSecond: 192_000 });
     rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
     const done = new Promise((res) => { rec.onstop = res; });
 

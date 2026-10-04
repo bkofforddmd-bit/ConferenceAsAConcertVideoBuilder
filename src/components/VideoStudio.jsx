@@ -527,6 +527,12 @@ export default function VideoStudio({
   }
 
   // ---- render ----
+  const QUALITIES = [
+    { id: "web", label: "1080p · web (≈30 MB/min)", w: 1920, h: 1080, bps: 4_000_000 },
+    { id: "high", label: "1080p · high (≈60 MB/min)", w: 1920, h: 1080, bps: 8_000_000 },
+    { id: "small", label: "720p · small (≈18 MB/min)", w: 1280, h: 720, bps: 2_500_000 },
+  ];
+  const [quality, setQuality] = useState("web");
   const [rendering, setRendering] = useState(false);
   const [renderPct, setRenderPct] = useState(0);
   const [renderMsg, setRenderMsg] = useState("");
@@ -555,8 +561,9 @@ export default function VideoStudio({
     setRendering(true);
     setRenderPct(0);
     const watermark = "";
+    const q = QUALITIES.find((x) => x.id === quality) || QUALITIES[0];
     const job = renderMusicVideo(
-      { width: 1920, height: 1080, fps: 30, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -842,9 +849,12 @@ export default function VideoStudio({
         <div className="panel-head">
           <h3>3 · Render the music video</h3>
           <div className="row" style={{ gap: 8 }}>
+            <select value={quality} onChange={(e) => setQuality(e.target.value)} disabled={rendering} title="Picture size and file size. 'Web' is plenty for the library and YouTube; 'high' for archiving.">
+              {QUALITIES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            </select>
             {!rendering ? (
               <button className="btn btn-primary" onClick={startRender} disabled={!audioUrl || !segments.length}>
-                {render && render.mediaKey ? "Render again" : "Render 1080p video"}
+                {render && render.mediaKey ? "Render again" : "Render video"}
               </button>
             ) : (
               <button className="btn btn-ghost" onClick={cancelRender}>Cancel</button>
