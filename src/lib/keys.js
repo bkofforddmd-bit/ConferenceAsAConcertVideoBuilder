@@ -23,10 +23,21 @@ export function loadKeys() {
   }
 }
 
+// A pasted key sometimes carries a line break, a space, or a smart quote from
+// the clipboard. HTTP headers can't hold those, and the browser then refuses
+// to send the request at all ("Failed to fetch"), so keep only plain
+// printable ASCII.
+export function cleanKey(v) {
+  return String(v || "").replace(/[^\x21-\x7E]/g, "");
+}
+
 export function saveKeys(keys) {
   try {
     const clean = {};
-    for (const s of SERVICES) if (keys[s.id] && String(keys[s.id]).trim()) clean[s.id] = String(keys[s.id]).trim();
+    for (const s of SERVICES) {
+      const v = cleanKey(keys[s.id]);
+      if (v) clean[s.id] = v;
+    }
     localStorage.setItem(KEYS_KEY, JSON.stringify(clean));
   } catch {}
 }
@@ -34,7 +45,10 @@ export function saveKeys(keys) {
 export function keyHeaders() {
   const keys = loadKeys();
   const h = {};
-  for (const s of SERVICES) if (keys[s.id]) h[s.header] = keys[s.id];
+  for (const s of SERVICES) {
+    const v = cleanKey(keys[s.id]);
+    if (v) h[s.header] = v;
+  }
   return h;
 }
 

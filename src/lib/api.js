@@ -15,11 +15,20 @@ const STORYBOARD_API_URL =
   (IMAGE_API_URL ? IMAGE_API_URL.replace(/generate-image\/?$/, "generate-storyboard") : "");
 
 async function postTo(url, payload) {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...keyHeaders() },
-    body: JSON.stringify(payload),
-  });
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...keyHeaders() },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    throw new Error(
+      "Couldn't reach the app's server (the browser refused or lost the request). " +
+      "Try a hard refresh (Ctrl+F5). If you pasted keys under Settings, open Settings and save them again — " +
+      `a stray character in a key blocks every request. (${e && e.message ? e.message : e})`
+    );
+  }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     throw new Error(data.error || `Request failed (${resp.status})` +
@@ -75,7 +84,12 @@ export async function generateImage(payload) {
   } catch {
     started = null;
   }
-  if (!started || (started.status !== 202 && started.status !== 200)) {
+  if (!started) {
+    // The request itself failed (blocked, offline, or a bad header). Say so
+    // plainly instead of retrying a slower path that will fail the same way.
+    return post("generate-image", payload);
+  }
+  if (started.status !== 202 && started.status !== 200) {
     // Old deploy or background functions unavailable: original synchronous call.
     return post("generate-image", payload);
   }
