@@ -15,6 +15,7 @@ import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
 import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming } from "../lib/lyric-sync.js";
+import PathEditor from "./PathEditor.jsx";
 
 function fmt(sec) {
   if (!isFinite(sec)) return "0:00";
@@ -45,16 +46,25 @@ function splitByWeight(shots, start, end) {
 
 // Controls for the shots of one scene or card: motion + hold for the primary
 // picture, and the list of added images (motion, hold, order, remove, add).
-function ShotsEditor({ id, extrasList, extraUrls, motion, weight, busy, onMotion, onWeight, onAdd, onUpdate, onMove, onRemove, primaryTitle }) {
+function ShotsEditor({ id, extrasList, extraUrls, motion, weight, busy, onMotion, onWeight, onAdd, onUpdate, onMove, onRemove, onEditPath, primaryTitle }) {
+  const motionSelect = (value, onChange, extraId) => (
+    <select
+      value={value || "auto"}
+      onChange={(e) => { if (e.target.value === "custom") onEditPath(extraId); else onChange(e.target.value); }}
+      style={{ fontSize: 12, padding: "3px 6px" }}
+    >
+      {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
+      <option value="custom">Custom path…</option>
+    </select>
+  );
   return (
     <>
       <div className="row" style={{ gap: 8 }}>
         <label className="row" style={{ gap: 6 }} title={primaryTitle || "Camera motion over this picture"}>
           <span className="note" style={{ margin: 0 }}>Motion</span>
-          <select value={motion || "auto"} onChange={(e) => onMotion(e.target.value)} style={{ fontSize: 12, padding: "3px 6px" }}>
-            {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
-          </select>
+          {motionSelect(motion, onMotion, null)}
         </label>
+        {motion === "custom" && <button className="btn btn-ghost btn-sm" onClick={() => onEditPath(null)}>🎥 Edit path</button>}
         {(extrasList || []).length > 0 && (
           <select value={weight || 1} onChange={(e) => onWeight(Number(e.target.value))} style={{ fontSize: 12, padding: "3px 6px" }} title="How long the first picture holds compared with the added shots">
             {WEIGHTS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
@@ -69,9 +79,8 @@ function ShotsEditor({ id, extrasList, extraUrls, motion, weight, busy, onMotion
               <div className="extra-shot-body">
                 <span className="note" style={{ margin: 0 }}>Shot {k + 2}{x.name ? ` · ${x.name.slice(0, 22)}` : ""}</span>
                 <span className="row" style={{ gap: 4 }}>
-                  <select value={x.motion || "auto"} onChange={(e) => onUpdate(x.id, { motion: e.target.value })} style={{ fontSize: 12, padding: "3px 6px" }}>
-                    {MOTIONS.map((mo) => <option key={mo.id} value={mo.id}>{mo.label}</option>)}
-                  </select>
+                  {motionSelect(x.motion, (v) => onUpdate(x.id, { motion: v }), x.id)}
+                  {x.motion === "custom" && <button className="btn btn-ghost btn-sm" onClick={() => onEditPath(x.id)}>🎥</button>}
                   <select value={x.weight || 1} onChange={(e) => onUpdate(x.id, { weight: Number(e.target.value) })} style={{ fontSize: 12, padding: "3px 6px" }} title="How long this shot holds compared with the others">
                     {WEIGHTS.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
                   </select>
@@ -222,8 +231,44 @@ export default function VideoStudio({
   function setPrimaryWeight(key, w) {
     setTimeline({ ...tl, weight: { ...(tl.weight || {}), [key]: w } });
   }
+  // ---- custom camera paths ----
+  // tl.path[key] for a primary picture; extras[].path for added shots.
+  const [pathEdit, setPathEdit] = useState(null); // { key, extraId, src, title, durationSec, path }
+  function openPathEditor(key, extraId) {
+    let src = "";
+    let path = null;
+    let title = "";
+    if (extraId) {
+      const x = (extras[key] || []).find((e) => e.id === extraId);
+      src = extraUrls[extraId] || "";
+      path = x && x.path;
+      title = `Added shot · ${x && x.name ? x.name : extraId}`;
+    } else if (key === "intro" || key === "outro") {
+      src = (endcards[key] && endcards[key].image) || textCardToDataUrl(key === "intro" ? introCard : outroCard);
+      path = (tl.path || {})[key];
+      title = key === "intro" ? "Intro card" : "Outro card";
+    } else {
+      src = images[key] || "";
+      path = (tl.path || {})[key];
+      title = `Scene ${key}`;
+    }
+    if (!src) { setError("This shot has no picture yet."); return; }
+    const seg = segments.find((s) => s.src === src) || null;
+    setPathEdit({ key, extraId: extraId || null, src, title, durationSec: seg ? Math.max(0.5, seg.end - seg.start) : 6, path });
+  }
+  function savePath(path) {
+    const { key, extraId } = pathEdit;
+    if (extraId) {
+      setTimeline({ ...tl, extras: { ...extras, [key]: (extras[key] || []).map((x) => (x.id === extraId ? { ...x, motion: "custom", path } : x)) } });
+    } else {
+      setTimeline({ ...tl, motion: { ...(tl.motion || {}), [key]: "custom" }, path: { ...(tl.path || {}), [key]: path } });
+    }
+    setPathEdit(null);
+  }
+
   // Props bundle for ShotsEditor, keyed by scene number or "intro"/"outro".
   const shotsProps = (key) => ({
+    onEditPath: (extraId) => openPathEditor(key, extraId),
     id: key,
     extrasList: extras[key] || [],
     extraUrls,
@@ -325,12 +370,13 @@ export default function VideoStudio({
     const lineStarts = tl.lineStarts || {};
     const list = ordered.map((s) => ({ s, start: starts[s.sceneNumber] ?? 0 })).sort((a, b) => a.start - b.start);
     const weights = tl.weight || {};
+    const paths = tl.path || {};
     const extraShots = (key) => (extras[key] || [])
-      .map((x) => ({ kind: "image", src: extraUrls[x.id] || "", motion: x.motion || "auto", weight: x.weight || 1 }))
+      .map((x) => ({ kind: "image", src: extraUrls[x.id] || "", motion: x.motion || "auto", path: x.path || null, weight: x.weight || 1 }))
       .filter((x) => x.src);
     // Primary picture + added images, each holding in proportion to its weight.
     const pushShots = (primary, key, start, end, common, label) => {
-      const shots = [{ ...primary, weight: weights[key] || 1 }, ...extraShots(key)].filter((x) => x.src);
+      const shots = [{ ...primary, path: paths[key] || null, weight: weights[key] || 1 }, ...extraShots(key)].filter((x) => x.src);
       splitByWeight(shots, start, end).forEach((seg, k) => {
         segs.push({ ...seg, ...common, label: shots.length > 1 ? `${label} · ${k + 1}/${shots.length}` : label });
       });
@@ -543,6 +589,16 @@ export default function VideoStudio({
 
   return (
     <section className="panel">
+      {pathEdit && (
+        <PathEditor
+          src={pathEdit.src}
+          initialPath={pathEdit.path}
+          durationSec={pathEdit.durationSec}
+          title={pathEdit.title}
+          onSave={savePath}
+          onClose={() => setPathEdit(null)}
+        />
+      )}
       <div className="panel-head">
         <h2>Video</h2>
         {render && render.mediaKey && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Export</button>}

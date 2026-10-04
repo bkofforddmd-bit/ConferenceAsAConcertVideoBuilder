@@ -143,6 +143,69 @@ export function motionAt(motion, p, i = 0, strength = 1) {
   }
 }
 
+// ---- Custom camera paths ----
+// A path is a list of keyframes over the shot's time (t = 0..1):
+//   { t, cx, cy, w, ease }   cx/cy = frame centre in image-normalised units,
+//                            w = frame width as a fraction of the image width
+//                            (height follows the 16:9 output), ease = how the
+//                            move INTO the next keyframe accelerates.
+// Unequal spacing of t = variable speed; equal rects back to back = a hold.
+export const EASES = [
+  { id: "inout", label: "Ease in & out" },
+  { id: "in", label: "Ease in (start slow)" },
+  { id: "out", label: "Ease out (end slow)" },
+  { id: "linear", label: "Constant speed" },
+];
+export const DEFAULT_PATH = {
+  keyframes: [
+    { t: 0, cx: 0.5, cy: 0.5, w: 1, ease: "inout" },
+    { t: 1, cx: 0.5, cy: 0.5, w: 0.82, ease: "inout" },
+  ],
+};
+function easeU(u, kind) {
+  u = Math.max(0, Math.min(1, u));
+  switch (kind) {
+    case "linear": return u;
+    case "in": return u * u;
+    case "out": return 1 - (1 - u) * (1 - u);
+    default: return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+  }
+}
+// Frame rect (image-normalised {cx, cy, w}) at progress p through the shot.
+export function pathRectAt(path, p) {
+  const kf = (path && Array.isArray(path.keyframes) ? path.keyframes : DEFAULT_PATH.keyframes)
+    .slice().sort((a, b) => a.t - b.t);
+  if (!kf.length) return { cx: 0.5, cy: 0.5, w: 1 };
+  if (p <= kf[0].t || kf.length === 1) return { cx: kf[0].cx, cy: kf[0].cy, w: kf[0].w };
+  const last = kf[kf.length - 1];
+  if (p >= last.t) return { cx: last.cx, cy: last.cy, w: last.w };
+  let i = 0;
+  while (i + 1 < kf.length && kf[i + 1].t <= p) i++;
+  const a = kf[i], b = kf[i + 1];
+  const u = easeU((p - a.t) / Math.max(1e-6, b.t - a.t), a.ease);
+  // zoom feels even when the width changes geometrically
+  const w = Math.exp(Math.log(a.w) + (Math.log(b.w) - Math.log(a.w)) * u);
+  return { cx: a.cx + (b.cx - a.cx) * u, cy: a.cy + (b.cy - a.cy) * u, w };
+}
+// Clamp a rect so the 16:9 frame stays inside the image.
+export function clampRect(rect, iw, ih, W = 16, H = 9) {
+  const maxW = Math.min(1, (ih / iw) * (W / H));
+  const w = Math.max(0.12, Math.min(maxW, rect.w));
+  const h = w * (iw / ih) * (H / W); // normalised height
+  const cx = Math.max(w / 2, Math.min(1 - w / 2, rect.cx));
+  const cy = Math.max(h / 2, Math.min(1 - h / 2, rect.cy));
+  return { cx, cy, w, h };
+}
+// Draw the part of `el` inside `rect` so it fills the W×H frame.
+export function drawViewport(ctx, el, W, H, rect) {
+  const iw = el.videoWidth || el.naturalWidth || el.width;
+  const ih = el.videoHeight || el.naturalHeight || el.height;
+  if (!iw || !ih) return;
+  const r = clampRect(rect, iw, ih, W, H);
+  const sx = (r.cx - r.w / 2) * iw, sy = (r.cy - r.h / 2) * ih;
+  ctx.drawImage(el, sx, sy, r.w * iw, r.h * ih, 0, 0, W, H);
+}
+
 // Which lyric text is on screen at time t for segment s, and how faded.
 // mode: "one" (a line at a time, default), "two" (pairs), "all" (whole stanza).
 // Lines share the scene's time slot equally, each fading in and out.
@@ -351,16 +414,24 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
             if (el.ended) {
               const clipEnd = s.start + (el.duration || 0);
               const p = Math.max(0, Math.min(1, (t - clipEnd) / Math.max(0.01, s.end - clipEnd)));
-              const mv = motionAt(s.motion === "auto" || !s.motion ? "zoomIn" : s.motion, p, i, 0.6);
-              drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+              if (s.motion === "custom" && s.path) {
+                drawViewport(ctx, el, W, H, pathRectAt(s.path, p));
+              } else {
+                const mv = motionAt(s.motion === "auto" || !s.motion ? "zoomIn" : s.motion, p, i, 0.6);
+                drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+              }
             } else {
               drawCover(ctx, el, W, H);
             }
           } else {
-            // Ken Burns on the still, per the shot's motion setting.
+            // Ken Burns on the still, per the shot's motion setting (or a custom path).
             const p = Math.max(0, Math.min(1, (t - s.start) / Math.max(0.01, s.end - s.start)));
-            const mv = motionAt(s.motion || "auto", p, i, s.isCard ? 0.5 : 1);
-            drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+            if (s.motion === "custom" && s.path) {
+              drawViewport(ctx, el, W, H, pathRectAt(s.path, p));
+            } else {
+              const mv = motionAt(s.motion || "auto", p, i, s.isCard ? 0.5 : 1);
+              drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+            }
           }
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
