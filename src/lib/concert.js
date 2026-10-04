@@ -57,6 +57,54 @@ export function syncToLyricTimings(lyrics, sync) {
   return out.map((t) => Math.round(t * 100) / 100);
 }
 
+// "April 2008" from the talk's conference date, or from a talk link like
+// …/general-conference/2008/04/… — the Concert library groups on this.
+export function conferenceLabel(talkMeta) {
+  const my = talkMeta && String(talkMeta.conferenceMonthYear || "").trim();
+  if (my && /^(April|October)\s+\d{4}$/i.test(my)) return my.replace(/^april/i, "April").replace(/^october/i, "October");
+  const m = /general-conference\/(\d{4})\/(\d{2})/i.exec((talkMeta && talkMeta.sourceUrl) || "");
+  if (m) return `${m[2] === "10" ? "October" : "April"} ${m[1]}`;
+  return my || "";
+}
+
+// The library's public catalog (no password): find a song already there.
+export async function findLibraryEntry(title, speaker) {
+  try {
+    const resp = await fetch(`${CONCERT_SITE}/.netlify/functions/data`, { cache: "no-store" });
+    const data = await resp.json();
+    const songs = (data && (data.songs || (data.catalog && data.catalog.songs))) || [];
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const t = norm(title), sp = norm(speaker);
+    const hits = songs.filter((s) => norm(s.title) === t && (!sp || norm(s.speaker) === sp));
+    return hits[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+// Update a song already in the library (details, lyrics, timings) — the
+// audio stays as it is.
+export async function updateConcertEntry({ password, id, song }) {
+  const entry = {
+    id,
+    title: song.title,
+    talk: song.talk || "",
+    speaker: song.speaker || "",
+    session: song.session || "",
+    theme: song.theme || "",
+    style: song.style || "",
+    talkUrl: song.talkUrl || "",
+    youtube: song.youtube || "",
+    previewStart: song.previewStart || 0,
+    duration: Math.round(song.duration || 0),
+    lyrics: song.lyrics || "",
+    blurb: song.blurb || "",
+  };
+  if (Array.isArray(song.lyricTimings)) entry.lyricTimings = song.lyricTimings;
+  const saved = await relay(password, "update", { song: entry });
+  return saved.entry || entry;
+}
+
 function extFor(mime) {
   const t = String(mime || "").toLowerCase();
   if (t.includes("wav")) return ".wav";

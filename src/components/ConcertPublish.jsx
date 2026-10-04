@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { getMedia } from "../lib/project-store.js";
 import { parseSync } from "../lib/lyric-sync.js";
-import { publishToConcert, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
+import { publishToConcert, updateConcertEntry, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
 
 export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference }) {
   const active = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
@@ -19,7 +19,8 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
     title: (meta && meta.songTitle) || (active && active.title) || "",
     talk: (talkMeta && talkMeta.title) || "",
     speaker: (meta && meta.speaker) || (talkMeta && talkMeta.speaker) || "",
-    session: (meta && meta.session) || (talkMeta && talkMeta.session) || "",
+    // The library groups songs by this field as "April 2008" — the conference, not the session name.
+    session: conferenceLabel(talkMeta),
     talkUrl: (talkMeta && talkMeta.sourceUrl) || "",
     style: (active && active.style) || (styleBible && styleBible.musicDirection && styleBible.musicDirection.genre) || styleReference || "",
     theme: "",
@@ -29,6 +30,40 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
+  const [existing, setExisting] = useState(null); // entry already in the library with this title/speaker
+
+  // Is this song already in the library? (public catalog, no password)
+  useEffect(() => {
+    let alive = true;
+    if (!f.title) { setExisting(null); return; }
+    findLibraryEntry(f.title, f.speaker).then((e) => { if (alive) setExisting(e); });
+    return () => { alive = false; };
+  }, [f.title, f.speaker, done]);
+
+  async function updateDetails() {
+    const target = done || existing;
+    if (!target || !target.id) return;
+    setError("");
+    if (!pw.trim()) { setError("Enter the Conference Concert band password."); return; }
+    setBusy(true);
+    setStep("Updating the library entry…");
+    try {
+      saveConcertPassword(pw.trim());
+      const lyricTimings = sync ? syncToLyricTimings(lyrics, sync) : null;
+      const entry = await updateConcertEntry({
+        password: pw.trim(),
+        id: target.id,
+        song: { ...f, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
+      });
+      setDone(entry);
+      setStep("");
+    } catch (e) {
+      setError(e.message || String(e));
+      setStep("");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Prefill follows the project if the title/speaker arrive later.
   useEffect(() => {
@@ -37,8 +72,9 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       title: p.title || (meta && meta.songTitle) || (active && active.title) || "",
       speaker: p.speaker || (meta && meta.speaker) || (talkMeta && talkMeta.speaker) || "",
       talk: p.talk || (talkMeta && talkMeta.title) || "",
+      session: p.session || conferenceLabel(talkMeta),
     }));
-  }, [meta && meta.songTitle, meta && meta.speaker, talkMeta && talkMeta.title]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [meta && meta.songTitle, meta && meta.speaker, talkMeta && talkMeta.title, talkMeta && talkMeta.conferenceMonthYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const up = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -83,7 +119,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
           <label className="field" style={{ margin: 0 }}><span className="lbl">Song title</span><input type="text" value={f.title} onChange={up("title")} /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Speaker</span><input type="text" value={f.speaker} onChange={up("speaker")} placeholder="Elder …" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Talk</span><input type="text" value={f.talk} onChange={up("talk")} /></label>
-          <label className="field" style={{ margin: 0 }}><span className="lbl">Session</span><input type="text" value={f.session} onChange={up("session")} placeholder="e.g. Sunday Morning Session" /></label>
+          <label className="field" style={{ margin: 0 }}><span className="lbl">Conference (month &amp; year) <span className="note" style={{ margin: 0, display: "inline" }}>— the library groups by this</span></span><input type="text" value={f.session} onChange={up("session")} placeholder="October 2025" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Talk link</span><input type="text" value={f.talkUrl} onChange={up("talkUrl")} /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Musical style</span><input type="text" value={f.style} onChange={up("style")} /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Theme (optional)</span><input type="text" value={f.theme} onChange={up("theme")} placeholder="e.g. Faith, Endurance" /></label>
@@ -99,11 +135,28 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
             <button className="btn btn-ghost btn-sm" onClick={() => setShowPw(!showPw)}>{showPw ? "Hide" : "Show"}</button>
           </span>
         </label>
-        <button className="btn btn-primary" onClick={publish} disabled={busy || !active} style={{ alignSelf: "flex-end" }}>
-          {busy && <span className="spinner" />}
-          {busy ? "Publishing…" : "Publish song"}
-        </button>
+        {(done || existing) ? (
+          <>
+            <button className="btn btn-primary" onClick={updateDetails} disabled={busy} style={{ alignSelf: "flex-end" }} title="Re-send the details, lyrics and timing to the entry already in the library (the audio stays)">
+              {busy && <span className="spinner" />}
+              {busy ? "Working…" : "Update details in the library"}
+            </button>
+            <button className="btn btn-ghost" onClick={publish} disabled={busy || !active} style={{ alignSelf: "flex-end" }} title="Add a second copy with the current take's audio">
+              Publish as a new song
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-primary" onClick={publish} disabled={busy || !active} style={{ alignSelf: "flex-end" }}>
+            {busy && <span className="spinner" />}
+            {busy ? "Publishing…" : "Publish song"}
+          </button>
+        )}
       </div>
+      {existing && !done && (
+        <p className="note" style={{ color: "var(--sky)" }}>
+          Already in the library as "{existing.title}" ({existing.session || "no conference set"}, {existing.speaker || "no speaker"}). "Update details" fixes it in place.
+        </p>
+      )}
       <p className="note">
         Take being sent: <strong>{active ? `${active.title} · ${Math.floor((active.durationSec || 0) / 60)}:${String(Math.floor((active.durationSec || 0) % 60)).padStart(2, "0")}` : "—"}</strong>
         {active && !sync ? " · no lyric sync yet (lyrics will auto-scroll instead of highlighting; tap ⏱ Sync lyrics on the Music step first if you want line-by-line timing)" : ""}

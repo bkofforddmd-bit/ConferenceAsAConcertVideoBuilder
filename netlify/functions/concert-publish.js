@@ -7,12 +7,12 @@
 // (verify / sign / save) from here instead. The password comes from the user,
 // is forwarded once, and is never stored.
 //
-// Body: { password, action: "verify" | "sign" | "save", payload }
+// Body: { password, action: "verify" | "sign" | "save" | "update", payload }
 
 import { json, readJson } from "../lib/keys.js";
 
 const CONCERT_URL = (process.env.CONCERT_APP_URL || "https://conferenceconcert.netlify.app").replace(/\/$/, "");
-const ALLOWED = new Set(["verify", "sign", "save"]);
+const ALLOWED = new Set(["verify", "sign", "save", "update"]);
 
 export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
