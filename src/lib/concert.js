@@ -86,13 +86,47 @@ export async function publishToConcert({ password, song, audio, onStep = () => {
     uploaded = false;
   }
   if (!uploaded) {
-    if (audio.size > 5.5 * 1048576) {
-      throw new Error("Direct upload was blocked and the file is too large to relay (over 5.5 MB). Ask the site owner to add this app's address to the Concert storage CORS allow-list, or upload a smaller MP3.");
+    // The Concert storage doesn't accept uploads straight from this site, so
+    // send the song in pieces and let a Studio background job deliver it.
+    const CHUNK = 3 * 1048576;
+    const count = Math.ceil(audio.size / CHUNK);
+    const uploadId = "up_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    for (let n = 0; n < count; n++) {
+      onStep(`Uploading the song in pieces… ${n + 1} of ${count}`);
+      const piece = audio.slice(n * CHUNK, Math.min(audio.size, (n + 1) * CHUNK));
+      let ok = false, lastErr = "";
+      for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+        try {
+          const r = await fetch(`${BASE}/concert-chunk?id=${uploadId}&n=${n}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: piece });
+          if (r.ok) ok = true;
+          else { const d = await r.json().catch(() => ({})); lastErr = d.error || `piece ${n + 1} failed (${r.status})`; }
+        } catch (e) { lastErr = e.message; }
+        if (!ok) await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+      }
+      if (!ok) throw new Error(`Couldn't upload piece ${n + 1} of ${count}: ${lastErr}`);
     }
-    onStep("Direct upload blocked — relaying through the Studio…");
-    const r = await fetch(`${BASE}/concert-audio-relay?to=${encodeURIComponent(sign.uploadUrl)}`, { method: "PUT", headers: { "content-type": ct }, body: audio });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || `Relay upload failed (${r.status})`);
+    onStep("Pieces received — delivering the song to the Concert storage…");
+    const jobId = "cj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    const start = await fetch(`${BASE}/concert-assemble-background`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jobId, uploadId, count, to: sign.uploadUrl, contentType: ct }),
+    });
+    if (start.status !== 202 && start.status !== 200) {
+      const d = await start.json().catch(() => ({}));
+      throw new Error(d.error || `Couldn't start the delivery job (${start.status}).`);
+    }
+    const t0 = Date.now();
+    let delay = 2500;
+    while (true) {
+      await new Promise((res) => setTimeout(res, delay));
+      delay = Math.min(delay * 1.2, 8000);
+      let s = {};
+      try { s = await (await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`)).json(); } catch { continue; }
+      if (s.status === "done") break;
+      if (s.status === "failed") throw new Error((s.error || "Delivery failed.") + (s.detail ? ` ${s.detail}` : ""));
+      if (Date.now() - t0 > 10 * 60 * 1000) throw new Error("Timed out delivering the song to the Concert storage.");
+    }
   }
 
   onStep("Saving the song in the Concert library…");

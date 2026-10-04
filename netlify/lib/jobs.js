@@ -74,7 +74,23 @@ export async function blobSetText(key, text) {
   memBlobs.set(key, text);
 }
 
+// Raw bytes (audio chunks for the Concert hand-off).
+const memBytes = new Map();
+export async function blobSetBytes(key, bytes) {
+  if (getStoreFn) {
+    try { await getStoreFn(BLOB_STORE).set(key, bytes); return; } catch (e) { if (!process.env.NETLIFY) { memBytes.set(key, bytes); return; } throw e; }
+  }
+  memBytes.set(key, bytes);
+}
+export async function blobGetBytes(key) {
+  if (getStoreFn) {
+    try { return await getStoreFn(BLOB_STORE).get(key, { type: "arrayBuffer" }); } catch (e) { if (!process.env.NETLIFY) return memBytes.get(key) || null; throw e; }
+  }
+  return memBytes.get(key) || null;
+}
+
 export async function blobDelete(key) {
+  memBytes.delete(key);
   if (getStoreFn) {
     try { await getStoreFn(BLOB_STORE).delete(key); return; } catch {}
   }
