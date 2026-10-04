@@ -116,6 +116,21 @@ function drawLyrics(ctx, text, W, H, alpha) {
 export function lyricAt(s, t, mode = "one") {
   const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
   if (!lines.length) return { text: "", alpha: 0 };
+
+  // Tapped-in line times (absolute seconds, one per line) win over equal splits:
+  // each line holds from its tap until the next tap (or the scene's end).
+  const taps = Array.isArray(s.lineStarts) ? s.lineStarts.filter((x) => typeof x === "number") : [];
+  if (taps.length === lines.length && taps.length > 0) {
+    if (t < taps[0] - 0.3) return { text: "", alpha: 0, index: -1, count: lines.length };
+    let idx = 0;
+    for (let i = 0; i < taps.length; i++) if (t >= taps[i]) idx = i;
+    const gs = taps[idx];
+    const ge = idx + 1 < taps.length ? taps[idx + 1] : s.end;
+    const fade = Math.min(0.35, Math.max(0.08, (ge - gs) / 4));
+    const alpha = Math.max(0, Math.min(1, (t - gs + 0.3) / fade, (ge - t) / fade));
+    return { text: lines[idx], alpha, index: idx, count: lines.length };
+  }
+
   const size = mode === "all" ? lines.length : mode === "two" ? 2 : 1;
   const groups = [];
   for (let i = 0; i < lines.length; i += size) groups.push(lines.slice(i, i + size).join("\n"));
@@ -129,6 +144,60 @@ export function lyricAt(s, t, mode = "one") {
   const fade = Math.min(0.45, slot / 4);
   const alpha = Math.max(0, Math.min(1, (t - gs) / fade, (ge - t) / fade));
   return { text: groups[idx], alpha, index: idx, count: n };
+}
+
+// A designed-looking title/closing card drawn from text alone, for projects
+// whose intro/outro card images haven't been generated. Navy-to-air-blue
+// gradient with a soft horizon glow, Michroma-style title, Inter credits.
+function drawTextCard(ctx, card, W, H) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#00205B");
+  g.addColorStop(0.6, "#16417F");
+  g.addColorStop(1, "#2E5FA9");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, H * 1.05, 0, W / 2, H * 1.05, W * 0.6);
+  glow.addColorStop(0, "rgba(245,247,250,0.28)");
+  glow.addColorStop(1, "rgba(245,247,250,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(245,247,250,0.28)";
+  ctx.lineWidth = Math.max(1, H * 0.0015);
+  ctx.beginPath();
+  ctx.arc(W / 2, H * 1.9, H * 1.35, Math.PI * 1.15, Math.PI * 1.85);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#F5F7FA";
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = H * 0.01;
+  let y = H * (card.small ? 0.3 : 0.38);
+  if (card.kicker) {
+    ctx.font = `400 ${Math.round(H * 0.022)}px Michroma, Inter, system-ui, sans-serif`;
+    ctx.fillStyle = "#8FB4E6";
+    ctx.fillText(String(card.kicker).toUpperCase(), W / 2, y);
+    y += H * 0.07;
+    ctx.fillStyle = "#F5F7FA";
+  }
+  if (card.title) {
+    const px = Math.round(H * 0.07);
+    ctx.font = `400 ${px}px Michroma, Inter, system-ui, sans-serif`;
+    const tl = wrapLines(ctx, card.title, W * 0.8).slice(0, 2);
+    tl.forEach((ln) => { ctx.fillText(ln, W / 2, y); y += px * 1.25; });
+    y += H * 0.03;
+  }
+  ctx.font = `500 ${Math.round(H * 0.03)}px Inter, system-ui, sans-serif`;
+  for (const ln of card.lines || []) {
+    for (const w of wrapLines(ctx, ln, W * 0.8)) { ctx.fillText(w, W / 2, y); y += H * 0.045; }
+  }
+  if (card.small) {
+    ctx.font = `400 ${Math.round(H * 0.019)}px Inter, system-ui, sans-serif`;
+    ctx.fillStyle = "rgba(245,247,250,0.8)";
+    const sm = wrapLines(ctx, card.small, W * 0.86);
+    let sy = H - H * 0.06 - (sm.length - 1) * H * 0.03;
+    for (const w of sm) { ctx.fillText(w, W / 2, sy); sy += H * 0.03; }
+  }
+  ctx.shadowBlur = 0;
 }
 
 function drawWatermark(ctx, text, W, H) {
@@ -163,7 +232,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       if (cancelled) throw new Error("Cancelled.");
       const s = segs[i];
       try {
-        assets[i] = s.kind === "video" ? await loadVideo(s.src) : await loadImage(s.src);
+        assets[i] = s.kind === "video" ? await loadVideo(s.src) : s.kind === "textcard" ? { textcard: true } : await loadImage(s.src);
       } catch (e) {
         // Fall back to a dark frame rather than aborting the whole render.
         assets[i] = null;
@@ -229,7 +298,9 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           if (!el) continue;
           ctx.save();
           ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-          if (s.kind === "video") {
+          if (s.kind === "textcard") {
+            drawTextCard(ctx, s.card || {}, W, H);
+          } else if (s.kind === "video") {
             if (el.paused && !el.ended && !el._started) { el._started = true; el.currentTime = 0; el.play().catch(() => {}); }
             // Once the clip has played out, hold its last frame with a slow push-in.
             const over = el.ended ? Math.max(0, t - (s.start + (el.duration || 0))) : 0;

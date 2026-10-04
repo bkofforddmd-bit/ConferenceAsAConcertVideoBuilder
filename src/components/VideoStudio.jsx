@@ -86,8 +86,8 @@ export default function VideoStudio({
 
   function autoTime() {
     if (!totalSec) return;
-    const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro, hasOutro });
-    setTimeline({ ...tl, starts });
+    const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro: tl.includeIntro !== false, hasOutro: tl.includeOutro !== false });
+    setTimeline({ ...tl, starts, lineStarts: {} });
   }
   // Auto-time once when a song exists and nothing is timed yet.
   useEffect(() => {
@@ -120,26 +120,117 @@ export default function VideoStudio({
   }
   function stopTap() { const a = tapAudioRef.current; if (a) a.pause(); setTapIdx(-1); }
 
+  // Intro/outro: the designed card image when there is one, otherwise a text
+  // card drawn by the renderer from the title & credits. Each can be toggled.
+  const includeIntro = tl.includeIntro !== false;
+  const includeOutro = tl.includeOutro !== false;
+  const DISCLAIMER =
+    "This music and video presentation is not an official production of The Church of Jesus Christ of Latter-day Saints " +
+    "and is not endorsed by the Church. The creators of this presentation fully and wholeheartedly sustain and support the Church, its leaders, doctrines, and teachings.";
+  const m = meta || {};
+  const introCard = {
+    kicker: "Conference As A Concert",
+    title: m.songTitle || "",
+    lines: [
+      m.speaker ? `Adapted from a talk given by ${m.speaker}` : "",
+      [m.conferenceMonthYear, m.session].filter(Boolean).join(" · "),
+      "General Conference of The Church of Jesus Christ of Latter-day Saints",
+    ].filter(Boolean),
+    small: DISCLAIMER,
+  };
+  const outroCard = {
+    title: m.songTitle || "",
+    lines: [
+      m.speaker ? `A song inspired by ${m.speaker}` : "",
+      "If this message touched your heart, please share this video with someone who may need hope.",
+      m.scripture || "",
+    ].filter(Boolean),
+    small: DISCLAIMER,
+  };
+
   // segments for the bar + render
   const segments = useMemo(() => {
     if (!totalSec) return [];
     const segs = [];
     const starts = tl.starts || {};
+    const lineStarts = tl.lineStarts || {};
     const list = ordered.map((s) => ({ s, start: starts[s.sceneNumber] ?? 0 })).sort((a, b) => a.start - b.start);
-    if (hasIntro) segs.push({ kind: "image", src: endcards.intro.image, start: 0, end: list.length ? list[0].start : totalSec, label: "Intro", lyrics: "", card: true });
+    const introEnd = list.length ? list[0].start : Math.min(totalSec, tl.introSec);
+    if (includeIntro && introEnd > 0.2) {
+      segs.push(hasIntro
+        ? { kind: "image", src: endcards.intro.image, start: 0, end: introEnd, label: "Intro", lyrics: "", card: true }
+        : { kind: "textcard", src: "text", card: introCard, start: 0, end: introEnd, label: "Intro", lyrics: "", card: true });
+    }
+    const outroStart = includeOutro
+      ? (list.length ? Math.max(list[list.length - 1].start + 1, totalSec - tl.outroSec) : Math.max(0, totalSec - tl.outroSec))
+      : totalSec;
     for (let i = 0; i < list.length; i++) {
       const { s, start } = list[i];
-      const next = i + 1 < list.length ? list[i + 1].start : (hasOutro ? Math.max(start + 1, totalSec - tl.outroSec) : totalSec);
+      const next = i + 1 < list.length ? list[i + 1].start : outroStart;
       const clip = clips && clips[s.sceneNumber];
       const src = clip && clip.mediaKey && clipUrls[s.sceneNumber] ? clipUrls[s.sceneNumber] : (images[s.sceneNumber] || "");
-      segs.push({ kind: clip && clipUrls[s.sceneNumber] ? "video" : "image", src, start, end: Math.max(start, next), label: `Scene ${s.sceneNumber}`, lyrics: s.lyrics || "", card: false });
+      segs.push({ kind: clip && clipUrls[s.sceneNumber] ? "video" : "image", src, start, end: Math.max(start, next), label: `Scene ${s.sceneNumber}`, lyrics: s.lyrics || "", lineStarts: lineStarts[s.sceneNumber] || null, card: false });
     }
-    if (hasOutro) {
-      const start = list.length ? Math.max(list[list.length - 1].start + 1, totalSec - tl.outroSec) : Math.max(0, totalSec - tl.outroSec);
-      segs.push({ kind: "image", src: endcards.outro.image, start, end: totalSec, label: "Outro", lyrics: "", card: true });
+    if (includeOutro && totalSec - outroStart > 0.2) {
+      segs.push(hasOutro
+        ? { kind: "image", src: endcards.outro.image, start: outroStart, end: totalSec, label: "Outro", lyrics: "", card: true }
+        : { kind: "textcard", src: "text", card: outroCard, start: outroStart, end: totalSec, label: "Outro", lyrics: "", card: true });
     }
     return segs.filter((x) => x.src);
-  }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards]);
+  }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- tap-along per LINE: play the song, press Next for every lyric line ----
+  const lineList = useMemo(() => {
+    const out = [];
+    for (const s of ordered) {
+      const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
+      lines.forEach((text, i) => out.push({ scene: s.sceneNumber, i, n: lines.length, text }));
+    }
+    return out;
+  }, [ordered]);
+  const [lineTapIdx, setLineTapIdx] = useState(-1);
+  const lineTapsRef = useRef({});
+  function startLineTap() {
+    const a = tapAudioRef.current;
+    if (!a || !lineList.length) return;
+    lineTapsRef.current = {};
+    a.currentTime = includeIntro ? Math.max(0, (tl.starts || {})[ordered[0]?.sceneNumber] ?? tl.introSec) - 0.5 : 0;
+    a.play();
+    setLineTapIdx(0);
+  }
+  function finishLineTap() {
+    const a = tapAudioRef.current;
+    if (a) a.pause();
+    const taps = lineTapsRef.current;
+    // Scene starts follow the first tapped line of each scene (the intro keeps the gap before it).
+    const starts = { ...(tl.starts || {}) };
+    for (const [scene, arr] of Object.entries(taps)) if (arr && arr.length && typeof arr[0] === "number") starts[scene] = Math.round(arr[0] * 10) / 10;
+    setTimeline({ ...tl, starts, lineStarts: taps, lyricsMode: "one" });
+    setLineTapIdx(-1);
+  }
+  function tapNextLine() {
+    const a = tapAudioRef.current;
+    if (!a || lineTapIdx < 0) return;
+    const item = lineList[lineTapIdx];
+    if (item) {
+      const arr = lineTapsRef.current[item.scene] || (lineTapsRef.current[item.scene] = new Array(item.n).fill(null));
+      arr[item.i] = Math.round(a.currentTime * 100) / 100;
+    }
+    if (lineTapIdx + 1 >= lineList.length) finishLineTap();
+    else setLineTapIdx(lineTapIdx + 1);
+  }
+  function stopLineTap() { const a = tapAudioRef.current; if (a) a.pause(); setLineTapIdx(-1); }
+  // Space / Enter also taps, so you can keep your eyes on the song.
+  useEffect(() => {
+    if (lineTapIdx < 0) return;
+    const onKey = (e) => {
+      if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); tapNextLine(); }
+      if (e.code === "Escape") stopLineTap();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lineTapIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tappedLineCount = Object.values(tl.lineStarts || {}).reduce((n, arr) => n + (Array.isArray(arr) ? arr.filter((x) => typeof x === "number").length : 0), 0);
 
   // ---- clips ----
   async function generateClip(scene, prevForBlend) {
@@ -370,17 +461,34 @@ export default function VideoStudio({
           <h3>2 · Timeline {totalSec ? <span className="chip">{fmt(totalSec)} song</span> : <span className="chip warn">needs the song</span>}</h3>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={autoTime} disabled={!totalSec}>Auto-time by lyrics</button>
-            {tapIdx < 0 ? (
-              <button className="btn btn-ghost btn-sm" onClick={startTap} disabled={!audioUrl || !ordered.length} title="Play the song and tap 'Next scene' each time the next scene should begin">▶ Tap along</button>
-            ) : (
+            {tapIdx < 0 && lineTapIdx < 0 && (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={startTap} disabled={!audioUrl || !ordered.length} title="Play the song and tap 'Next scene' each time the next scene should begin">▶ Tap scenes</button>
+                <button className="btn btn-ghost btn-sm" onClick={startLineTap} disabled={!audioUrl || !lineList.length} title="Play the song and tap (or press Space) each time the next lyric LINE is sung — sets scene starts and per-line timing">▶ Tap lines{tappedLineCount ? ` (${tappedLineCount} set)` : ""}</button>
+              </>
+            )}
+            {tapIdx >= 0 && (
               <>
                 <button className="btn btn-primary tap-btn armed" onClick={tapNext}>Next scene → Scene {ordered[tapIdx] ? ordered[tapIdx].sceneNumber : ""} ({fmt(tapTime)})</button>
                 <button className="btn btn-ghost btn-sm" onClick={stopTap}>Stop</button>
               </>
             )}
+            {lineTapIdx >= 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={stopLineTap}>Cancel (Esc)</button>
+            )}
           </div>
         </div>
-        <audio ref={tapAudioRef} src={audioUrl || undefined} onTimeUpdate={(e) => setTapTime(e.target.currentTime)} style={{ display: "none" }} />
+        <audio ref={tapAudioRef} src={audioUrl || undefined} onTimeUpdate={(e) => setTapTime(e.target.currentTime)} onEnded={() => { if (lineTapIdx >= 0) finishLineTap(); }} style={{ display: "none" }} />
+        {lineTapIdx >= 0 && lineList[lineTapIdx] && (
+          <div className="music-card" style={{ margin: "10px 0", borderColor: "var(--success)" }}>
+            <div className="note" style={{ margin: "0 0 6px" }}>
+              Line {lineTapIdx + 1} of {lineList.length} · Scene {lineList[lineTapIdx].scene} · {fmt(tapTime)} — press <strong>Space</strong> or the button the moment this line is sung:
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 600, color: "var(--cloud)", margin: "4px 0 10px" }}>♪ {lineList[lineTapIdx].text}</div>
+            {lineList[lineTapIdx + 1] && <div className="note" style={{ margin: "0 0 10px" }}>next: {lineList[lineTapIdx + 1].text}</div>}
+            <button className="btn btn-primary tap-btn armed" onClick={tapNextLine}>This line starts now</button>
+          </div>
+        )}
         {totalSec ? (
           <>
             <div className="timeline-bar">
@@ -397,8 +505,8 @@ export default function VideoStudio({
               {tapIdx >= 0 && <div className="timeline-head" style={{ left: `${(tapTime / totalSec) * 100}%` }} />}
             </div>
             <div className="timeline-rows">
-              {hasIntro && (
-                <div className="timeline-row"><span className="lbl2">Intro card length</span><input type="number" min="0" step="0.5" value={tl.introSec} onChange={(e) => setTimeline({ ...tl, introSec: Number(e.target.value) || 0 })} /> s</div>
+              {includeIntro && (
+                <div className="timeline-row"><span className="lbl2">Intro card length (before Scene 1)</span><input type="number" min="0" step="0.5" value={tl.introSec} onChange={(e) => setTimeline({ ...tl, introSec: Number(e.target.value) || 0 })} /> s</div>
               )}
               {ordered.map((sc) => (
                 <div className="timeline-row" key={sc.sceneNumber}>
@@ -406,16 +514,32 @@ export default function VideoStudio({
                   <input type="number" min="0" step="0.5" value={(tl.starts || {})[sc.sceneNumber] ?? 0} onChange={(e) => setStart(sc.sceneNumber, e.target.value)} /> s
                 </div>
               ))}
-              {hasOutro && (
+              {includeOutro && (
                 <div className="timeline-row"><span className="lbl2">Outro card length</span><input type="number" min="0" step="0.5" value={tl.outroSec} onChange={(e) => setTimeline({ ...tl, outroSec: Number(e.target.value) || 0 })} /> s</div>
               )}
+            </div>
+            <div className="row" style={{ gap: 14, marginTop: 10 }}>
+              <label className="row" style={{ gap: 6 }}>
+                <input type="checkbox" checked={includeIntro} onChange={(e) => setTimeline({ ...tl, includeIntro: e.target.checked })} />
+                <span className="note" style={{ margin: 0 }}>Intro card {hasIntro ? <span className="chip ok">designed image</span> : <span className="chip">text card — generate the image on the Storyboard step for a designed one</span>}</span>
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                <input type="checkbox" checked={includeOutro} onChange={(e) => setTimeline({ ...tl, includeOutro: e.target.checked })} />
+                <span className="note" style={{ margin: 0 }}>Outro card {hasOutro ? <span className="chip ok">designed image</span> : <span className="chip">text card</span>}</span>
+              </label>
             </div>
             <div className="row" style={{ gap: 14, marginTop: 10 }}>
               <label className="row" style={{ gap: 6 }}>
                 <input type="checkbox" checked={overlayOn} onChange={(e) => { setOverlayOn(e.target.checked); setTimeline({ ...tl, lyricsOverlay: e.target.checked }); }} />
                 <span className="note" style={{ margin: 0 }}>Show lyrics on screen</span>
               </label>
-              {overlayOn && (
+              {overlayOn && tappedLineCount > 0 && (
+                <span className="note" style={{ margin: 0 }}>
+                  <span className="chip ok">line timing from your taps</span>{" "}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTimeline({ ...tl, lineStarts: {} })}>Clear line taps</button>
+                </span>
+              )}
+              {overlayOn && tappedLineCount === 0 && (
                 <label className="row" style={{ gap: 6 }} title="How much of each scene's lyric shows at once. Lines share the scene's time evenly and fade between.">
                   <span className="note" style={{ margin: 0 }}>Show</span>
                   <select value={tl.lyricsMode || "one"} onChange={(e) => setTimeline({ ...tl, lyricsMode: e.target.value })}>
