@@ -66,10 +66,14 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
     const k = kfs[sel];
     const nextT = sorted.find((x) => x.t > k.t);
     const t = nextT ? (k.t + nextT.t) / 2 : Math.min(1, k.t + 0.25);
-    const nk = { ...k, t };
+    // Start the new keyframe a touch tighter and lower-right so it's visibly
+    // its own frame (drag it anywhere; set it back on top of the old one for a hold).
+    const nk = clampIfRect({ ...k, t, w: k.w * 0.88, cx: k.cx + 0.04, cy: k.cy + 0.03 });
     setKfs((prev) => [...prev, nk]);
     setSel(kfs.length);
   }
+  const KF_COLORS = ["#7FD1A8", "#8FB4E6", "#F2C66D", "#F19BB5", "#C9A4F5", "#9DE0E6", "#F5B07A"];
+  const colorOf = (n) => KF_COLORS[n % KF_COLORS.length];
   function remove() {
     if (kfs.length <= 2) return;
     setKfs((prev) => prev.filter((_, j) => j !== sel));
@@ -177,24 +181,30 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
 
         <div className="path-stage" ref={stageRef} style={{ height: stageH || 360 }}>
           {img && <img src={src} alt="" draggable={false} />}
-          {img && (
-            <div className={`path-frame${preview ? " preview" : ""}`} style={box} onMouseDown={onDown} onTouchStart={onDown} onWheel={onWheel} title="Drag to pan · scroll or drag the corner to zoom">
-              <span className="path-frame-label">{preview ? `${timeOf(previewP)}` : `Keyframe ${sorted.findIndex((x) => x.i === sel) + 1} · ${zoomPct}% · ${timeOf(cur.t)}`}</span>
-              {!preview && <span className="path-handle" onMouseDown={(e) => startDrag(e, sel, "resize")} onTouchStart={(e) => startDrag(e, sel, "resize")} title="Drag to resize (zoom)" />}
+          {img && preview && (
+            <div className="path-frame preview" style={box}>
+              <span className="path-frame-label">{timeOf(previewP)}</span>
             </div>
           )}
-          {!preview && sorted.map((k, n) => k.i !== sel && (
-            <div
-              key={k.i}
-              className="path-ghost"
-              style={(() => { const g = clampRect(k, iw, ih); return { left: (g.cx - g.w / 2) * stageW, top: (g.cy - g.h / 2) * stageH, width: g.w * stageW, height: g.h * stageH }; })()}
-              onMouseDown={(e) => startDrag(e, k.i, "move")}
-              onTouchStart={(e) => startDrag(e, k.i, "move")}
-              title={`Keyframe ${n + 1} · drag to move it`}
-            >
-              <span className="path-ghost-label">{n + 1}</span>
-            </div>
-          ))}
+          {img && !preview && sorted.map((k, n) => {
+            const g = clampRect(k, iw, ih);
+            const st = { left: (g.cx - g.w / 2) * stageW, top: (g.cy - g.h / 2) * stageH, width: g.w * stageW, height: g.h * stageH, "--kf": colorOf(n) };
+            const isSel = k.i === sel;
+            return (
+              <div
+                key={k.i}
+                className={`path-frame kf${isSel ? " sel" : ""}`}
+                style={st}
+                onMouseDown={(e) => startDrag(e, k.i, "move")}
+                onTouchStart={(e) => startDrag(e, k.i, "move")}
+                onWheel={(e) => { e.preventDefault(); if (!isSel) setSel(k.i); update(k.i, { w: k.w * (e.deltaY > 0 ? 1.04 : 0.96) }); }}
+                title={`Keyframe ${n + 1} · drag to pan · scroll or drag the corner to zoom`}
+              >
+                <span className="path-frame-label">{n + 1} · {Math.round((1 / g.w) * 100)}% · {timeOf(k.t)}</span>
+                <span className="path-handle" onMouseDown={(e) => startDrag(e, k.i, "resize")} onTouchStart={(e) => startDrag(e, k.i, "resize")} title="Drag to resize (zoom)" />
+              </div>
+            );
+          })}
           {img && shownLyric.text && (
             <div className="path-lyric" style={{ left: box.left, width: box.width, top: box.top + box.height * 0.78, opacity: Math.max(0.25, shownLyric.alpha), fontSize: Math.max(11, box.width * 0.035) }}>
               {shownLyric.text}
@@ -210,7 +220,7 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
               </div>
             ))}
             {sorted.map((k, n) => (
-              <button key={k.i} className={`path-dot${k.i === sel ? " sel" : ""}`} style={{ left: `${k.t * 100}%` }} onClick={() => setSel(k.i)} title={`Keyframe ${n + 1} at ${timeOf(k.t)}`}>{n + 1}</button>
+              <button key={k.i} className={`path-dot${k.i === sel ? " sel" : ""}`} style={{ left: `${k.t * 100}%`, "--kf": colorOf(n) }} onClick={() => setSel(k.i)} title={`Keyframe ${n + 1} at ${timeOf(k.t)}`}>{n + 1}</button>
             ))}
             {preview && <div className="timeline-head" style={{ left: `${previewP * 100}%` }} />}
           </div>
