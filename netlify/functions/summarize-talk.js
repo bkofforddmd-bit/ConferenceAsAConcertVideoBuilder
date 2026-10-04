@@ -122,7 +122,7 @@ export default async (req) => {
                   context: {
                     type: "string",
                     description:
-                      "Circumstances of the time the speaker EXPLICITLY names or clearly alludes to — wars, disasters, economic conditions, social or moral trends, technology, Church announcements, policy changes, recent deaths — as a short phrase list (e.g. \"Gulf War; recession; new temples announced\"). Empty string if the talk names none.",
+                      "Circumstances of the time the speaker EXPLICITLY names or clearly alludes to — wars, disasters, economic conditions, social or moral trends, technology, and Church efforts under way (temples announced or dedicated, missionary work and new areas, humanitarian or welfare initiatives, new programs or policies, a leader's passing) — as a short phrase list (e.g. \"Gulf War; recession; new temples announced\"). Empty string if the talk names none.",
                   },
                 },
                 required: ["summary", "themes", "context"],
