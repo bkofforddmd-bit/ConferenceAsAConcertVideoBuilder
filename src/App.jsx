@@ -20,6 +20,7 @@ import SceneOrganizer from "./components/SceneOrganizer.jsx";
 import MusicStudio from "./components/MusicStudio.jsx";
 import VideoStudio from "./components/VideoStudio.jsx";
 import ProjectsPanel from "./components/ProjectsPanel.jsx";
+import ConcertPublish from "./components/ConcertPublish.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
 import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
@@ -520,6 +521,7 @@ export default function App() {
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={setStep}
               onDownloadJson={downloadProject}
+              concertPublish={<ConcertPublish song={song} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} />}
               folder={folder}
               onPickFolder={pickFolder}
               onReconnectFolder={reconnectPickedFolder}
@@ -557,7 +559,7 @@ export default function App() {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
   const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
@@ -596,6 +598,8 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
         <button className="btn btn-ghost btn-sm" onClick={onDownloadJson}>Download project .json</button>
       </div>
       <p className="sub">Everything this concert produced, in one place. {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
+
+      {concertPublish}
 
       <div className="music-card" style={{ marginBottom: 16 }}>
         <h3>Save everything to a folder {folder.status === "granted" ? <span className="chip ok">{folder.name}</span> : folder.status === "prompt" ? <span className="chip warn">{folder.name} — reconnect</span> : <span className="chip">no folder yet</span>}</h3>
