@@ -49,19 +49,37 @@ export const extractMeta = (payload) => post("extract-meta", payload);
 export async function generateImage(payload) {
   if (IMAGE_API_URL) return postTo(IMAGE_API_URL, payload);
   const jobId = "img_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+  const { referenceImageB64 = "", ...rest } = payload || {};
+
+  // Background functions accept only ~256 KB per request, so a reference image
+  // (several MB as PNG) is shrunk to JPEG and staged in storage first; the job
+  // itself carries just the key.
+  let refKey = "";
+  if (referenceImageB64) {
+    try {
+      const small = await shrinkImage(referenceImageB64, 1536, 0.9);
+      const r = await postTo(`${BASE}/image-ref`, { jobId, dataUrl: small });
+      refKey = r.refKey || "";
+    } catch (e) {
+      throw new Error(`Couldn't send the reference image: ${e.message}`);
+    }
+  }
+
   let started;
   try {
     started = await fetch(`${BASE}/generate-image-background`, {
       method: "POST",
       headers: { "content-type": "application/json", ...keyHeaders() },
-      body: JSON.stringify({ ...payload, jobId }),
+      body: JSON.stringify({ ...rest, jobId, refKey }),
     });
   } catch {
     started = null;
   }
   if (!started || (started.status !== 202 && started.status !== 200)) {
+    // Old deploy or background functions unavailable: original synchronous call.
     return post("generate-image", payload);
   }
+
   const t0 = Date.now();
   let delay = 3000;
   while (Date.now() - t0 < 6 * 60 * 1000) {
@@ -69,15 +87,59 @@ export async function generateImage(payload) {
     delay = Math.min(delay * 1.2, 8000);
     let s;
     try {
-      const resp = await fetch(`${BASE}/image-status?id=${encodeURIComponent(jobId)}`, { headers: keyHeaders() });
+      const resp = await fetch(`${BASE}/image-status?id=${encodeURIComponent(jobId)}`);
       s = await resp.json();
     } catch {
       continue; // transient network blip; keep polling
     }
-    if (s.status === "done" && s.imageDataUrl) return { imageDataUrl: s.imageDataUrl };
+    if (s.status === "done") {
+      if (s.imageDataUrl) return { imageDataUrl: s.imageDataUrl };
+      const r = await fetch(`${BASE}/image-result?id=${encodeURIComponent(jobId)}`);
+      if (!r.ok) throw new Error(`The image finished but couldn't be fetched (${r.status}).`);
+      const blob = await r.blob();
+      return { imageDataUrl: await blobToDataUrl(blob) };
+    }
     if (s.status === "failed") throw new Error((s.error || "Image generation failed.") + (s.detail ? `\n${truncate(s.detail)}` : ""));
   }
   throw new Error("Timed out waiting for the image (6 minutes). Try again.");
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = () => reject(new Error("Couldn't read the image."));
+    fr.readAsDataURL(blob);
+  });
+}
+
+// Re-encode an image data URL as a JPEG no wider than maxW. Returns the input
+// untouched if it can't be drawn (e.g. not a browser context).
+export function shrinkImage(dataUrl, maxW = 1536, quality = 0.9) {
+  return new Promise((resolve) => {
+    try {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const scale = Math.min(1, maxW / (im.naturalWidth || maxW));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round((im.naturalWidth || maxW) * scale);
+          canvas.height = Math.round((im.naturalHeight || maxW) * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      im.onerror = () => resolve(dataUrl);
+      im.src = dataUrl;
+    } catch {
+      resolve(dataUrl);
+    }
+  });
 }
 export const describeImage = (payload) => post("describe-image", payload);
 export const matchImages = (payload) => post("match-images", payload);

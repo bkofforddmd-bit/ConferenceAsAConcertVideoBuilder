@@ -42,6 +42,45 @@ export async function jobSet(id, value) {
   mem.set(id, rec);
 }
 
+// Large payloads (reference images in, generated images out) live in a second
+// store as base64 text, so job records and function requests stay small:
+// background functions only accept ~256 KB of request body, and buffered
+// function responses top out at 6 MB.
+const BLOB_STORE = "studio-images";
+const memBlobs = new Map();
+
+export async function blobGetText(key) {
+  if (getStoreFn) {
+    try {
+      return await getStoreFn(BLOB_STORE).get(key, { type: "text" });
+    } catch (e) {
+      if (!process.env.NETLIFY) return memBlobs.get(key) || null;
+      throw e;
+    }
+  }
+  return memBlobs.get(key) || null;
+}
+
+export async function blobSetText(key, text) {
+  if (getStoreFn) {
+    try {
+      await getStoreFn(BLOB_STORE).set(key, text);
+      return;
+    } catch (e) {
+      if (!process.env.NETLIFY) { memBlobs.set(key, text); return; }
+      throw e;
+    }
+  }
+  memBlobs.set(key, text);
+}
+
+export async function blobDelete(key) {
+  if (getStoreFn) {
+    try { await getStoreFn(BLOB_STORE).delete(key); return; } catch {}
+  }
+  memBlobs.delete(key);
+}
+
 export function validJobId(id) {
   return typeof id === "string" && /^[a-z0-9_-]{8,80}$/i.test(id);
 }

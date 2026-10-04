@@ -4,15 +4,18 @@
 // gpt-image-2 takes 30–90 s per image — far past the limit of a normal
 // function, which is why the old synchronous call surfaced as "Failed to fetch".
 //
-// The browser sends { jobId, prompt, size, referenceImageB64 } and gets an
-// immediate 202; it then polls image-status.js until the job record says done.
+// Request body (kept tiny — background functions accept ~256 KB):
+//   { jobId, prompt, size, refKey? }
+// refKey points at a reference image the browser staged via image-ref.js.
+// The result goes to storage (out:<jobId>); image-status.js reports progress
+// and image-result.js streams the finished PNG.
 //
 //   - Generation: prompt only                 -> /v1/images/generations
 //   - Reference-locked: prompt + prior image  -> /v1/images/edits
 //     (keeps characters/style consistent across scenes)
 
 import { keyFor, json, readJson } from "../lib/keys.js";
-import { jobSet, validJobId } from "../lib/jobs.js";
+import { jobSet, blobGetText, blobSetText, blobDelete, validJobId } from "../lib/jobs.js";
 
 const GEN_URL = "https://api.openai.com/v1/images/generations";
 const EDIT_URL = "https://api.openai.com/v1/images/edits";
@@ -24,30 +27,37 @@ export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await readJson(req);
   if (!body || !validJobId(body.jobId)) return json({ error: "Provide a jobId." }, 400);
-  const { jobId, prompt = "", size = "1536x1024", referenceImageB64 = "" } = body;
+  const { jobId, prompt = "", size = "1536x1024", refKey = "" } = body;
+
+  const fail = async (error, detail) => {
+    await jobSet(jobId, { status: "failed", error, detail });
+    return json({ ok: false }, 202);
+  };
 
   const apiKey = keyFor(req, "openai");
-  if (!apiKey) {
-    await jobSet(jobId, { status: "failed", error: "No OpenAI key. Add one under Settings → API keys (or set OPENAI_API_KEY on the site)." });
-    return json({ ok: false }, 202);
-  }
-  if (!prompt.trim()) {
-    await jobSet(jobId, { status: "failed", error: "Provide a prompt." });
-    return json({ ok: false }, 202);
-  }
+  if (!apiKey) return fail("No OpenAI key. Add one under Settings → API keys (or set OPENAI_API_KEY on the site).");
+  if (!prompt.trim()) return fail("Provide a prompt.");
 
   await jobSet(jobId, { status: "running", startedAt: Date.now() });
 
   try {
     let resp;
-    if (referenceImageB64) {
+    let ref = null;
+    if (refKey) {
+      const text = await blobGetText(String(refKey));
+      if (text) { try { ref = JSON.parse(text); } catch { ref = null; } }
+      blobDelete(String(refKey)).catch(() => {});
+    }
+
+    if (ref && ref.b64) {
       const form = new FormData();
       form.append("model", MODEL);
       form.append("prompt", prompt);
       form.append("size", size);
-      const b64 = referenceImageB64.includes(",") ? referenceImageB64.split(",")[1] : referenceImageB64;
-      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      form.append("image", new Blob([bytes], { type: "image/png" }), "reference.png");
+      const bytes = Buffer.from(ref.b64, "base64");
+      const mime = ref.mime || "image/png";
+      const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : mime.includes("webp") ? "webp" : "png";
+      form.append("image", new Blob([bytes], { type: mime }), `reference.${ext}`);
       resp = await fetch(EDIT_URL, { method: "POST", headers: { Authorization: `Bearer ${apiKey}` }, body: form });
     } else {
       resp = await fetch(GEN_URL, {
@@ -59,19 +69,16 @@ export default async (req) => {
 
     if (!resp.ok) {
       const detail = await resp.text();
-      await jobSet(jobId, { status: "failed", error: `OpenAI image API error (${resp.status})`, detail: detail.slice(0, 600) });
-      return json({ ok: false }, 202);
+      return fail(`OpenAI image API error (${resp.status})`, detail.slice(0, 600));
     }
     const data = await resp.json();
     const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) {
-      await jobSet(jobId, { status: "failed", error: "No image returned", detail: JSON.stringify(data).slice(0, 400) });
-      return json({ ok: false }, 202);
-    }
-    await jobSet(jobId, { status: "done", imageDataUrl: `data:image/png;base64,${b64}` });
+    if (!b64) return fail("No image returned", JSON.stringify(data).slice(0, 400));
+
+    await blobSetText(`out:${jobId}`, JSON.stringify({ mime: "image/png", b64 }));
+    await jobSet(jobId, { status: "done", bytes: Math.round(b64.length * 0.75) });
     return json({ ok: true }, 202);
   } catch (err) {
-    await jobSet(jobId, { status: "failed", error: "Request failed", detail: String(err).slice(0, 400) });
-    return json({ ok: false }, 202);
+    return fail("Request failed", String(err).slice(0, 400));
   }
 };
