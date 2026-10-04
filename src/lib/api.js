@@ -81,10 +81,21 @@ export async function generateImage(payload) {
     });
     return resp;
   }, "art-job-background");
-  if (started.status === 404) return post("art-sync", payload);
   if (started.status !== 202 && started.status !== 200) {
-    const d = await started.json().catch(() => ({}));
-    throw new Error(d.error || `The image job couldn't start (${started.status}).`);
+    const ctype = started.headers.get("content-type") || "";
+    const text = await started.text().catch(() => "");
+    // Netlify's own "no such function" page means an old deploy: use the sync call.
+    if (started.status === 404 && /function not found|not found/i.test(text) && /text\/plain/i.test(ctype)) {
+      return post("art-sync", payload);
+    }
+    let msg = "";
+    try { msg = JSON.parse(text).error || ""; } catch {}
+    throw new Error(
+      msg ||
+      `The image job couldn't start: the server answered ${started.status} (${ctype || "no content type"}) ` +
+      `"${text.replace(/\s+/g, " ").slice(0, 160)}". If this isn't an error from the app itself, something on this ` +
+      `network or computer is intercepting the request.`
+    );
   }
 
   const t0 = Date.now();

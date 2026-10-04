@@ -36,13 +36,22 @@ export default function SettingsPanel({ config, onClose }) {
       ["POST generate-scene-detail (empty)", () => fetch("/.netlify/functions/generate-scene-detail", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) })],
       ["POST art-ref (300 KB image)", () => fetch("/.netlify/functions/art-ref", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: id + "c", dataUrl: "data:image/jpeg;base64," + "A".repeat(300 * 1024) }) })],
       ["POST with x-user key headers", () => fetch("/.netlify/functions/art-status?id=" + id, { method: "GET", headers: keyHeaders() })],
+      ["POST art-job-background (realistic scene prompt, no key)", () => fetch("/.netlify/functions/art-job-background", { method: "POST", headers: { "content-type": "application/json", "x-user-openai-key": "" }, body: JSON.stringify({ jobId: id + "d", size: "1536x1024", refKey: "", prompt: "A cinematic, reverent painterly illustration of a weathered man in flannel on a dirt path at golden hour, soft diffused sunlight, amber and sage palette, open hands releasing stones, warm hearth light in a farmhouse window. Render the following text cleanly, spelled exactly: \"Slow to Anger\". A small disclaimer band across the bottom reading: This music and video presentation is not an official production of The Church of Jesus Christ of Latter-day Saints." }) })],
     ];
+    // Capture what a non-2xx answer actually contains (a filter's block page shows up here).
+    const describe = async (r) => {
+      const ct = r.headers.get("content-type") || "";
+      let snippet = "";
+      if (r.status >= 300) { try { snippet = (await r.text()).replace(/\s+/g, " ").slice(0, 100); } catch {} }
+      return { status: r.status, type: ct.split(";")[0], snippet };
+    };
     const out = { when: new Date().toISOString(), browser: navigator.userAgent, online: navigator.onLine, results: [] };
     for (const [name, run] of tests) {
       const t0 = Date.now();
       try {
         const r = await run();
-        out.results.push({ test: name, status: r.status, ms: Date.now() - t0 });
+        const d = await describe(r);
+        out.results.push({ test: name, status: d.status, type: d.type, snippet: d.snippet, ms: Date.now() - t0 });
       } catch (e) {
         out.results.push({ test: name, error: String(e && e.message ? e.message : e), ms: Date.now() - t0 });
       }
@@ -142,7 +151,7 @@ export default function SettingsPanel({ config, onClose }) {
               {connResult.results.map((r) => (
                 <tr key={r.test} style={{ borderTop: "1px solid var(--line)" }}>
                   <td style={{ padding: "6px 4px" }}>{r.test}</td>
-                  <td style={{ padding: "6px 4px", color: r.error ? "var(--danger)" : "var(--success)", whiteSpace: "nowrap" }}>{r.error ? `✗ ${r.error}` : `✓ ${r.status}`}</td>
+                  <td style={{ padding: "6px 4px", color: r.error ? "var(--danger)" : "var(--success)" }}>{r.error ? `✗ ${r.error}` : `✓ ${r.status}${r.type ? ` ${r.type}` : ""}${r.snippet ? ` — ${r.snippet}` : ""}`}</td>
                   <td style={{ padding: "6px 4px", color: "var(--silver)", whiteSpace: "nowrap" }}>{r.ms} ms</td>
                 </tr>
               ))}
