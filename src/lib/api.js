@@ -3,16 +3,12 @@ import { keyHeaders } from "./keys.js";
 
 const BASE = "/.netlify/functions";
 
-// Optional: a dedicated long-running image service (e.g. Render.com) that
-// isn't subject to Netlify's 10s function timeout. Set VITE_IMAGE_API_URL at
-// build time to its /generate-image URL. If unset, we fall back to Netlify.
-const IMAGE_API_URL = (import.meta.env && import.meta.env.VITE_IMAGE_API_URL) || "";
-// Optional single-call storyboard endpoint on the same long-running service.
-// Derived from the image URL by default (…/generate-image → …/generate-storyboard),
-// or set VITE_STORYBOARD_API_URL explicitly.
-const STORYBOARD_API_URL =
-  (import.meta.env && import.meta.env.VITE_STORYBOARD_API_URL) ||
-  (IMAGE_API_URL ? IMAGE_API_URL.replace(/generate-image\/?$/, "generate-storyboard") : "");
+// The old external "long-running image service" (VITE_IMAGE_API_URL, a
+// Render.com box) is retired: Netlify background functions now handle the
+// long jobs. The variable is deliberately ignored so a stale value left in
+// Netlify's environment can never route image requests off-site again.
+const IMAGE_API_URL = "";
+const STORYBOARD_API_URL = "";
 
 async function postTo(url, payload) {
   let resp;
