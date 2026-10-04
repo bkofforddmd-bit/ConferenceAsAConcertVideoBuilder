@@ -22,7 +22,9 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
     // The library groups songs by this field as "April 2008" — the conference, not the session name.
     session: conferenceLabel(talkMeta),
     talkUrl: (talkMeta && talkMeta.sourceUrl) || "",
-    style: (active && active.style) || (styleBible && styleBible.musicDirection && styleBible.musicDirection.genre) || styleReference || "",
+    // Left blank on purpose: the Studio's style text describes the lyric
+    // direction, not necessarily how the finished recording sounds.
+    style: "",
     theme: "",
     blurb: "",
   });
@@ -121,7 +123,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
           <label className="field" style={{ margin: 0 }}><span className="lbl">Talk</span><input type="text" value={f.talk} onChange={up("talk")} /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Conference (month &amp; year) <span className="note" style={{ margin: 0, display: "inline" }}>— the library groups by this</span></span><input type="text" value={f.session} onChange={up("session")} placeholder="October 2025" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Talk link</span><input type="text" value={f.talkUrl} onChange={up("talkUrl")} /></label>
-          <label className="field" style={{ margin: 0 }}><span className="lbl">Musical style</span><input type="text" value={f.style} onChange={up("style")} /></label>
+          <label className="field" style={{ margin: 0 }}><span className="lbl">Musical style (optional)</span><input type="text" value={f.style} onChange={up("style")} placeholder="Leave blank, or describe the actual sound" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Theme (optional)</span><input type="text" value={f.theme} onChange={up("theme")} placeholder="e.g. Faith, Endurance" /></label>
           <label className="field" style={{ margin: 0 }}><span className="lbl">Blurb (optional)</span><input type="text" value={f.blurb} onChange={up("blurb")} placeholder="One sentence about the song" /></label>
         </div>
