@@ -303,6 +303,34 @@ export default function App() {
     setSceneSnap(merged);
     setRestoreState({ ...merged, _loadedAt: Date.now() });
   }
+  // Scene numbers changed (a scene was inserted or deleted): re-key every map
+  // that hangs off a scene number — clips, and the timeline's starts, line
+  // times, extra shots, motion, weights and camera paths (keys are "n" or
+  // "n:extra:id"). mapNum(old) → new number, or null when the scene is gone.
+  function remapSceneKeys(obj, mapNum) {
+    const out = {};
+    for (const [k, v] of Object.entries(obj || {})) {
+      const m = /^(\d+)(.*)$/.exec(k);
+      if (!m) { out[k] = v; continue; }
+      const nn = mapNum(Number(m[1]));
+      if (nn == null) continue;
+      out[String(nn) + m[2]] = v;
+    }
+    return out;
+  }
+  function renumberScenes(mapNum) {
+    setClips((prev) => remapSceneKeys(prev, mapNum));
+    setTimeline((tl) => ({
+      ...tl,
+      starts: remapSceneKeys(tl.starts, mapNum),
+      lineStarts: remapSceneKeys(tl.lineStarts, mapNum),
+      extras: remapSceneKeys(tl.extras, mapNum),
+      motion: remapSceneKeys(tl.motion, mapNum),
+      weight: remapSceneKeys(tl.weight, mapNum),
+      path: remapSceneKeys(tl.path, mapNum),
+      syncFor: "",
+    }));
+  }
   function setSceneLyrics(map) {
     patchSceneState((s) => ({ ...s, scenes: (s.scenes || []).map((sc) => (map[sc.sceneNumber] != null ? { ...sc, lyrics: map[sc.sceneNumber] } : sc)) }));
   }
@@ -518,6 +546,7 @@ export default function App() {
               talkMeta={talkMeta}
               restoreState={restoreState}
               onStateChange={onSceneStateChange}
+              onRenumber={renumberScenes}
             />
             {done.scenes && (
               <div className="row end" style={{ marginBottom: 20 }}>

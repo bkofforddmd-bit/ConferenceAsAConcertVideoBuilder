@@ -14,7 +14,7 @@ import {
 } from "../lib/api.js";
 import { downloadFullPortrait, fullPortraitUrlFor, loadPortraits } from "./SpeakerFace.jsx";
 
-export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, onStateChange }) {
+export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, onStateChange, onRenumber }) {
   const [portraitAvail, setPortraitAvail] = useState(false);
   const [portraitMsg, setPortraitMsg] = useState("");
   const [portraitBusy, setPortraitBusy] = useState(false);
@@ -351,11 +351,52 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
       setImages((p) => shiftKeyedUp(p, afterNum));
       setSaved((p) => shiftKeyedUp(p, afterNum));
       setEditNotes((p) => shiftKeyedUp(p, afterNum));
+      if (onRenumber) onRenumber((n) => (n > afterNum ? n + 1 : n));
     } catch (e) {
       setError(`Add scene: ${e.message}`);
     } finally {
       setPerSceneBusy((p) => ({ ...p, [`ins-${afterNum}`]: false }));
     }
+  }
+
+  // Delete a scene (second click confirms). Later scenes move up one number and
+  // everything keyed by scene number — images, saved copies, notes, clips,
+  // timeline — follows them.
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  function deleteScene(num) {
+    if (confirmDelete !== num) {
+      setConfirmDelete(num);
+      setTimeout(() => setConfirmDelete((c) => (c === num ? null : c)), 4000);
+      return;
+    }
+    setConfirmDelete(null);
+    const down = (obj) => {
+      const out = {};
+      Object.keys(obj || {}).forEach((k) => {
+        const n = Number(k);
+        if (n === num) return;
+        out[n > num ? n - 1 : n] = obj[k];
+      });
+      return out;
+    };
+    setScenes((prev) => {
+      const gone = prev.find((s) => s.sceneNumber === num);
+      const rest = prev.filter((s) => s.sceneNumber !== num).sort((a, b) => a.sceneNumber - b.sceneNumber);
+      // Keep the song covered: the deleted scene's lyric lines move to the
+      // scene before it (or the one after, when the first scene goes).
+      const words = String((gone && gone.lyrics) || "").trim();
+      if (words && rest.length) {
+        const prevIdx = rest.findIndex((s) => s.sceneNumber > num) === -1 ? rest.length - 1 : rest.findIndex((s) => s.sceneNumber > num) - 1;
+        const target = rest[prevIdx >= 0 ? prevIdx : 0];
+        const joined = [String(target.lyrics || "").trim(), words].filter(Boolean);
+        target.lyrics = prevIdx >= 0 ? joined.join("\n") : [words, String(target.lyrics || "").trim()].filter(Boolean).join("\n");
+      }
+      return rest.map((s) => (s.sceneNumber > num ? { ...s, sceneNumber: s.sceneNumber - 1 } : { ...s }));
+    });
+    setImages(down);
+    setSaved(down);
+    setEditNotes(down);
+    if (onRenumber) onRenumber((n) => (n === num ? null : n > num ? n - 1 : n));
   }
 
   function referenceFor(sceneNumber) {
@@ -1732,7 +1773,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
               </button>
             </div>
 
-            <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
+            <div className="row" style={{ justifyContent: "center", marginTop: 6, gap: 8, flexWrap: "wrap" }}>
               <button
                 className="btn btn-ghost insert-scene"
                 onClick={() => insertSceneAfter(scene.sceneNumber)}
@@ -1741,6 +1782,17 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
               >
                 {perSceneBusy[`ins-${scene.sceneNumber}`] && <span className="spinner" />}
                 + Add transition scene after Scene {scene.sceneNumber}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: confirmDelete === scene.sceneNumber ? "#fff" : "var(--danger)", background: confirmDelete === scene.sceneNumber ? "var(--danger)" : undefined }}
+                onClick={() => deleteScene(scene.sceneNumber)}
+                disabled={sceneBusy}
+                title="Remove this scene from the storyboard; later scenes move up one number"
+              >
+                {confirmDelete === scene.sceneNumber
+                  ? `Click again to delete Scene ${scene.sceneNumber}`
+                  : scene.isTransition ? "🗑 Delete transition" : "🗑 Delete scene"}
               </button>
             </div>
           </div>
