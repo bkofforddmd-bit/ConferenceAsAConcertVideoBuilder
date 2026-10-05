@@ -20,12 +20,13 @@ function useScale(stats) {
 
 // One small chart: a filled line (series) or stacked areas (stack), with a
 // timeframe band, hover columns and click-to-pick-year.
-function MiniChart({ stats, scale, height, title, unit, series, stack, timeframe, onPickYear, tooltip, format = fmt }) {
+function MiniChart({ stats, scale, height, title, unit, series, stack, stackOf, timeframe, onPickYear, tooltip, format = fmt }) {
   const H = height, B = 22, plotH = H - T - B;
   const rows = stats.years;
   const [from, to] = timeframeYears(stats, timeframe) || [scale.min, scale.max];
+  // stackOf(year) → { region: value } for stacked charts
   const values = stack
-    ? rows.map((y) => { const t = stats.templesByYear.find((x) => x.year === y.year); return t ? t.total : 0; })
+    ? rows.map((y) => { const r = stackOf(y.year) || {}; return Object.values(r).reduce((a, v) => a + (v || 0), 0); })
     : rows.map((y) => series(y));
   const maxV = Math.max(1, ...values.filter((v) => v != null));
   const yOf = (v) => T + plotH - (v / maxV) * plotH;
@@ -38,7 +39,7 @@ function MiniChart({ stats, scale, height, title, unit, series, stack, timeframe
     const acc = rows.map(() => 0);
     shapes = regions.map((r) => {
       const lower = acc.slice();
-      rows.forEach((y, i) => { const t = stats.templesByYear.find((x) => x.year === y.year); acc[i] += t ? (t.byRegion[r] || 0) : 0; });
+      rows.forEach((y, i) => { const row = stackOf(y.year) || {}; acc[i] += row[r] || 0; });
       const top = rows.map((y, i) => `${scale.x(y.year) + scale.bw / 2},${yOf(acc[i])}`);
       const bottom = rows.map((y, i) => `${scale.x(y.year) + scale.bw / 2},${yOf(lower[i])}`).reverse();
       return <polygon key={r} points={[...top, ...bottom].join(" ")} fill={REGION_COLORS[r]} opacity="0.85"><title>{r}</title></polygon>;
@@ -92,6 +93,9 @@ export default function ChurchGrowth({ stats, timeframe, onPickYear }) {
   const ya = stats.years.find((y) => y.year === from), yb = stats.years.find((y) => y.year === to);
   const ta = stats.templesByYear.find((t) => t.year === from), tb = stats.templesByYear.find((t) => t.year === to);
   const temp = (year) => stats.templesByYear.find((t) => t.year === year);
+  const mbr = (year) => (stats.membersByRegion || {})[year] || null;
+  const hasMbr = !!stats.membersByRegion;
+  const ma = mbr(from), mb = mbr(to);
   const memTotal = Object.values(stats.membersByRegion2025).reduce((a, b) => a + b, 0);
   const future = {};
   for (const f of stats.templesFuture) future[f.region] = (future[f.region] || 0) + 1;
@@ -115,11 +119,17 @@ export default function ChurchGrowth({ stats, timeframe, onPickYear }) {
             <Stat label="Stakes" a={ya?.stakes} b={yb?.stakes} from={from} to={to} />
           </div>
 
-          <MiniChart stats={stats} scale={scale} height={150} title="Membership" unit="total members at year end" timeframe={timeframe} onPickYear={onPickYear}
-            series={(y) => y.members} tooltip={(y, v) => `${y.year}: ${fmt(v)} members${y.converts ? ` · ${fmt(y.converts)} converts baptized` : ""} — click to study ${y.year}`} />
+          {hasMbr ? (
+            <MiniChart stats={stats} scale={scale} height={170} title="Membership by region" unit="stacked; approximate regional split, exact Church total" timeframe={timeframe} onPickYear={onPickYear}
+              stack stackOf={(year) => mbr(year)}
+              tooltip={(y) => { const r = mbr(y.year); return `${y.year}: ${fmt(y.members)} members` + (r ? ` — ${stats.regions.map((k) => `${k} ${fmtM(r[k] || 0)} (${Math.round(((r[k] || 0) / y.members) * 100)}%)`).join(", ")}` : "") + (y.converts ? ` · ${fmt(y.converts)} converts baptized` : "") + ` — click to study ${y.year}`; }} />
+          ) : (
+            <MiniChart stats={stats} scale={scale} height={150} title="Membership" unit="total members at year end" timeframe={timeframe} onPickYear={onPickYear}
+              series={(y) => y.members} tooltip={(y, v) => `${y.year}: ${fmt(v)} members${y.converts ? ` · ${fmt(y.converts)} converts baptized` : ""} — click to study ${y.year}`} />
+          )}
           <MiniChart stats={stats} scale={scale} height={130} title="Full-time missionaries" unit="serving at year end (not published before 1977)" timeframe={timeframe} onPickYear={onPickYear}
             series={(y) => y.missionaries} tooltip={(y, v) => `${y.year}: ${v == null ? "not published" : fmt(v) + " missionaries"} · ${fmt(y.missions)} missions — click to study ${y.year}`} />
-          <MiniChart stats={stats} scale={scale} height={170} title="Operating temples by region" unit="stacked; includes temples closed for renovation" timeframe={timeframe} onPickYear={onPickYear} stack
+          <MiniChart stats={stats} scale={scale} height={170} title="Operating temples by region" unit="stacked; includes temples closed for renovation" timeframe={timeframe} onPickYear={onPickYear} stack stackOf={(year) => temp(year)?.byRegion}
             tooltip={(y, v) => { const t = temp(y.year); return `${y.year}: ${v} temples` + (t ? ` — ${stats.regions.map((r) => `${r} ${t.byRegion[r] || 0}`).join(", ")}` : "") + ` — click to study ${y.year}`; }} />
           <div className="topic-timeline-legend" style={{ marginTop: 4 }}>
             {stats.regions.map((r) => <span key={r}><i className="sw" style={{ background: REGION_COLORS[r] }} /> {r}</span>)}
@@ -129,19 +139,21 @@ export default function ChurchGrowth({ stats, timeframe, onPickYear }) {
             <div className="cg-where-title">Where the growth is</div>
             <table className="cg-table">
               <thead>
-                <tr><th>Region</th><th>Temples {from}</th><th>Temples {to}</th><th>Added</th><th>Announced / building</th><th>Members (2025)</th></tr>
+                <tr><th>Region</th><th>Temples {from}</th><th>Temples {to}</th><th>Added</th><th>Announced / building</th>{hasMbr && from !== to && <th>Members {from}</th>}<th>Members {hasMbr ? to : "(2025)"}</th>{hasMbr && from !== to && <th>Growth</th>}</tr>
               </thead>
               <tbody>
                 {stats.regions
-                  .map((r) => ({ r, a: ta?.byRegion[r] || 0, b: tb?.byRegion[r] || 0, f: future[r] || 0, m: stats.membersByRegion2025[r] || 0 }))
-                  .sort((x, y) => (y.b - y.a) - (x.b - x.a) || y.m - x.m)
-                  .map(({ r, a, b, f, m }) => (
+                  .map((r) => ({ r, a: ta?.byRegion[r] || 0, b: tb?.byRegion[r] || 0, f: future[r] || 0, m: hasMbr ? (mb?.[r] || 0) : (stats.membersByRegion2025[r] || 0), m0: hasMbr ? (ma?.[r] || 0) : null }))
+                  .sort((x, y) => (hasMbr && from !== to ? (y.m - y.m0) - (x.m - x.m0) : (y.b - y.a) - (x.b - x.a)) || y.m - x.m)
+                  .map(({ r, a, b, f, m, m0 }) => (
                     <tr key={r}>
                       <td><i className="sw" style={{ background: REGION_COLORS[r] }} /> {r}</td>
                       <td>{a}</td><td>{b}</td>
                       <td className={b - a > 0 ? "pos" : ""}>{b - a > 0 ? `+${b - a}` : "—"}</td>
                       <td>{f || "—"}</td>
-                      <td>{fmt(m)} <span className="note" style={{ margin: 0 }}>({Math.round((m / memTotal) * 100)}%)</span></td>
+                      {hasMbr && from !== to && <td>{fmt(m0)} <span className="note" style={{ margin: 0 }}>({Math.round((m0 / (ya?.members || 1)) * 100)}%)</span></td>}
+                      <td>{fmt(m)} <span className="note" style={{ margin: 0 }}>({Math.round((m / (hasMbr ? (yb?.members || 1) : memTotal)) * 100)}%)</span></td>
+                      {hasMbr && from !== to && <td className={m - m0 > 0 ? "pos" : ""}>{m0 ? `+${fmt(m - m0)} (${m - m0 >= 0 ? "+" : ""}${Math.round(((m - m0) / m0) * 100)}%)` : "—"}</td>}
                     </tr>
                   ))}
               </tbody>
@@ -155,9 +167,10 @@ export default function ChurchGrowth({ stats, timeframe, onPickYear }) {
               </details>
             )}
             <p className="note" style={{ marginTop: 6 }}>
-              Membership by region is a 2025 snapshot — the Church's reports don't publish historical membership by region, so temples (which follow membership)
-              are the best year-by-year signal of where growth happened. Sources: the Church's annual statistical reports 1971–2025 and temple dedication records.
-              Click any year to study it.
+              {hasMbr
+                ? "Regional membership is approximate: the Church's reports give only a world total, so the split comes from Church Almanac country figures at roughly ten-year points, interpolated between them, with North America as the remainder. Temple counts and the Church totals are exact."
+                : "Membership by region is a 2025 snapshot — the Church's reports don't publish historical membership by region."}
+              {" "}Sources: the Church's annual statistical reports 1971–2025, temple dedication records, and Deseret News Church Almanac country figures. Click any year to study it.
             </p>
           </div>
         </>

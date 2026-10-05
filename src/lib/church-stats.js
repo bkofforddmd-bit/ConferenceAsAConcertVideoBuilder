@@ -64,6 +64,11 @@ export function statsBlock(stats, fromYear, toYear) {
     const growth = stats.regions.map((r) => [r, (tb.byRegion[r] || 0) - (ta.byRegion[r] || 0)]).filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1]);
     if (growth.length) out.push(`Temples added by region: ${growth.map(([r, n]) => `${r} +${n}`).join(", ")}`);
   }
+  const ma = stats.membersByRegion?.[a.year], mb = stats.membersByRegion?.[b.year];
+  if (ma && mb) {
+    const parts = stats.regions.map((r) => `${r} ${fmtM(ma[r] || 0)} → ${fmtM(mb[r] || 0)}`);
+    out.push(`Membership by region (approximate, from Church Almanac country figures): ${parts.join("; ")}`);
+  }
   const ded = stats.templesDedicated.filter((d) => d.year >= a.year && d.year <= b.year);
   if (ded.length) {
     const byYear = new Map();
