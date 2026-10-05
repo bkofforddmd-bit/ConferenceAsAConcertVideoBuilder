@@ -574,6 +574,8 @@ export default function App() {
               onContinue={() => setStep("export")}
               onSetCardImage={setCardImage}
               onSetSceneLyrics={setSceneLyrics}
+              talkMeta={talkMeta}
+              talkText={talkText}
             />
           )}
 

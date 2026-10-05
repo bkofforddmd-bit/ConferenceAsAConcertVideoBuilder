@@ -224,6 +224,30 @@ export const videoStart = (payload) => post("video-start", payload);
 export const videoStatus = (jobId) => post("video-status", { jobId });
 
 // Poll a job until it completes. `onTick` gets each status reply.
+// ---- opening / closing clips: the talk's official recording ----
+export async function resolveTalkMedia(url) {
+  return post("fetch-audio", { url });
+}
+export const proxiedMediaUrl = (src) => `${BASE}/fetch-media?src=${encodeURIComponent(src)}`;
+export async function jobStatus(jobId) {
+  const r = await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`);
+  return r.json();
+}
+// Gemini listens to the talk and pins where each paragraph starts (background job; poll jobStatus).
+export async function talkTimesStart({ audioUrl, paragraphs }) {
+  const jobId = "tt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+  const resp = await withRetry(() => fetch(`${BASE}/talk-times-background`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...keyHeaders() },
+    body: JSON.stringify({ jobId, audioUrl, paragraphs }),
+  }), "talk-times-background");
+  if (resp.status !== 202 && resp.status !== 200) {
+    const d = await resp.json().catch(() => ({}));
+    throw new Error(d.error || `The timing job couldn't start (${resp.status}).`);
+  }
+  return jobId;
+}
+
 export async function pollJob(statusFn, jobId, { intervalMs = 5000, timeoutMs = 15 * 60 * 1000, onTick, signal } = {}) {
   const started = Date.now();
   let delay = intervalMs;

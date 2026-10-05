@@ -13,6 +13,7 @@ const ALLOWED = [
   /^https:\/\/([a-z0-9-]+\.)*googleusercontent\.com\//i,
   /^https:\/\/([a-z0-9-]+\.)*storage\.googleapis\.com\//i,
   /^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//i,
+  /^https:\/\/assets\.churchofjesuschrist\.org\//i, // official talk recordings (no CORS upstream)
 ];
 
 export default async (req) => {
@@ -42,5 +43,7 @@ export default async (req) => {
     if (v) out.set(h, v);
   }
   out.set("cache-control", "private, max-age=3600");
+  out.set("access-control-allow-origin", "*");
+  out.set("access-control-expose-headers", "content-length, content-range, accept-ranges");
   return new Response(upstream.body, { status: upstream.status, headers: out });
 };

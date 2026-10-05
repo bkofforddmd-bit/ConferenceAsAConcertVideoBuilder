@@ -370,11 +370,51 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     srcNode.connect(dest);
     cleanups.push(() => { try { actx.close(); } catch {} });
 
+    // Opening / closing clips play with their own sound through the same
+    // recording graph, before and after the song.
+    const bookends = plan.bookends || {};
+    const prepClip = async (clip) => {
+      if (!clip || !clip.src) return null;
+      const el = await loadVideo(clip.src);
+      const node = actx.createMediaElementSource(el);
+      node.connect(dest);
+      const inAt = Math.max(0, Number(clip.in) || 0);
+      const outAt = Number(clip.out) > inAt ? Number(clip.out) : (Number.isFinite(el.duration) ? el.duration : inAt);
+      return { el, inAt, outAt, len: Math.max(0, outAt - inAt) };
+    };
+    let pre = null, post = null;
+    try { pre = await prepClip(bookends.pre); } catch { pre = null; }
+    try { post = await prepClip(bookends.post); } catch { post = null; }
+    const grand = (pre ? pre.len : 0) + total + (post ? post.len : 0);
+    const stamp = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
     const canvas = previewCanvas || document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d", { alpha: false });
     const stream = canvas.captureStream(fps);
     for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+
+    // Play one bookend clip from in→out, drawing it full-frame with a short
+    // fade at both ends. offset = seconds of output already recorded.
+    const playClipPhase = (clip, offset, label) => new Promise((resolve, reject) => {
+      const { el, inAt, outAt } = clip;
+      const fade = 0.4;
+      const draw = () => {
+        if (cancelled) { reject(new Error("Cancelled.")); return; }
+        const t = el.currentTime;
+        if (t >= outAt - 0.04 || el.ended) { el.pause(); resolve(); return; }
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+        drawCover(ctx, el, W, H);
+        const a = Math.min(1, (t - inAt) / fade, (outAt - t) / fade);
+        if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, a)})`; ctx.fillRect(0, 0, W, H); }
+        const done = offset + (t - inAt);
+        if (done - lastProgressAt >= 0.25) { lastProgressAt = done; onProgress?.(done / grand, `${label} · ${stamp(done)} of ${stamp(grand)}`); }
+        raf = requestAnimationFrame(draw);
+      };
+      const begin = () => { el.removeEventListener("seeked", begin); el.play().then(() => { raf = requestAnimationFrame(draw); }).catch(reject); };
+      el.addEventListener("seeked", begin);
+      el.currentTime = inAt;
+    });
 
     const chunks = [];
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: plan.bitrate || 4_000_000, audioBitsPerSecond: 192_000 });
@@ -389,13 +429,20 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     await actx.resume();
     rec.start(1000);
     const t0 = performance.now();
-    audioEl.currentTime = 0;
-    await audioEl.play();
 
     let raf = 0;
     cleanups.push(() => cancelAnimationFrame(raf));
     const fadeSec = 0.6;
     let lastProgressAt = -1;
+    const songOffset = pre ? pre.len : 0;
+
+    if (pre) {
+      await playClipPhase(pre, 0, "Opening clip");
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    audioEl.currentTime = 0;
+    await audioEl.play();
 
     await new Promise((resolve, reject) => {
       const frame = () => {
@@ -455,9 +502,9 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
         drawWatermark(ctx, plan.watermark, W, H);
         // Progress updates re-render the studio UI, so report at most 4×/s —
         // not on every frame — to keep the capture loop smooth.
-        if (t - lastProgressAt >= 0.25) {
-          lastProgressAt = t;
-          onProgress?.(t / total, `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")} of ${Math.floor(total / 60)}:${String(Math.floor(total % 60)).padStart(2, "0")}`);
+        if (songOffset + t - lastProgressAt >= 0.25) {
+          lastProgressAt = songOffset + t;
+          onProgress?.((songOffset + t) / grand, `${stamp(t)} of ${stamp(total)} (song)${grand > total ? ` · ${stamp(songOffset + t)} of ${stamp(grand)} total` : ""}`);
         }
         raf = requestAnimationFrame(frame);
       };
@@ -467,8 +514,15 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
 
     // Tail: hold the last frame a beat so the end card isn't clipped.
     await new Promise((r) => setTimeout(r, 400));
-    rec.stop();
     audioEl.pause();
+    if (post) {
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      await new Promise((r) => setTimeout(r, 250));
+      await playClipPhase(post, songOffset + total, "Closing clip");
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    rec.stop();
     await done;
     cleanup();
     const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
@@ -476,6 +530,48 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
   })().catch((e) => { cleanup(); throw e; });
 
   return { promise, cancel: () => { cancelled = true; } };
+}
+
+// Record a start→end slice of a video element's playback (picture + sound)
+// into a local clip. Used for the closing clip cut from the talk's official
+// video (served through our proxy so the frames are readable). Real time.
+export function captureClip({ src, start, end, onProgress }) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const mime = pickRenderMime();
+      if (!mime) throw new Error("This browser can't record video — use Chrome or Edge.");
+      const el = document.createElement("video");
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      el.muted = false;
+      el.volume = 0; // silent to the room; the stream still carries the sound
+      el.playsInline = true;
+      el.src = src;
+      await new Promise((res, rej) => { el.onloadedmetadata = res; el.onerror = () => rej(new Error("The video couldn't be loaded.")); });
+      const inAt = Math.max(0, Number(start) || 0);
+      const outAt = Math.min(Number.isFinite(el.duration) ? el.duration : 1e9, Number(end) || 0);
+      if (!(outAt > inAt)) throw new Error("The end must come after the start.");
+      await new Promise((res) => { el.onseeked = res; el.currentTime = inAt; });
+      const stream = el.captureStream ? el.captureStream() : el.mozCaptureStream();
+      const chunks = [];
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 160_000 });
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        el.pause();
+        const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+        resolve({ blob: new Blob(chunks, { type: mime.split(";")[0] }), ext, duration: outAt - inAt });
+      };
+      rec.start(500);
+      await el.play();
+      const tick = () => {
+        const t = el.currentTime;
+        onProgress?.(Math.min(1, (t - inAt) / (outAt - inAt)));
+        if (t >= outAt - 0.04 || el.ended) { try { rec.stop(); } catch { resolve({ blob: new Blob(chunks), ext: "webm", duration: outAt - inAt }); } return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    } catch (e) { reject(e); }
+  });
 }
 
 // Even split helper: scene timings proportional to lyric word counts.

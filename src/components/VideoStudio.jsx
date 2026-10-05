@@ -15,6 +15,7 @@ import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
 import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
+import Bookends from "./Bookends.jsx";
 import PathEditor from "./PathEditor.jsx";
 
 function fmt(sec) {
@@ -111,7 +112,7 @@ function motionPromptFor(scene) {
 export default function VideoStudio({
   projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
-  config, onContinue, onSetCardImage, onSetSceneLyrics,
+  config, onContinue, onSetCardImage, onSetSceneLyrics, talkMeta, talkText,
 }) {
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
@@ -141,6 +142,26 @@ export default function VideoStudio({
     })();
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [songVersion && songVersion.mediaKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // opening / closing clip object urls
+  const tlBook = (timeline && timeline.bookends) || {};
+  const bookendKeys = `${(tlBook.pre && tlBook.pre.mediaKey) || ""}|${(tlBook.post && tlBook.post.mediaKey) || ""}`;
+  const [bookendUrls, setBookendUrls] = useState({});
+  useEffect(() => {
+    const urls = [];
+    (async () => {
+      const out = {};
+      for (const kind of ["pre", "post"]) {
+        const c = tlBook[kind];
+        if (!c || !c.mediaKey) continue;
+        const rec = await getMedia(c.mediaKey);
+        if (!rec) continue;
+        const u = URL.createObjectURL(rec.blob); urls.push(u); out[kind] = u;
+      }
+      setBookendUrls(out);
+    })();
+    return () => { for (const u of urls) URL.revokeObjectURL(u); };
+  }, [bookendKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // clip object urls
   const ordered = useMemo(() => (scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber), [scenes]);
@@ -579,8 +600,13 @@ export default function VideoStudio({
     setRenderPct(0);
     const watermark = "";
     const q = QUALITIES.find((x) => x.id === quality) || QUALITIES[0];
+    const be = tl.bookends || {};
+    const bookends = {
+      pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out } : null,
+      post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out } : null,
+    };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark, bookends },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -878,10 +904,18 @@ export default function VideoStudio({
         )}
       </div>
 
+      {/* ---------------- OPENING / CLOSING CLIPS ---------------- */}
+      <div className="video-card" style={{ marginTop: 14 }}>
+        <div className="panel-head">
+          <h3>3 · Opening & closing clips <span className="chip">optional</span></h3>
+        </div>
+        <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} />
+      </div>
+
       {/* ---------------- RENDER ---------------- */}
       <div className="video-card" style={{ marginTop: 14 }}>
         <div className="panel-head">
-          <h3>3 · Render the music video</h3>
+          <h3>4 · Render the music video</h3>
           <div className="row" style={{ gap: 8 }}>
             <select value={quality} onChange={(e) => setQuality(e.target.value)} disabled={rendering} title="Picture size and file size. 'Web' is plenty for the library and YouTube; 'high' for archiving.">
               {QUALITIES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
