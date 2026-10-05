@@ -14,7 +14,7 @@ import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from ".
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
 import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
-import { parseSync, deriveSceneTiming } from "../lib/lyric-sync.js";
+import { parseSync, deriveSceneTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import PathEditor from "./PathEditor.jsx";
 
 function fmt(sec) {
@@ -111,7 +111,7 @@ function motionPromptFor(scene) {
 export default function VideoStudio({
   projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
-  config, onContinue, onSetCardImage,
+  config, onContinue, onSetCardImage, onSetSceneLyrics,
 }) {
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
@@ -294,9 +294,26 @@ export default function VideoStudio({
     setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, lyricsMode: "one", syncFor: syncKey });
   }
   // A new or changed sync times the video automatically (once per sync).
+  const sceneLyricsKey = ordered.map((s) => sceneLineList(s.lyrics).length).join(",");
   useEffect(() => {
     if (songSync && totalSec && ordered.length && tl.syncFor !== syncKey) applySync();
-  }, [syncKey, totalSec, ordered.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [syncKey, totalSec, ordered.length, sceneLyricsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- lyric balance: does each scene carry a fair share of the sung lines? ----
+  const balance = useMemo(() => lyricBalance(ordered, lyrics), [ordered, lyrics]);
+  function spreadLyrics() {
+    if (!onSetSceneLyrics || !ordered.length) return;
+    const parts = partitionLyrics(lyrics, ordered.length);
+    const map = {};
+    ordered.forEach((sc, i) => { map[sc.sceneNumber] = parts[i] || ""; });
+    onSetSceneLyrics(map);
+    // Timing is rebuilt from the new split: from the sync when there is one, else evenly.
+    if (songSync && totalSec) setTimeline({ ...tl, lineStarts: {}, syncFor: "" });
+    else if (totalSec) {
+      const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro: tl.includeIntro !== false, hasOutro: tl.includeOutro !== false });
+      setTimeline({ ...tl, starts, lineStarts: {} });
+    }
+  }
 
   function autoTime() {
     if (!totalSec) return;
@@ -416,7 +433,7 @@ export default function VideoStudio({
   const lineList = useMemo(() => {
     const out = [];
     for (const s of ordered) {
-      const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
+      const lines = sceneLineList(s.lyrics);
       lines.forEach((text, i) => out.push({ scene: s.sceneNumber, i, n: lines.length, text }));
     }
     return out;
@@ -720,6 +737,9 @@ export default function VideoStudio({
               </button>
             )}
             <button className="btn btn-ghost btn-sm" onClick={autoTime} disabled={!totalSec}>Auto-time by lyrics</button>
+            {onSetSceneLyrics && !balance.lopsided && !balance.sparse && (
+              <button className="btn btn-ghost btn-sm" onClick={spreadLyrics} disabled={!ordered.length} title="Re-divide the song's lyric lines evenly across the scenes, in order (images stay)">Spread lyrics evenly</button>
+            )}
             {tapIdx < 0 && lineTapIdx < 0 && (
               <>
                 <button className="btn btn-ghost btn-sm" onClick={startTap} disabled={!audioUrl || !ordered.length} title="Play the song and tap 'Next scene' each time the next scene should begin">▶ Tap scenes</button>
@@ -738,6 +758,20 @@ export default function VideoStudio({
           </div>
         </div>
         <audio ref={tapAudioRef} src={audioUrl || undefined} onTimeUpdate={(e) => setTapTime(e.target.currentTime)} onEnded={() => { if (lineTapIdx >= 0) finishLineTap(); }} style={{ display: "none" }} />
+        {(balance.lopsided || balance.sparse) && onSetSceneLyrics && (
+          <div className="music-card" style={{ margin: "10px 0", borderColor: "var(--warning)" }}>
+            <div className="note" style={{ margin: "0 0 8px" }}>
+              {balance.lopsided
+                ? <><strong>Uneven lyric split.</strong> Scene {balance.max.scene} holds {balance.max.lines} of the {balance.total} lyric lines the scenes cover, so once timing follows the lyrics it stays on screen for most of the song.</>
+                : <><strong>The scenes only quote {balance.total} of the song's {balance.sung} sung lines</strong>, so timing and on-screen lyrics can't cover the whole song.</>}
+              {" "}Spread the lyrics evenly across all {ordered.length} scenes (contiguous, in song order, cut at stanza breaks where possible) — scene images and descriptions stay as they are.
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-primary btn-sm" onClick={spreadLyrics}>Spread lyrics evenly across scenes</button>
+              <span className="note" style={{ margin: 0 }}>Lines per scene now: {balance.counts.map((c) => `${c.scene}: ${c.lines}`).join(" · ")}</span>
+            </div>
+          </div>
+        )}
         {lineTapIdx >= 0 && lineList[lineTapIdx] && (
           <div className="music-card" style={{ margin: "10px 0", borderColor: "var(--success)" }}>
             <div className="note" style={{ margin: "0 0 6px" }}>

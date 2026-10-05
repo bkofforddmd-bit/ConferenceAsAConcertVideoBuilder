@@ -46,6 +46,63 @@ export function fmtStamp(t) {
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+// A scene's lyric text as sung lines: newlines, or " / " and " | " separators
+// (the storyboard AI sometimes joins lines that way), labels and blanks dropped.
+export function sceneLineList(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .split(/\n|\s+\/\s+|\s+\|\s+/)
+    .map((x) => x.trim())
+    .filter((x) => x && !isSectionLine(x));
+}
+
+// How evenly the storyboard's scenes share the sung lines. A lopsided split
+// (one scene holding a huge share) makes that scene sit on screen for most of
+// the song once timing follows the lyrics.
+export function lyricBalance(scenes, fullLyrics) {
+  const ordered = (scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+  const counts = ordered.map((sc) => ({ scene: sc.sceneNumber, lines: sceneLineList(sc.lyrics).length }));
+  const sung = singableIndices(lyricLines(fullLyrics)).length;
+  const total = counts.reduce((a, c) => a + c.lines, 0);
+  const max = counts.reduce((m, c) => (c.lines > m.lines ? c : m), { scene: null, lines: 0 });
+  const avg = counts.length ? total / counts.length : 0;
+  const lopsided = counts.length >= 3 && total >= 6 && (max.lines > 2.5 * avg || max.lines / total > 0.4);
+  const sparse = sung > 0 && total < sung * 0.6; // scenes only quote a few lines each
+  return { counts, sung, total, max, avg, lopsided, sparse };
+}
+
+// Split the sung lines into n contiguous, near-even runs. Cuts prefer stanza
+// breaks (blank line / [Section] label) within a line of the ideal cut.
+export function partitionLyrics(fullLyrics, n) {
+  const lines = lyricLines(fullLyrics);
+  const sung = singableIndices(lines);
+  n = Math.max(1, Math.min(n, sung.length));
+  if (!sung.length) return new Array(n).fill("");
+  // positions (in sung order) after which a stanza break follows
+  const breakAfter = new Set();
+  sung.forEach((li, k) => {
+    const next = lines[li + 1];
+    if (next != null && (!next.trim() || isSectionLine(next))) breakAfter.add(k);
+  });
+  const cuts = [0];
+  const minRun = Math.max(1, Math.floor(sung.length / n));
+  for (let i = 1; i < n; i++) {
+    const prev = cuts[cuts.length - 1];
+    // share the REMAINING lines evenly among the remaining scenes
+    const ideal = prev + Math.round((sung.length - prev) / (n - i + 1));
+    let best = ideal;
+    for (const cand of [ideal, ideal + 1, ideal - 1]) {
+      if (cand - prev >= minRun && cand < sung.length && breakAfter.has(cand - 1)) { best = cand; break; }
+    }
+    best = Math.max(prev + 1, Math.min(sung.length - (n - i), best));
+    cuts.push(best);
+  }
+  cuts.push(sung.length);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(sung.slice(cuts[i], cuts[i + 1]).map((li) => lines[li].trim()).join("\n"));
+  return out;
+}
+
 // Map each storyboard scene's lyric lines onto the full lyrics' line indices
 // (in order, so repeated choruses resolve to the right occurrence) and pull
 // their times from the sync. Returns { starts, lineStarts, matched, total }.
@@ -63,7 +120,7 @@ export function deriveSceneTiming(scenes, fullLyrics, sync, totalSec = 0) {
   let matched = 0, total = 0;
 
   for (const sc of ordered) {
-    const sceneLines = String(sc.lyrics || "").split(/\n/).map((x) => x.trim()).filter((x) => x && !isSectionLine(x));
+    const sceneLines = sceneLineList(sc.lyrics);
     const times = [];
     let sceneCursor = cursor;
     for (const text of sceneLines) {

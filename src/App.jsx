@@ -303,6 +303,9 @@ export default function App() {
     setSceneSnap(merged);
     setRestoreState({ ...merged, _loadedAt: Date.now() });
   }
+  function setSceneLyrics(map) {
+    patchSceneState((s) => ({ ...s, scenes: (s.scenes || []).map((sc) => (map[sc.sceneNumber] != null ? { ...sc, lyrics: map[sc.sceneNumber] } : sc)) }));
+  }
   function setCardImage(kind, dataUrl) {
     patchSceneState((s) => ({ ...s, endcards: { ...(s.endcards || {}), [kind]: { ...((s.endcards || {})[kind] || {}), image: dataUrl } } }));
   }
@@ -541,6 +544,7 @@ export default function App() {
               config={config}
               onContinue={() => setStep("export")}
               onSetCardImage={setCardImage}
+              onSetSceneLyrics={setSceneLyrics}
             />
           )}
 
