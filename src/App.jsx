@@ -172,7 +172,19 @@ export default function App() {
   }
 
   // ---- talk chosen in the Library ----
-  function handleTalkLoaded({ text, title, speaker, speakerTitle, year, month, session, sourceUrl }) {
+  // A different talk means a new concert: the current one is saved to
+  // Projects and the lyrics / song / scenes / video pipeline starts empty.
+  // Re-choosing the same talk just refreshes its text.
+  async function handleTalkLoaded({ text, title, speaker, speakerTitle, year, month, session, sourceUrl }) {
+    const sameTalk = Boolean(talkMeta.sourceUrl && sourceUrl && talkMeta.sourceUrl === sourceUrl) ||
+      Boolean(!talkMeta.sourceUrl && talkMeta.title && title && talkMeta.title === title);
+    if (hasContent && !sameTalk) {
+      const previous = talkMeta.title || "the previous concert";
+      await saveNow();
+      resetProjectState();
+      setSaveMsg(`Saved “${previous}” to Projects and started a new concert.`);
+      setTimeout(() => setSaveMsg(""), 6000);
+    }
     setTalkText(text);
     const monthName = month === "10" ? "October" : "April";
     setTalkMeta({
@@ -202,6 +214,13 @@ export default function App() {
     setConfirmNew(false);
     await saveNow(); // keep the old one in Projects
     try { localStorage.removeItem(AUTOSAVE_KEY); } catch {}
+    resetProjectState();
+    setView("library");
+    setStep("talk");
+  }
+
+  // Fresh project id and empty pipeline (talk, lyrics, song, scenes, video).
+  function resetProjectState() {
     setProjectId(newProjectId());
     setTalkText("");
     setTalkMeta(EMPTY_META);
@@ -216,8 +235,6 @@ export default function App() {
     setSceneSnap(EMPTY_SCENE);
     setRestoreState({ ...EMPTY_SCENE, _loadedAt: Date.now() });
     setRestoredNote(false);
-    setView("library");
-    setStep("talk");
   }
 
   async function openProject(id) {
