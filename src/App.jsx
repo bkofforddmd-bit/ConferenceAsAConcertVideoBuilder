@@ -26,6 +26,7 @@ import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
 import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId, getMedia } from "./lib/project-store.js";
 import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
+import { isRendering } from "./lib/video-render.js";
 
 const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -152,7 +153,12 @@ export default function App() {
 
   // ---- autosave: localStorage (fast, same key as before) + IndexedDB (named project) ----
   const hasContent = Boolean(talkText || lyrics || finalLyrics);
+  // Serialising a project (scene images included) can take a noticeable
+  // slice of main-thread time, so it only happens when something changed —
+  // and never while a video is being recorded (each stall drops frames).
+  const autosaveDirty = useRef(false);
   useEffect(() => {
+    autosaveDirty.current = true;
     const save = () => {
       try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
     };
@@ -160,10 +166,15 @@ export default function App() {
       if (!hasContent) return;
       idbSaveProject(projectId, projectTitle(), buildProject(), projectSummary()).catch(() => {});
     };
-    const id = setInterval(() => { save(); saveIdb(); }, 5000);
+    const tick = () => {
+      if (isRendering() || !autosaveDirty.current) return;
+      autosaveDirty.current = false;
+      save(); saveIdb();
+    };
+    const id = setInterval(tick, 5000);
     window.addEventListener("beforeunload", save);
     return () => { clearInterval(id); window.removeEventListener("beforeunload", save); };
-  }, [talkText, lyrics, finalLyrics, styleReference, talkMeta, song, clips, timeline, render, projectId, hasContent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [talkText, lyrics, finalLyrics, styleReference, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveNow() {
     try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}

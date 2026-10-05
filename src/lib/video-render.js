@@ -321,10 +321,16 @@ function drawWatermark(ctx, text, W, H) {
   ctx.restore();
 }
 
+// True while a recording is in progress. The app pauses heavy background
+// work (autosave serialisation) during that window — any main-thread stall
+// drops frames in the real-time capture and shows up as a hitch in the video.
+let rendering = false;
+export function isRendering() { return rendering; }
+
 export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } = {}) {
   let cancelled = false;
   const cleanups = [];
-  const cleanup = () => { for (const f of cleanups.splice(0)) { try { f(); } catch {} } };
+  const cleanup = () => { rendering = false; for (const f of cleanups.splice(0)) { try { f(); } catch {} } };
 
   const promise = (async () => {
     const mime = pickRenderMime();
@@ -379,6 +385,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H);
 
     onStatus?.("Rendering… keep this tab open and visible.");
+    rendering = true;
     await actx.resume();
     rec.start(1000);
     const t0 = performance.now();
@@ -388,6 +395,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     let raf = 0;
     cleanups.push(() => cancelAnimationFrame(raf));
     const fadeSec = 0.6;
+    let lastProgressAt = -1;
 
     await new Promise((resolve, reject) => {
       const frame = () => {
@@ -445,7 +453,12 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           if (s.kind === "video" && el && !el.paused && (t < s.start - fadeSec || t >= s.end)) { el.pause(); el._started = false; }
         }
         drawWatermark(ctx, plan.watermark, W, H);
-        onProgress?.(t / total, `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")} of ${Math.floor(total / 60)}:${String(Math.floor(total % 60)).padStart(2, "0")}`);
+        // Progress updates re-render the studio UI, so report at most 4×/s —
+        // not on every frame — to keep the capture loop smooth.
+        if (t - lastProgressAt >= 0.25) {
+          lastProgressAt = t;
+          onProgress?.(t / total, `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")} of ${Math.floor(total / 60)}:${String(Math.floor(total % 60)).padStart(2, "0")}`);
+        }
         raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
