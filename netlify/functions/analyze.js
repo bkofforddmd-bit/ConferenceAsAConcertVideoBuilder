@@ -205,6 +205,7 @@ export default async (req) => {
   const kind = SYSTEMS[body.kind] ? body.kind : "speaker";
   const label = String(body.label || "").slice(0, 200);
   const continueFrom = String(body.continueFrom || "");
+  const stats = String(body.stats || "").slice(0, 4000);
   const maxItems = kind === "construction" ? 16 : 900;
   const items = Array.isArray(body.items) ? body.items.slice(0, maxItems) : [];
   if (items.length < 2) return json({ error: "Need at least 2 talks to analyze." }, 400);
@@ -238,7 +239,7 @@ export default async (req) => {
       content: [
         {
           type: "text",
-          text: intro + lines.join("\n\n"),
+          text: intro + lines.join("\n\n") + (stats && kind !== "construction" ? "\n\n" + stats + "\nUse these figures in '## The Church's work at the time' where they illuminate the talks (growth, temples, missionary force); cite the statistics as 'the Church's statistical reports', not as [n]." : ""),
           cache_control: { type: "ephemeral" },
         },
       ],

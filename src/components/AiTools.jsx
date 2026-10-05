@@ -20,6 +20,8 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { tokenize } from "../lib/search-text.js";
+import ChurchGrowth from "./ChurchGrowth.jsx";
+import { loadChurchStats, statsBlock } from "../lib/church-stats.js";
 
 const monthName = (m) => (String(m) === "10" ? "October" : "April");
 const officialUrl = (uri) => `https://www.churchofjesuschrist.org${uri}?lang=eng`;
@@ -663,6 +665,12 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   const [topicSlug, setTopicSlug] = useState(null);
   const [topicTf, setTopicTf] = useState("all"); // all | presidency key | custom
   const [topicScope, setTopicScope] = useState("all"); // all | apostles
+  const [churchStats, setChurchStats] = useState(null);
+  React.useEffect(() => {
+    let alive = true;
+    loadChurchStats().then((d) => { if (alive && d) setChurchStats(d); });
+    return () => { alive = false; };
+  }, []);
   React.useEffect(() => {
     if (tab !== "topic" || topicsIdx) return;
     fetch("/topics-index.json")
@@ -998,6 +1006,15 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
   // Stream the essay, automatically requesting continuations when a round
   // ends at the model's output ceiling (each round is a fresh server call
   // with its own time budget, so long essays always finish).
+  // Church statistics spanning the talks under study (year of the earliest
+  // to the latest), for the essay's "Church's work" section.
+  function statsFor(payloadItems) {
+    if (!churchStats) return "";
+    const years = payloadItems.map((t) => parseInt(String(t.when || "").match(/\d{4}/)?.[0], 10)).filter(Number.isFinite);
+    if (!years.length) return "";
+    return statsBlock(churchStats, Math.min(...years), Math.max(...years));
+  }
+
   async function streamEssay(ctrl, kind, label, payloadItems) {
     let acc = "";
     // Rounds are small slices (~1200 tokens each, fitting the server's ~30s
@@ -1011,6 +1028,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
           kind,
           label,
           items: payloadItems,
+          stats: statsFor(payloadItems),
           continueFrom: round === 0 ? undefined : cleanEssay(acc),
         }),
       });
@@ -1248,6 +1266,11 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
                 presidencies={presidencies}
                 onPickYear={(y) => { setTopicTf("custom"); setTfFrom(String(y)); setTfTo(String(y)); }}
                 onPickPresidency={(key) => setTopicTf(key)}
+              />
+              <ChurchGrowth
+                stats={churchStats}
+                timeframe={timeframe}
+                onPickYear={(y) => { setTopicTf("custom"); setTfFrom(String(y)); setTfTo(String(y)); }}
               />
               {targetTalks.length > 60 && (
                 <p className="note">

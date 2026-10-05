@@ -325,6 +325,40 @@
 .topic-timeline-svg .pres-band:hover rect { fill: rgba(143, 180, 230, 0.3); }
 .topic-timeline-svg .pres-label { fill: var(--silver); font-size: 10px; font-family: "Inter", system-ui, sans-serif; pointer-events: none; }
 
+/* ---- Church growth charts (Insights → Topic study) ---- */
+.church-growth {
+  margin: 12px 0 6px; padding: 12px 14px;
+  background: rgba(4, 12, 30, 0.45); border: 1px solid var(--line); border-radius: 12px;
+}
+.cg-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.cg-stat { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(14, 37, 82, 0.35); }
+.cg-stat-label { font-size: 11px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.04em; }
+.cg-stat-value { font-size: 20px; font-weight: 600; color: var(--cloud); line-height: 1.2; margin-top: 2px; }
+.cg-stat-delta { font-size: 12px; color: var(--sky); margin-top: 2px; }
+.cg-chart { margin-top: 8px; }
+.cg-chart-title { font-size: 13px; font-weight: 600; color: var(--cloud); }
+.cg-svg { width: 100%; min-width: 640px; height: auto; display: block; }
+.cg-chart { overflow-x: auto; }
+.cg-svg .grid { stroke: rgba(143, 180, 230, 0.15); stroke-width: 1; }
+.cg-svg .axis { fill: var(--silver); font-size: 11px; font-family: "Inter", system-ui, sans-serif; }
+.cg-svg .cg-band { fill: rgba(242, 198, 109, 0.12); stroke: rgba(242, 198, 109, 0.45); stroke-width: 1; }
+.cg-svg .cg-area { fill: rgba(46, 95, 169, 0.35); }
+.cg-svg .cg-line { fill: none; stroke: var(--sky); stroke-width: 2; }
+.cg-svg .cg-col rect { fill: transparent; cursor: pointer; }
+.cg-svg .cg-col:hover rect { fill: rgba(245, 247, 250, 0.12); }
+.cg-where { margin-top: 12px; }
+.cg-where-title { font-size: 13px; font-weight: 600; color: var(--cloud); margin-bottom: 6px; }
+.cg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cg-table th, .cg-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.cg-table th { font-size: 11px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+.cg-table td.pos { color: var(--success); font-weight: 600; }
+.cg-table .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.cg-details { margin-top: 8px; font-size: 13px; }
+.cg-details summary { cursor: pointer; color: var(--sky); }
+.cg-dedicated { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; color: var(--silver); font-size: 12px; }
+.cg-dedicated b { color: var(--cloud); font-weight: 600; }
+@media (max-width: 640px) { .cg-table { font-size: 12px; } .cg-table th, .cg-table td { padding: 4px 5px; } }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;
