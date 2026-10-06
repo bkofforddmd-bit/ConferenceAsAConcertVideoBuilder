@@ -55,6 +55,23 @@ function videoDuration(blob) {
   });
 }
 
+// Does this stored clip actually carry sound? Decodes the audio and measures
+// its level — a clip captured by an older build can have a silent track.
+export async function soundLevel(blob) {
+  try {
+    const ACtx = window.AudioContext || window.webkitAudioContext;
+    const ac = new ACtx();
+    const ab = await ac.decodeAudioData(await blob.arrayBuffer());
+    let sum = 0, n = 0;
+    for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i += 4) { sum += d[i] * d[i]; n++; } }
+    try { ac.close(); } catch {}
+    return { ok: true, rms: n ? Math.sqrt(sum / n) : 0, seconds: ab.duration };
+  } catch (e) {
+    return { ok: false, rms: 0, seconds: 0, error: String(e && e.message || e) };
+  }
+}
+const SILENT = 0.002;
+
 function useMediaUrl(mediaKey) {
   const [url, setUrl] = useState("");
   useEffect(() => {
@@ -76,6 +93,19 @@ function ClipCard({ clip, title, onChange, onRemove }) {
   const url = useMediaUrl(clip.mediaKey);
   const ref = useRef(null);
   const [t, setT] = useState(0);
+  const [sound, setSound] = useState(null); // { ok, rms, seconds }
+  useEffect(() => {
+    let alive = true;
+    setSound(null);
+    (async () => {
+      if (!clip.mediaKey) return;
+      const rec = await getMedia(clip.mediaKey);
+      if (!rec || !alive) return;
+      const lv = await soundLevel(rec.blob);
+      if (alive) setSound(lv);
+    })();
+    return () => { alive = false; };
+  }, [clip.mediaKey]);
   const inAt = Number(clip.in) || 0, outAt = Number(clip.out) || clip.duration || 0;
   const len = Math.max(0, outAt - inAt);
   function preview() {
@@ -92,6 +122,11 @@ function ClipCard({ clip, title, onChange, onRemove }) {
         <span className="note" style={{ margin: 0 }}>{clip.name || (clip.kind === "talk" ? "from the talk's video" : "clip")} · {fmt(len)} used</span>
       </div>
       {url && <video ref={ref} src={url} controls playsInline className="bookend-video" onTimeUpdate={(e) => setT(e.target.currentTime)} />}
+      {sound && (
+        sound.ok && sound.rms >= SILENT
+          ? <div className="note" style={{ margin: "4px 0 0", color: "var(--success)" }}>Sound check ✓ — this clip carries audio{sound.seconds ? ` (${fmt(sound.seconds)} recorded)` : ""}.</div>
+          : <div className="music-card" style={{ margin: "6px 0 0", borderColor: "var(--danger)" }}><div className="note" style={{ margin: 0 }}><strong>This clip has no sound.</strong> It was captured before the sound fix, so it will be silent in the video. Remove it and capture it again — the new capture records the speaker's voice.</div></div>
+      )}
       {clip.quote && <div className="note" style={{ margin: "4px 0 0" }}>“{clip.quote}”</div>}
       {trimmable && (
         <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
@@ -337,6 +372,8 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
       const { blob, ext } = list.length > 1
         ? await captureSegments({ src, segments: list, fade: 0.5, onProgress: prog })
         : await captureClip({ src, start: list[0].from, end: list[0].to, onProgress: prog });
+      const lv = await soundLevel(blob);
+      if (lv.ok && lv.rms < SILENT) throw new Error("The capture came out silent. Make sure the video actually played with sound (press play once in the player above, then capture again).");
       const mediaKey = `${projectId}:bookend:post`;
       await putMedia(mediaKey, blob, { ext, source: "talk", segments: list });
       const name = list.length > 1

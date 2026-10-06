@@ -582,9 +582,9 @@ export default function VideoStudio({
 
   // ---- render ----
   const QUALITIES = [
-    { id: "web", label: "1080p · web (≈30 MB/min)", w: 1920, h: 1080, bps: 4_000_000 },
-    { id: "high", label: "1080p · high (≈60 MB/min)", w: 1920, h: 1080, bps: 8_000_000 },
-    { id: "small", label: "720p · small (≈18 MB/min)", w: 1280, h: 720, bps: 2_500_000 },
+    { id: "web", label: "1080p · web (≈75 MB/min)", w: 1920, h: 1080, bps: 10_000_000 },
+    { id: "high", label: "1080p · high (≈120 MB/min)", w: 1920, h: 1080, bps: 16_000_000 },
+    { id: "small", label: "720p · small (≈40 MB/min)", w: 1280, h: 720, bps: 5_000_000 },
   ];
   const [quality, setQuality] = useState("web");
   const [rendering, setRendering] = useState(false);
