@@ -73,6 +73,9 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
   const [q, setQ] = useState("");
   const [tf, setTf] = useState("all");
   const [yearPick, setYearPick] = useState(null);
+  const [inclQuoted, setInclQuoted] = useState(true);   // unmarked quotations found in the text (v2 index)
+  const [inclMentions, setInclMentions] = useState(true); // people named in the talk's own words (v2 index)
+  const v2 = !!(sidx && sidx.version >= 2);
   const timeframe = useMemo(() => {
     if (tf === "all") return { from: 0, to: 999912, label: "all years" };
     const p = (presidencies || []).find((x) => x.key === tf);
@@ -96,7 +99,7 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
   const scoped = useMemo(() => {
     if (!sidx || !sidx.talks || !index) return [];
     return sidx.talks
-      .map(([i, refs, qs]) => ({ i, refs, qs, t: index.talks[i] }))
+      .map(([i, refs, qs, ms]) => ({ i, refs, qs, ms: ms || [], t: index.talks[i] }))
       .filter((x) => x.t && confNum(x.t.year, x.t.month) >= timeframe.from && confNum(x.t.year, x.t.month) <= timeframe.to);
   }, [sidx, index, timeframe]);
   const allByYear = useMemo(() => { const m = {}; for (const x of scoped) m[x.t.year] = (m[x.t.year] || 0) + 1; return m; }, [scoped]);
@@ -107,6 +110,7 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
     if (parsed.kind === "scripture") {
       for (const x of scoped) {
         const hit = x.refs.filter((r) => {
+          if (r[4] === 1 && !inclQuoted) return false;
           if (r[0] !== parsed.book) return false;
           if (parsed.chapter == null) return true;
           if (r[1] !== parsed.chapter) return false;
@@ -118,7 +122,10 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
         if (hit.length) matches.push({ x, mentions: hit.length, refs: hit });
       }
     } else {
-      for (const x of scoped) if (x.qs.includes(parsed.person)) matches.push({ x, mentions: 1, refs: [] });
+      for (const x of scoped) {
+        const inNotes = x.qs.includes(parsed.person), inText = inclMentions && x.ms.includes(parsed.person);
+        if (inNotes || inText) matches.push({ x, mentions: 1, refs: [], how: inNotes && inText ? "footnote + text" : inNotes ? "footnote" : "in the text" });
+      }
     }
     const bySpeaker = {}, byYear = {}, passages = {};
     for (const m of matches) {
@@ -135,7 +142,7 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
     const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
     const peak = years.reduce((best, y) => (byYear[y] > (byYear[best] || 0) ? y : best), years[0]);
     return { matches: matches.sort((a, b) => confNum(b.x.t.year, b.x.t.month) - confNum(a.x.t.year, a.x.t.month)), speakers, top, byYear, mentions: matches.reduce((a, m) => a + m.mentions, 0), first: years[0], last: years[years.length - 1], peak };
-  }, [parsed, scoped, books]);
+  }, [parsed, scoped, books, inclQuoted, inclMentions]);
 
   // leaderboards when nothing is typed
   const boards = useMemo(() => {
@@ -144,15 +151,16 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
     for (const x of scoped) {
       const seenP = new Set(), seenB = new Set();
       for (const r of x.refs) {
+        if (r[4] === 1 && !inclQuoted) continue;
         if (r[2]) { const k = refLabel(books, r); if (!seenP.has(k)) { seenP.add(k); passage[k] = (passage[k] || 0) + 1; } }
         if (!seenB.has(r[0])) { seenB.add(r[0]); book[r[0]] = (book[r[0]] || 0) + 1; }
       }
-      for (const p of new Set(x.qs)) person[p] = (person[p] || 0) + 1;
+      for (const p of new Set([...x.qs, ...(inclMentions ? x.ms : [])])) person[p] = (person[p] || 0) + 1;
     }
     const sortTop = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n);
     const maxBook = Math.max(1, ...Object.values(book));
     return { passages: sortTop(passage, 25), books: sortTop(book, 20).map(([i, n]) => ({ i: Number(i), n, w: n / maxBook })), people: sortTop(person, 20), talks: scoped.length };
-  }, [parsed, scoped, books]);
+  }, [parsed, scoped, books, inclQuoted, inclMentions]);
 
   const label = parsed && parsed.kind === "scripture"
     ? `${books[parsed.book].name}${parsed.chapter ? ` ${parsed.chapter}` : ""}${parsed.v1 ? `:${parsed.v1}${parsed.v2 && parsed.v2 !== parsed.v1 ? `–${parsed.v2}` : ""}` : ""}`
@@ -184,6 +192,12 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
         </select>
         {q && <button className="btn btn-ghost btn-sm" onClick={() => { setQ(""); setYearPick(null); }}>Clear</button>}
       </div>
+      {v2 && (
+        <div className="row" style={{ gap: 14, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
+          <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={inclQuoted} onChange={(e) => setInclQuoted(e.target.checked)} /> count verses quoted in the text without a footnote</label>
+          <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={inclMentions} onChange={(e) => setInclMentions(e.target.checked)} /> count people named in the talk's own words, not just footnotes</label>
+        </div>
+      )}
 
       {parsed && parsed.kind === "people" && (
         <div className="topic-chips" style={{ marginTop: 8 }}>
@@ -241,7 +255,7 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
               return (
                 <div key={t.uri} className={`para-row scrip-row${playing ? " active" : ""}`}>
                   <span className="para-time">{String(t.month) === "10" ? "Oct" : "Apr"} {t.year}</span>
-                  <span className="para-text"><strong style={{ color: "var(--cloud)" }}>{t.title}</strong> — {t.speaker}{m.refs.length ? <span className="note" style={{ margin: 0 }}> · {[...new Set(m.refs.map((r) => refLabel(books, r)))].slice(0, 4).join("; ")}{m.refs.length > 4 ? "…" : ""}</span> : null}</span>
+                  <span className="para-text"><strong style={{ color: "var(--cloud)" }}>{t.title}</strong> — {t.speaker}{m.refs.length ? <span className="note" style={{ margin: 0 }}> · {[...new Set(m.refs.map((r) => refLabel(books, r) + (r[4] === 1 ? " (quoted, no footnote)" : "")))].slice(0, 4).join("; ")}{m.refs.length > 4 ? "…" : ""}</span> : null}{m.how ? <span className="note" style={{ margin: 0 }}> · {m.how}</span> : null}</span>
                   <span className="splice-actions">
                     <button className="btn btn-ghost btn-sm" title="Listen" onClick={() => play([t.uri], t.title)}>{playing ? "▶ playing" : "▶"}</button>
                     {chooseTalk && <button className="btn btn-ghost btn-sm" title="Make a song from this talk" onClick={() => chooseTalk(t)} disabled={loading}>{loading ? "…" : "Make song →"}</button>}

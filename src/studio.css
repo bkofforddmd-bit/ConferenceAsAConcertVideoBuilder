@@ -408,6 +408,10 @@
 .scrip-grid.three .scrip-top25 { grid-column: 1 / -1; }
 @media (max-width: 640px) { .scrip-bar { grid-template-columns: 110px 1fr 40px; } .scrip-bar.wide { grid-template-columns: 22px 150px 1fr 40px; } }
 
+.phrase-stat { cursor: pointer; text-align: left; font: inherit; }
+.phrase-stat.active { background: rgba(14, 37, 82, 0.7); box-shadow: inset 0 0 0 1px var(--sky); }
+.phrase-snippet { color: var(--silver); font-size: 12px; }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;

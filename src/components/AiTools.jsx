@@ -22,6 +22,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { tokenize } from "../lib/search-text.js";
 import ChurchGrowth from "./ChurchGrowth.jsx";
 import ScriptureStudy from "./ScriptureStudy.jsx";
+import PhraseTrends from "./PhraseTrends.jsx";
 import { loadChurchStats, statsBlock } from "../lib/church-stats.js";
 
 const monthName = (m) => (String(m) === "10" ? "October" : "April");
@@ -1128,7 +1129,14 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         <button className={`picker-mode-btn ${tab === "scriptures" ? "active" : ""}`} onClick={() => setTab("scriptures")} disabled={busy}>
           Scriptures
         </button>
+        <button className={`picker-mode-btn ${tab === "phrases" ? "active" : ""}`} onClick={() => setTab("phrases")} disabled={busy}>
+          Words & phrases
+        </button>
       </div>
+
+      {tab === "phrases" && !busy && (
+        <PhraseTrends index={index} presidencies={presidencies} startUrisQueue={startUrisQueue} chooseTalk={chooseTalk} nowPlayingUri={nowPlayingUri} loadingUri={loadingUri} />
+      )}
 
       {tab === "scriptures" && !busy && (
         <ScriptureStudy index={index} presidencies={presidencies} startUrisQueue={startUrisQueue} chooseTalk={chooseTalk} nowPlayingUri={nowPlayingUri} loadingUri={loadingUri} Timeline={TopicTimeline} />
@@ -1324,7 +1332,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </div>
       )}
 
-      {!busy && tab !== "construction" && tab !== "scriptures" && targetTalks.length >= 2 && (tab === "era" || (tab === "topic" ? selectedTopic : speaker)) && (
+      {!busy && tab !== "construction" && tab !== "scriptures" && tab !== "phrases" && targetTalks.length >= 2 && (tab === "era" || (tab === "topic" ? selectedTopic : speaker)) && (
         <div className="ins-launch">
           <button className="btn btn-primary" onClick={analyze}>
             ✨ Analyze {tab === "speaker" ? `${speaker}’s journey` : tab === "topic" ? `how “${selectedTopic.name}” has been taught` : `this era`} ({targetTalks.length} talks)
