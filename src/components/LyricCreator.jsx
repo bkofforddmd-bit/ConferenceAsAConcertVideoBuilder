@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { generateLyrics } from "../lib/api.js";
 
 export default function LyricCreator({
+  onSources,
   talkText,
   setTalkText,
   lyrics,
@@ -39,8 +40,9 @@ export default function LyricCreator({
     }
     setBusy(true);
     try {
-      const { lyrics: out } = await generateLyrics({ talkText, styleReference });
+      const { lyrics: out, sources } = await generateLyrics({ talkText, styleReference });
       setLyrics(out);
+      if (onSources) onSources(sources || null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -56,12 +58,14 @@ export default function LyricCreator({
     }
     setBusy(true);
     try {
-      const { lyrics: out } = await generateLyrics({
+      const { lyrics: out, sources } = await generateLyrics({
         currentLyrics: lyrics,
         revisionRequest,
         styleReference,
+        talkText,
       });
       setLyrics(out);
+      if (onSources && sources) onSources(sources);
       setRevisionRequest("");
     } catch (e) {
       setError(e.message);

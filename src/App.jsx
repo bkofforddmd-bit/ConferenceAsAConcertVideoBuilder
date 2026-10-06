@@ -56,6 +56,7 @@ export default function App() {
   const [lyrics, setLyrics] = useState("");
   const [finalLyrics, setFinalLyrics] = useState("");
   const [styleReference, setStyleReference] = useState("");
+  const [lyricSources, setLyricSources] = useState(null); // which talk paragraph each lyric line came from
   const [song, setSong] = useState(EMPTY_SONG);
   const [clips, setClips] = useState({});
   const [timeline, setTimeline] = useState(EMPTY_TIMELINE);
@@ -100,6 +101,7 @@ export default function App() {
     setLyrics(p.lyrics || "");
     setFinalLyrics(p.finalLyrics || "");
     setStyleReference(p.styleReference || "");
+    setLyricSources(p.lyricSources || null);
     setSong(p.song && Array.isArray(p.song.versions) ? p.song : EMPTY_SONG);
     setClips(p.clips && typeof p.clips === "object" ? p.clips : {});
     setTimeline(p.timeline && typeof p.timeline === "object" ? { ...EMPTY_TIMELINE, ...p.timeline } : EMPTY_TIMELINE);
@@ -123,7 +125,7 @@ export default function App() {
       version: PROJECT_VERSION,
       savedAt: new Date().toISOString(),
       projectId,
-      talkText, talkMeta, lyrics, finalLyrics, styleReference,
+      talkText, talkMeta, lyrics, finalLyrics, styleReference, lyricSources,
       scene: sceneStateRef.current,
       song, clips, timeline, render,
     };
@@ -174,7 +176,7 @@ export default function App() {
     const id = setInterval(tick, 5000);
     window.addEventListener("beforeunload", save);
     return () => { clearInterval(id); window.removeEventListener("beforeunload", save); };
-  }, [talkText, lyrics, finalLyrics, styleReference, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [talkText, lyrics, finalLyrics, styleReference, lyricSources, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveNow() {
     try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
@@ -238,6 +240,7 @@ export default function App() {
     setLyrics("");
     setFinalLyrics("");
     setStyleReference("");
+    setLyricSources(null);
     setSong(EMPTY_SONG);
     setClips({});
     setTimeline(EMPTY_TIMELINE);
@@ -513,6 +516,7 @@ export default function App() {
 
           <div style={{ display: step === "lyrics" ? "block" : "none" }}>
             <LyricCreator
+              onSources={setLyricSources}
               talkText={talkText}
               setTalkText={setTalkText}
               lyrics={lyrics}
@@ -576,6 +580,8 @@ export default function App() {
               onSetSceneLyrics={setSceneLyrics}
               talkMeta={talkMeta}
               talkText={talkText}
+              lyricSources={lyricSources}
+              onLyricSources={setLyricSources}
             />
           )}
 
