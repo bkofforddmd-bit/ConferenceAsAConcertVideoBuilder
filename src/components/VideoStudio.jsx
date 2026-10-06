@@ -909,7 +909,7 @@ export default function VideoStudio({
         <div className="panel-head">
           <h3>3 · Opening & closing clips <span className="chip">optional</span></h3>
         </div>
-        <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} />
+        <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} />
       </div>
 
       {/* ---------------- RENDER ---------------- */}

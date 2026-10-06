@@ -248,6 +248,11 @@ export async function talkTimesStart({ audioUrl, paragraphs }) {
   return jobId;
 }
 
+// Which talk paragraph did each lyric line come from? (Claude, one call per song.)
+export async function traceLyricSources({ lines, paragraphs }) {
+  return post("lyric-sources", { lines, paragraphs });
+}
+
 export async function pollJob(statusFn, jobId, { intervalMs = 5000, timeoutMs = 15 * 60 * 1000, onTick, signal } = {}) {
   const started = Date.now();
   let delay = intervalMs;

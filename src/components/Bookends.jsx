@@ -14,8 +14,32 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
-import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob } from "../lib/api.js";
+import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
 import { captureClip } from "../lib/video-render.js";
+import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
+
+// ---- instant lyric → paragraph matching by weighted word overlap ----
+const STOP = new Set("the a an and or but of to in on at for with by from as is are was were be been being it its this that these those we our us you your he she his her they their them i me my will shall can may might do does did not no so than then there here when where which who whom what how all any each every some such only own same too very just also into over under again further once up down out off about above below between through during before after because while until unless if".split(" "));
+const stem = (w) => w.replace(/(ing|edly|ed|es|s|ly)$/, "");
+function tokens(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z' ]+/g, " ").split(/\s+/).map((w) => w.replace(/^'|'$/g, "")).filter((w) => w.length > 2 && !STOP.has(w)).map(stem);
+}
+export function matchLyricToParagraphs(line, paragraphs) {
+  const docs = paragraphs.map((p) => tokens(p));
+  const df = new Map();
+  for (const d of docs) for (const w of new Set(d)) df.set(w, (df.get(w) || 0) + 1);
+  const N = docs.length || 1;
+  const q = tokens(line);
+  if (!q.length) return [];
+  const scored = docs.map((d, i) => {
+    const set = new Set(d);
+    let score = 0, hits = 0;
+    for (const w of new Set(q)) if (set.has(w)) { hits++; score += Math.log(1 + N / (df.get(w) || 1)); }
+    return { i, score, hits };
+  }).filter((x) => x.hits > 0).sort((a, b) => b.score - a.score);
+  const top = scored[0] ? scored[0].score : 0;
+  return scored.slice(0, 3).map((x) => ({ i: x.i, strength: top ? x.score / top : 0, hits: x.hits }));
+}
 
 const fmt = (t) => { t = Math.max(0, Number(t) || 0); const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s < 10 ? "0" : ""}${s.toFixed(1)}`; };
 const fmtS = (t) => { t = Math.max(0, Math.round(Number(t) || 0)); const m = Math.floor(t / 60), s = t % 60; return `${m}:${String(s).padStart(2, "0")}`; };
@@ -97,7 +121,7 @@ function UploadBox({ label, hint, onFile, busy }) {
 }
 
 // ---- the talk's own video: find the moment, mark it, capture it ----
-function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
+function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSources, onCaptured }) {
   const [media, setMedia] = useState(null); // { audioUrl, video:{p360,p720,p1080} }
   const [quality, setQuality] = useState("p720");
   const [msg, setMsg] = useState("");
@@ -112,6 +136,11 @@ function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
   const [timing, setTiming] = useState("");
   const [picked, setPicked] = useState(-1);
   const [capMsg, setCapMsg] = useState("");
+  const [lyricQ, setLyricQ] = useState("");
+  const [pickedLine, setPickedLine] = useState(-1);
+  const [tracing, setTracing] = useState("");
+  const [showLyrics, setShowLyrics] = useState(true);
+  const paraRefs = useRef({});
 
   const paragraphs = useMemo(() => String(talkText || "").replace(/\r/g, "").split(/\n\s*\n/).map((p) => p.replace(/\s+/g, " ").trim()).filter((p) => p.length > 20), [talkText]);
   // Estimated start of each paragraph by its share of the text (until AI pins them).
@@ -121,6 +150,39 @@ function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
     return paragraphs.map((p) => { const t0 = (acc / total) * dur; acc += p.length; return t0; });
   }, [paragraphs, dur]);
   const startOf = (i) => (times && times[i] != null ? times[i] : estimates[i]);
+
+  // ---- the song's lines → the paragraph each came from ----
+  const songLines = useMemo(() => { const ls = lyricLines(lyrics); return singableIndices(ls).map((i) => ls[i].trim()); }, [lyrics]);
+  const traced = sources && sources.map ? sources.map : null; // { [lineIdx]: { paragraphs, phrase, confidence } }
+  const matchFor = (li) => {
+    const tr = traced && traced[li];
+    if (tr && tr.paragraphs && tr.paragraphs.length) return { paragraphs: tr.paragraphs, phrase: tr.phrase, strength: tr.confidence, ai: true };
+    const m = matchLyricToParagraphs(songLines[li], paragraphs);
+    return m.length ? { paragraphs: m.map((x) => x.i), phrase: "", strength: m[0].strength * Math.min(1, m[0].hits / 3), ai: false } : { paragraphs: [], phrase: "", strength: 0, ai: false };
+  };
+  const [lineMatch, setLineMatch] = useState(null); // { paragraphs:[...], phrase, ai }
+  function pickLine(li) {
+    setPickedLine(li);
+    const m = matchFor(li);
+    setLineMatch(m);
+    if (m.paragraphs.length) {
+      const pi = m.paragraphs[0];
+      setQ("");
+      seekTo(pi);
+      setTimeout(() => { const el = paraRefs.current[pi]; if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" }); }, 50);
+    }
+  }
+  async function traceWithAI() {
+    if (!songLines.length || !paragraphs.length) return;
+    setTracing("Reading the song against the talk…");
+    try {
+      const r = await traceLyricSources({ lines: songLines, paragraphs });
+      onSources && onSources({ map: r.map || {}, model: r.model, at: Date.now(), n: songLines.length });
+      setTracing("");
+      if (pickedLine >= 0) setTimeout(() => pickLine(pickedLine), 0);
+    } catch (e) { setTracing(`Couldn't trace the lyrics: ${e.message || e}`); }
+  }
+  const matchedSet = new Set(lineMatch ? lineMatch.paragraphs : []);
 
   async function load() {
     setBusy(true); setMsg("Finding the talk's official video…");
@@ -203,6 +265,40 @@ function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
       </div>
       {capMsg && <p className="note">{capMsg}</p>}
 
+      {songLines.length > 0 && (
+        <div className="talk-find">
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong>Start from the song</strong>
+            <span className="note" style={{ margin: 0 }}>click a lyric line to jump to the part of the talk it came from</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowLyrics((v) => !v)} style={{ marginLeft: "auto" }}>{showLyrics ? "Hide lines" : "Show lines"}</button>
+          </div>
+          {showLyrics && (
+            <>
+              <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+                <input type="text" className="picker-search-input" placeholder="filter the lyric lines…" value={lyricQ} onChange={(e) => setLyricQ(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+                {!traced
+                  ? <button className="btn btn-ghost btn-sm" onClick={traceWithAI} disabled={!!tracing} title="Claude reads the song against the talk and records which paragraph each line was drawn from (one quick pass per song)">{tracing ? "Tracing…" : "✨ Trace every line to the talk with AI"}</button>
+                  : <span className="chip" style={{ background: "rgba(127,209,168,0.18)" }}>lines traced by AI</span>}
+              </div>
+              {tracing && <p className="note" style={{ margin: "4px 0" }}>{tracing}</p>}
+              {!traced && !tracing && <p className="note" style={{ margin: "4px 0" }}>Without the AI pass, matches are a word-overlap guess (good for lines that quote the talk, weaker for poetic ones).</p>}
+              <div className="lyric-pick">
+                {songLines.map((ln, li) => (!lyricQ.trim() || ln.toLowerCase().includes(lyricQ.trim().toLowerCase())) && (
+                  <button key={li} className={`lyric-pick-row${pickedLine === li ? " active" : ""}`} onClick={() => pickLine(li)} title="Jump to the part of the talk behind this line">♪ {ln}</button>
+                ))}
+              </div>
+              {lineMatch && pickedLine >= 0 && (
+                <p className="note" style={{ margin: "6px 0 0" }}>
+                  {lineMatch.paragraphs.length
+                    ? <>{lineMatch.ai ? "AI traced" : "Best guess"}: paragraph {lineMatch.paragraphs[0] + 1}{lineMatch.paragraphs.length > 1 ? ` (also ${lineMatch.paragraphs.slice(1).map((n) => n + 1).join(", ")})` : ""} at {dur ? fmtS(startOf(lineMatch.paragraphs[0])) : "–:––"}{lineMatch.phrase ? <> — “{lineMatch.phrase}”</> : lineMatch.strength < 0.5 ? " — weak match; try the AI trace" : ""}. The video jumped there — mark the start and end around the words you want.</>
+                    : "No clear match for that line — it may be lyrical glue. Try the AI trace or search the talk below."}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="talk-find">
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <strong>Find the moment</strong>
@@ -216,7 +312,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
         {!times && !timing && dur > 0 && <p className="note" style={{ margin: "4px 0" }}>Times below are estimates from each paragraph's place in the text (usually within a minute). Click one to jump there, then nudge with the player.</p>}
         <div className="para-list">
           {filtered.map(({ p, i }) => (
-            <button key={i} className={`para-row${picked === i ? " active" : ""}`} onClick={() => seekTo(i)} title="Jump the video to this paragraph">
+            <button key={i} ref={(el) => { paraRefs.current[i] = el; }} className={`para-row${picked === i ? " active" : ""}${matchedSet.has(i) ? " match" : ""}`} onClick={() => seekTo(i)} title="Jump the video to this paragraph">
               <span className="para-time">{dur ? fmtS(startOf(i)) : "–:––"}</span>
               <span className="para-text">{p.length > 220 ? p.slice(0, 220) + "…" : p}</span>
             </button>
@@ -228,7 +324,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, onCaptured }) {
   );
 }
 
-export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText }) {
+export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics }) {
   const bookends = tl.bookends || {};
   const [busy, setBusy] = useState("");
   const [closingMode, setClosingMode] = useState(talkMeta && talkMeta.sourceUrl ? "talk" : "upload");
@@ -279,7 +375,7 @@ export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkTex
                 <button className={`btn btn-sm ${closingMode === "upload" ? "btn-primary" : "btn-ghost"}`} onClick={() => setClosingMode("upload")}>Upload a file</button>
               </div>
               {closingMode === "talk"
-                ? <TalkClipPicker projectId={projectId} talkMeta={talkMeta} talkText={talkText} onCaptured={(c) => setBookend("post", c)} />
+                ? <TalkClipPicker projectId={projectId} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={tl.lyricSources || null} onSources={(src) => setTimeline({ ...tl, lyricSources: src })} onCaptured={(c) => setBookend("post", c)} />
                 : <UploadBox label="Upload a closing clip" hint="MP4 or WebM" onFile={(f) => upload("post", f)} busy={busy === "post"} />}
             </>
           )}

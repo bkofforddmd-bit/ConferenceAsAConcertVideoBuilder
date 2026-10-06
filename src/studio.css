@@ -375,6 +375,12 @@
 .para-text { flex: 1; color: var(--silver); }
 .para-row.active .para-text { color: var(--cloud); }
 
+.lyric-pick { max-height: 200px; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.lyric-pick-row { text-align: left; width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: 8px; background: rgba(14, 37, 82, 0.35); color: var(--cloud); cursor: pointer; font: inherit; font-size: 13px; }
+.lyric-pick-row:hover { border-color: var(--line); background: rgba(14, 37, 82, 0.6); }
+.lyric-pick-row.active { border-color: var(--warning); background: rgba(242, 198, 109, 0.18); }
+.para-row.match { border-color: var(--warning); box-shadow: inset 3px 0 0 var(--warning); }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;
