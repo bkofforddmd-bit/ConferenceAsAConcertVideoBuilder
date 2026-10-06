@@ -21,6 +21,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { tokenize } from "../lib/search-text.js";
 import ChurchGrowth from "./ChurchGrowth.jsx";
+import ScriptureStudy from "./ScriptureStudy.jsx";
 import { loadChurchStats, statsBlock } from "../lib/church-stats.js";
 
 const monthName = (m) => (String(m) === "10" ? "October" : "April");
@@ -1124,7 +1125,14 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         <button className={`picker-mode-btn ${tab === "topic" ? "active" : ""}`} onClick={() => setTab("topic")} disabled={busy}>
           Topic study
         </button>
+        <button className={`picker-mode-btn ${tab === "scriptures" ? "active" : ""}`} onClick={() => setTab("scriptures")} disabled={busy}>
+          Scriptures
+        </button>
       </div>
+
+      {tab === "scriptures" && !busy && (
+        <ScriptureStudy index={index} presidencies={presidencies} startUrisQueue={startUrisQueue} chooseTalk={chooseTalk} nowPlayingUri={nowPlayingUri} loadingUri={loadingUri} Timeline={TopicTimeline} />
+      )}
 
       {loaded && loaded.sharedId && sharedId && (
         <div className="ins-shared-banner">
@@ -1316,7 +1324,7 @@ export function InsightsMode({ index, presidencies, startUrisQueue, nowPlayingUr
         </div>
       )}
 
-      {!busy && tab !== "construction" && targetTalks.length >= 2 && (tab === "era" || (tab === "topic" ? selectedTopic : speaker)) && (
+      {!busy && tab !== "construction" && tab !== "scriptures" && targetTalks.length >= 2 && (tab === "era" || (tab === "topic" ? selectedTopic : speaker)) && (
         <div className="ins-launch">
           <button className="btn btn-primary" onClick={analyze}>
             ✨ Analyze {tab === "speaker" ? `${speaker}’s journey` : tab === "topic" ? `how “${selectedTopic.name}” has been taught` : `this era`} ({targetTalks.length} talks)

@@ -391,6 +391,23 @@
 
 .talk-chooser { padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; margin-bottom: 4px; }
 
+/* ---- Scripture study (Insights) ---- */
+.scrip-suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin-top: 4px; padding: 6px; background: var(--bg-panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 3px; }
+.scrip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; }
+.scrip-grid.three { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.scrip-row { display: grid; grid-template-columns: 60px 1fr auto; align-items: center; }
+.scrip-bars { display: flex; flex-direction: column; gap: 4px; }
+.scrip-bar { display: grid; grid-template-columns: 150px 1fr 44px; gap: 8px; align-items: center; background: none; border: 0; color: var(--cloud); font: inherit; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 6px; text-align: left; }
+.scrip-bar:hover { background: rgba(14, 37, 82, 0.6); }
+.scrip-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scrip-bar-track { height: 10px; background: rgba(143, 180, 230, 0.15); border-radius: 5px; overflow: hidden; }
+.scrip-bar-fill { display: block; height: 100%; background: var(--air); border-radius: 5px; }
+.scrip-bar-n { text-align: right; color: var(--silver); font-variant-numeric: tabular-nums; }
+.scrip-bar.wide { grid-template-columns: 26px 210px 1fr 44px; }
+.scrip-bar-rank { color: var(--silver); font-size: 12px; text-align: right; }
+.scrip-grid.three .scrip-top25 { grid-column: 1 / -1; }
+@media (max-width: 640px) { .scrip-bar { grid-template-columns: 110px 1fr 40px; } .scrip-bar.wide { grid-template-columns: 22px 150px 1fr 40px; } }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;
