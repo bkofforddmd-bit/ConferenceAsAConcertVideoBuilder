@@ -2423,44 +2423,6 @@ ${rows}</body></html>`;
 
       {talkError && <div className="picker-error">{talkError}</div>}
 
-      {/* ------------------- CONTINUE LISTENING ------------------- */}
-      {shelf.length > 0 && (
-        <div className="resume-shelf">
-          <div className="resume-shelf-title">Continue listening</div>
-          {shelf.map((bm) => (
-            <div className="resume-card" key={bm.id}>
-              <button
-                className="resume-card-main"
-                title="Pick up right where you left off"
-                onClick={() => resumeBookmark(bm)}
-              >
-                <span className="resume-card-label">▶ {bm.label}</span>
-                <span className="resume-card-sub">
-                  {bm.talkTitle} · {bm.talkWhen}
-                </span>
-                <span className="resume-card-pos">
-                  talk {bm.idx + 1} of {bm.total} · {fmtTime(bm.seconds)} in ·{" "}
-                  {orderText(bm.order)}
-                </span>
-                <span className="prog-bar resume-card-bar">
-                  <span
-                    className="prog-bar-fill"
-                    style={{ width: `${Math.round(((bm.idx + 1) / Math.max(1, bm.total)) * 100)}%` }}
-                  />
-                </span>
-              </button>
-              <button
-                className="resume-card-x"
-                title="Remove this saved spot"
-                onClick={() => removeBookmark(bm.id)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* ------------------- SEARCH BY SPEAKER ------------------- */}
       {mode === "speaker" && (
         <div className="picker-speaker">
@@ -2887,6 +2849,44 @@ ${rows}</body></html>`;
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ------------------- CONTINUE LISTENING (last section) --- */}
+      {shelf.length > 0 && (
+        <div className="resume-shelf">
+          <div className="resume-shelf-title">Continue listening</div>
+          {shelf.map((bm) => (
+            <div className="resume-card" key={bm.id}>
+              <button
+                className="resume-card-main"
+                title="Pick up right where you left off"
+                onClick={() => resumeBookmark(bm)}
+              >
+                <span className="resume-card-label">▶ {bm.label}</span>
+                <span className="resume-card-sub">
+                  {bm.talkTitle} · {bm.talkWhen}
+                </span>
+                <span className="resume-card-pos">
+                  talk {bm.idx + 1} of {bm.total} · {fmtTime(bm.seconds)} in ·{" "}
+                  {orderText(bm.order)}
+                </span>
+                <span className="prog-bar resume-card-bar">
+                  <span
+                    className="prog-bar-fill"
+                    style={{ width: `${Math.round(((bm.idx + 1) / Math.max(1, bm.total)) * 100)}%` }}
+                  />
+                </span>
+              </button>
+              <button
+                className="resume-card-x"
+                title="Remove this saved spot"
+                onClick={() => removeBookmark(bm.id)}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
