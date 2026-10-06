@@ -376,6 +376,11 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     const prepClip = async (clip) => {
       if (!clip || !clip.src) return null;
       const el = await loadVideo(clip.src);
+      // loadVideo mutes clips (scene clips are silent); a bookend's own sound
+      // must reach the recording, so unmute — the element feeds the WebAudio
+      // graph only (not the speakers) once it has a MediaElementSource.
+      el.muted = false;
+      el.volume = 1;
       const node = actx.createMediaElementSource(el);
       node.connect(dest);
       const inAt = Math.max(0, Number(clip.in) || 0);
@@ -575,7 +580,19 @@ export function captureSegments({ src, segments, fade = 0.5, onProgress }) {
       rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
       const stopped = new Promise((res) => { rec.onstop = res; });
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-      rec.start(500);
+      let started = false; // the recorder starts once the first section is in position (no black lead-in)
+      // If the video stalls to buffer mid-section, hold the recording too —
+      // otherwise the clip grows by every stall (frozen picture, silence).
+      let holding = false; // true between sections (explicit pause)
+      const onWaiting = () => { if (rec.state === "recording") rec.pause(); };
+      const onPlaying = () => {
+        if (!started) { rec.start(500); started = true; return; } // first real frame → start recording
+        if (!holding && rec.state === "paused") rec.resume();
+      };
+      el.addEventListener("waiting", onWaiting);
+      el.addEventListener("stalled", onWaiting);
+      el.addEventListener("playing", onPlaying);
+      cleanups.push(() => { el.removeEventListener("waiting", onWaiting); el.removeEventListener("stalled", onWaiting); el.removeEventListener("playing", onPlaying); });
 
       const seek = (t) => new Promise((res) => { const on = () => { el.removeEventListener("seeked", on); res(); }; el.addEventListener("seeked", on); el.currentTime = t; });
       let doneSec = 0;
@@ -585,30 +602,33 @@ export function captureSegments({ src, segments, fade = 0.5, onProgress }) {
         const f = Math.min(fade, len / 3);
         await seek(g.from);
         gain.gain.value = 0;
-        if (i > 0) rec.resume();
+        holding = false;
+        if (started && rec.state === "paused") rec.resume();
         await el.play();
         await new Promise((res, rej) => {
           const draw = () => {
             const t = el.currentTime;
             if (t >= g.to - 0.04 || el.ended) { res(); return; }
+            if (el.readyState < 3 && rec.state === "paused") { setTimeout(draw, 100); return; } // buffering: wait it out
             // picture: fade from black at the start, to black at the end
             const a = f > 0 ? Math.max(0, Math.min(1, (t - g.from) / f, (g.to - t) / f)) : 1;
             ctx.drawImage(el, 0, 0, W, H);
             if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
             gain.gain.value = a;
             onProgress?.(Math.min(1, (doneSec + (t - g.from)) / total));
-            requestAnimationFrame(draw);
+            setTimeout(draw, 33); // a timer, not requestAnimationFrame: keeps checking the end mark even when the tab is not in front
           };
           el.onerror = () => rej(new Error("Playback failed while capturing."));
-          requestAnimationFrame(draw);
+          draw();
         });
         el.pause();
         gain.gain.value = 0;
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
         doneSec += len;
-        if (i < segs.length - 1) rec.pause(); // hold the recording while we seek to the next segment
+        if (i < segs.length - 1) { holding = true; if (rec.state === "recording") rec.pause(); } // hold while we seek to the next section
       }
       await new Promise((r) => setTimeout(r, 150));
+      if (!started) throw new Error("The video never started playing — try a lower quality or check the connection.");
       rec.stop();
       await stopped;
       cleanup();
@@ -622,42 +642,10 @@ export function captureSegments({ src, segments, fade = 0.5, onProgress }) {
 // into a local clip. Used for the closing clip cut from the talk's official
 // video (served through our proxy so the frames are readable). Real time.
 export function captureClip({ src, start, end, onProgress }) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const mime = pickRenderMime();
-      if (!mime) throw new Error("This browser can't record video — use Chrome or Edge.");
-      const el = document.createElement("video");
-      el.crossOrigin = "anonymous";
-      el.preload = "auto";
-      el.muted = false;
-      el.volume = 0; // silent to the room; the stream still carries the sound
-      el.playsInline = true;
-      el.src = src;
-      await new Promise((res, rej) => { el.onloadedmetadata = res; el.onerror = () => rej(new Error("The video couldn't be loaded.")); });
-      const inAt = Math.max(0, Number(start) || 0);
-      const outAt = Math.min(Number.isFinite(el.duration) ? el.duration : 1e9, Number(end) || 0);
-      if (!(outAt > inAt)) throw new Error("The end must come after the start.");
-      await new Promise((res) => { el.onseeked = res; el.currentTime = inAt; });
-      const stream = el.captureStream ? el.captureStream() : el.mozCaptureStream();
-      const chunks = [];
-      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 160_000 });
-      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-      rec.onstop = () => {
-        el.pause();
-        const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
-        resolve({ blob: new Blob(chunks, { type: mime.split(";")[0] }), ext, duration: outAt - inAt });
-      };
-      rec.start(500);
-      await el.play();
-      const tick = () => {
-        const t = el.currentTime;
-        onProgress?.(Math.min(1, (t - inAt) / (outAt - inAt)));
-        if (t >= outAt - 0.04 || el.ended) { try { rec.stop(); } catch { resolve({ blob: new Blob(chunks), ext: "webm", duration: outAt - inAt }); } return; }
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    } catch (e) { reject(e); }
-  });
+  // One section, no fades — same canvas + WebAudio path as splicing, so the
+  // sound is captured reliably (an element's own captureStream can come out
+  // silent when its volume is turned down).
+  return captureSegments({ src, segments: [{ from: start, to: end }], fade: 0, onProgress });
 }
 
 // Even split helper: scene timings proportional to lyric word counts.
