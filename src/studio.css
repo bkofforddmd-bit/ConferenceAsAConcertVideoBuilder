@@ -412,6 +412,11 @@
 .phrase-stat.active { background: rgba(14, 37, 82, 0.7); box-shadow: inset 0 0 0 1px var(--sky); }
 .phrase-snippet { color: var(--silver); font-size: 12px; }
 
+.phrase-col rect { fill: transparent; cursor: pointer; }
+.phrase-col:hover rect { fill: rgba(245, 247, 250, 0.08); }
+.phrase-col.picked rect { fill: rgba(242, 198, 109, 0.12); }
+.splice-actions a.btn { text-decoration: none; }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;

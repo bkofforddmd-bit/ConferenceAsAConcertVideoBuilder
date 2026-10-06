@@ -18,6 +18,7 @@ const ALIASES = {
 };
 const norm = (s) => String(s || "").toLowerCase().replace(/[—–]/g, "-").replace(/[.’']/g, "").replace(/\s+/g, " ").trim();
 const confNum = (y, m) => Number(y) * 100 + Number(m);
+const readUrl = (uri) => `https://www.churchofjesuschrist.org${String(uri || "").replace(/\?.*$/, "")}?lang=eng`;
 const refLabel = (books, r) => `${books[r[0]].name} ${r[1]}${r[2] ? `:${r[2]}${r[3] && r[3] !== r[2] ? `–${r[3]}` : ""}` : ""}`;
 
 // "Isaiah 53:3-5" | "2 Nephi 2" | "Alma" | "D&C 121" | a person's name
@@ -258,6 +259,7 @@ export default function ScriptureStudy({ index, presidencies, startUrisQueue, ch
                   <span className="para-text"><strong style={{ color: "var(--cloud)" }}>{t.title}</strong> — {t.speaker}{m.refs.length ? <span className="note" style={{ margin: 0 }}> · {[...new Set(m.refs.map((r) => refLabel(books, r) + (r[4] === 1 ? " (quoted, no footnote)" : "")))].slice(0, 4).join("; ")}{m.refs.length > 4 ? "…" : ""}</span> : null}{m.how ? <span className="note" style={{ margin: 0 }}> · {m.how}</span> : null}</span>
                   <span className="splice-actions">
                     <button className="btn btn-ghost btn-sm" title="Listen" onClick={() => play([t.uri], t.title)}>{playing ? "▶ playing" : "▶"}</button>
+                    <a className="btn btn-ghost btn-sm" href={readUrl(t.uri)} target="_blank" rel="noopener noreferrer" title="Open the talk on churchofjesuschrist.org in a new tab">Read ↗</a>
                     {chooseTalk && <button className="btn btn-ghost btn-sm" title="Make a song from this talk" onClick={() => chooseTalk(t)} disabled={loading}>{loading ? "…" : "Make song →"}</button>}
                   </span>
                 </div>
