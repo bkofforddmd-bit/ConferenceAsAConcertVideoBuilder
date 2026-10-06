@@ -532,6 +532,92 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
   return { promise, cancel: () => { cancelled = true; } };
 }
 
+// Splice several start→end slices of one video into a single clip, with a
+// fade out / fade in (picture to black, sound to silence) at every join.
+// Frames are drawn to a canvas and the element's sound runs through a gain
+// node, so both can be faded. The recorder pauses while the video seeks to
+// the next segment, so joins are tight. Real time.
+export function captureSegments({ src, segments, fade = 0.5, onProgress }) {
+  return new Promise(async (resolve, reject) => {
+    const cleanups = [];
+    const cleanup = () => { for (const f of cleanups.splice(0)) { try { f(); } catch {} } };
+    try {
+      const mime = pickRenderMime();
+      if (!mime) throw new Error("This browser can't record video — use Chrome or Edge.");
+      const segs = (segments || []).map((g) => ({ from: Math.max(0, Number(g.from) || 0), to: Number(g.to) || 0 })).filter((g) => g.to > g.from);
+      if (!segs.length) throw new Error("No segments to capture.");
+      const total = segs.reduce((a, g) => a + (g.to - g.from), 0);
+
+      const el = document.createElement("video");
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      el.playsInline = true;
+      el.src = src;
+      await new Promise((res, rej) => { el.onloadedmetadata = res; el.onerror = () => rej(new Error("The video couldn't be loaded.")); });
+      const W = el.videoWidth || 1280, H = el.videoHeight || 720;
+      const canvas = document.createElement("canvas");
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext("2d", { alpha: false });
+
+      const ACtx = window.AudioContext || window.webkitAudioContext;
+      const actx = new ACtx();
+      cleanups.push(() => { try { actx.close(); } catch {} });
+      const srcNode = actx.createMediaElementSource(el);
+      const gain = actx.createGain();
+      const dest = actx.createMediaStreamDestination();
+      srcNode.connect(gain); gain.connect(dest); // not to the speakers
+      await actx.resume();
+
+      const stream = canvas.captureStream(30);
+      for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+      const chunks = [];
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 160_000 });
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((res) => { rec.onstop = res; });
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      rec.start(500);
+
+      const seek = (t) => new Promise((res) => { const on = () => { el.removeEventListener("seeked", on); res(); }; el.addEventListener("seeked", on); el.currentTime = t; });
+      let doneSec = 0;
+      for (let i = 0; i < segs.length; i++) {
+        const g = segs[i];
+        const len = g.to - g.from;
+        const f = Math.min(fade, len / 3);
+        await seek(g.from);
+        gain.gain.value = 0;
+        if (i > 0) rec.resume();
+        await el.play();
+        await new Promise((res, rej) => {
+          const draw = () => {
+            const t = el.currentTime;
+            if (t >= g.to - 0.04 || el.ended) { res(); return; }
+            // picture: fade from black at the start, to black at the end
+            const a = f > 0 ? Math.max(0, Math.min(1, (t - g.from) / f, (g.to - t) / f)) : 1;
+            ctx.drawImage(el, 0, 0, W, H);
+            if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
+            gain.gain.value = a;
+            onProgress?.(Math.min(1, (doneSec + (t - g.from)) / total));
+            requestAnimationFrame(draw);
+          };
+          el.onerror = () => rej(new Error("Playback failed while capturing."));
+          requestAnimationFrame(draw);
+        });
+        el.pause();
+        gain.gain.value = 0;
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+        doneSec += len;
+        if (i < segs.length - 1) rec.pause(); // hold the recording while we seek to the next segment
+      }
+      await new Promise((r) => setTimeout(r, 150));
+      rec.stop();
+      await stopped;
+      cleanup();
+      const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+      resolve({ blob: new Blob(chunks, { type: mime.split(";")[0] }), ext, duration: total });
+    } catch (e) { cleanup(); reject(e); }
+  });
+}
+
 // Record a start→end slice of a video element's playback (picture + sound)
 // into a local clip. Used for the closing clip cut from the talk's official
 // video (served through our proxy so the frames are readable). Real time.

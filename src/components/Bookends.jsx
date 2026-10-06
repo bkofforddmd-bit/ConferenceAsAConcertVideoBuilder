@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
-import { captureClip } from "../lib/video-render.js";
+import { captureClip, captureSegments } from "../lib/video-render.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
 
 // ---- instant lyric → paragraph matching by weighted word overlap ----
@@ -136,6 +136,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
   const [timing, setTiming] = useState("");
   const [picked, setPicked] = useState(-1);
   const [capMsg, setCapMsg] = useState("");
+  const [segs, setSegs] = useState([]); // spliced sections: [{ from, to, quote }]
   const [lyricQ, setLyricQ] = useState("");
   const [pickedLine, setPickedLine] = useState(-1);
   const [tracing, setTracing] = useState("");
@@ -241,17 +242,48 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
     const stop = () => { if (v.currentTime >= end - 0.05) { v.pause(); v.removeEventListener("timeupdate", stop); } };
     v.addEventListener("timeupdate", stop);
   }
-  async function capture() {
+  const currentQuote = () => (picked >= 0 ? paragraphs[picked].slice(0, 140) : "");
+  function addSegment() {
     if (inAt == null || outAt == null || outAt <= inAt) { setCapMsg("Mark a start and an end first."); return; }
-    if (outAt - inAt > 180) { setCapMsg("Keep the closing clip under 3 minutes."); return; }
+    setSegs((list) => [...list, { from: inAt, to: outAt, quote: currentQuote() }]);
+    setCapMsg("");
+    setInAt(null); setOutAt(null);
+  }
+  function moveSeg(i, dir) {
+    setSegs((list) => { const n = list.slice(); const j = i + dir; if (j < 0 || j >= n.length) return list; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  }
+  function previewSegments() {
+    const v = vref.current; if (!v || !segs.length) return;
+    let i = 0;
+    const playOne = () => {
+      const g = segs[i]; if (!g) { v.pause(); return; }
+      v.currentTime = g.from; v.play();
+      const stop = () => { if (v.currentTime >= g.to - 0.05) { v.removeEventListener("timeupdate", stop); i++; if (i < segs.length) playOne(); else v.pause(); } };
+      v.addEventListener("timeupdate", stop);
+    };
+    playOne();
+  }
+  const segTotal = segs.reduce((a, g) => a + (g.to - g.from), 0);
+  async function capture() {
+    // Either the spliced list, or the single marked range.
+    const list = segs.length ? segs : (inAt != null && outAt != null && outAt > inAt ? [{ from: inAt, to: outAt, quote: currentQuote() }] : []);
+    if (!list.length) { setCapMsg("Mark a start and an end first (or add sections to splice)."); return; }
+    const total = list.reduce((a, g) => a + (g.to - g.from), 0);
+    if (total > 240) { setCapMsg("Keep the closing clip under 4 minutes in total."); return; }
     setBusy(true);
     try {
-      const { blob, ext } = await captureClip({ src, start: inAt, end: outAt, onProgress: (p) => setCapMsg(`Capturing… ${Math.round(p * 100)}% (plays in real time)`) });
+      const prog = (p) => setCapMsg(`Capturing… ${Math.round(p * 100)}% (plays in real time${list.length > 1 ? ", fading between sections" : ""})`);
+      const { blob, ext } = list.length > 1
+        ? await captureSegments({ src, segments: list, fade: 0.5, onProgress: prog })
+        : await captureClip({ src, start: list[0].from, end: list[0].to, onProgress: prog });
       const mediaKey = `${projectId}:bookend:post`;
-      await putMedia(mediaKey, blob, { ext, source: "talk", from: inAt, to: outAt });
-      const len = outAt - inAt;
-      onCaptured({ mediaKey, kind: "talk", name: `${talkMeta.speaker || "Speaker"} · ${fmtS(inAt)}–${fmtS(outAt)}`, in: 0, out: len, duration: len, quote: picked >= 0 ? paragraphs[picked].slice(0, 140) : "", sourceUrl: media.video[quality], from: inAt, to: outAt });
+      await putMedia(mediaKey, blob, { ext, source: "talk", segments: list });
+      const name = list.length > 1
+        ? `${talkMeta.speaker || "Speaker"} · ${list.length} sections · ${list.map((g) => `${fmtS(g.from)}–${fmtS(g.to)}`).join(" + ")}`
+        : `${talkMeta.speaker || "Speaker"} · ${fmtS(list[0].from)}–${fmtS(list[0].to)}`;
+      onCaptured({ mediaKey, kind: "talk", name, in: 0, out: total, duration: total, quote: list.map((g) => g.quote).filter(Boolean).join(" … "), sourceUrl: media.video[quality], segments: list });
       setCapMsg("");
+      setSegs([]);
     } catch (e) { setCapMsg(`Capture failed: ${e.message || e}`); }
     setBusy(false);
   }
@@ -282,9 +314,35 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
         <button className="btn btn-ghost btn-sm" onClick={() => setOutAt(Math.round(t * 10) / 10)}>End here ⟧ ({fmt(t)})</button>
         <span className="chip">{inAt == null ? "no start yet" : `start ${fmt(inAt)}`}{outAt != null ? ` → end ${fmt(outAt)} · ${fmt(outAt - inAt)}` : ""}</span>
         <button className="btn btn-ghost btn-sm" onClick={previewSelection} disabled={inAt == null}>▶ Preview selection</button>
-        <button className="btn btn-primary btn-sm" onClick={capture} disabled={busy || inAt == null || outAt == null}>{busy ? "Working…" : "✂ Capture this clip for the ending"}</button>
+        <button className="btn btn-ghost btn-sm" onClick={addSegment} disabled={inAt == null || outAt == null} title="Keep this section and mark another; they'll be spliced in order with a fade between them">＋ Add as a section to splice</button>
+        <button className="btn btn-primary btn-sm" onClick={capture} disabled={busy || (!segs.length && (inAt == null || outAt == null))}>
+          {busy ? "Working…" : segs.length ? `✂ Capture ${segs.length} section${segs.length === 1 ? "" : "s"} as one clip (${fmt(segTotal)})` : "✂ Capture this clip for the ending"}
+        </button>
       </div>
       {capMsg && <p className="note">{capMsg}</p>}
+      {segs.length > 0 && (
+        <div className="splice-list">
+          <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong>Sections to splice</strong>
+            <span className="note" style={{ margin: 0 }}>played in this order, with a half-second fade out and in at each join · {fmt(segTotal)} total</span>
+            <button className="btn btn-ghost btn-sm" onClick={previewSegments} style={{ marginLeft: "auto" }}>▶ Preview all</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSegs([])}>Clear</button>
+          </div>
+          {segs.map((g, i) => (
+            <div key={i} className="splice-row">
+              <span className="splice-n">{i + 1}</span>
+              <span className="splice-time">{fmtS(g.from)} → {fmtS(g.to)} <span className="note" style={{ margin: 0 }}>({fmt(g.to - g.from)})</span></span>
+              <span className="splice-quote">{g.quote ? `“${g.quote.slice(0, 90)}${g.quote.length > 90 ? "…" : ""}”` : ""}</span>
+              <span className="splice-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => { const v = vref.current; if (v) { v.currentTime = g.from; v.play(); } }} title="Play from here">▶</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => moveSeg(i, -1)} disabled={i === 0} title="Move up">↑</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => moveSeg(i, 1)} disabled={i === segs.length - 1} title="Move down">↓</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSegs((l) => l.filter((_, k) => k !== i))} style={{ color: "var(--danger)" }} title="Remove this section">✕</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {songLines.length > 0 && (
         <div className="talk-find">

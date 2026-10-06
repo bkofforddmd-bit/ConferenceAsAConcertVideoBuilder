@@ -381,6 +381,14 @@
 .lyric-pick-row.active { border-color: var(--warning); background: rgba(242, 198, 109, 0.18); }
 .para-row.match { border-color: var(--warning); box-shadow: inset 3px 0 0 var(--warning); }
 
+.splice-list { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(4, 12, 30, 0.35); display: flex; flex-direction: column; gap: 6px; }
+.splice-row { display: grid; grid-template-columns: 24px 150px 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+.splice-n { width: 22px; height: 22px; border-radius: 11px; background: var(--air); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.splice-time { color: var(--cloud); font-variant-numeric: tabular-nums; }
+.splice-quote { color: var(--silver); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.splice-actions { display: flex; gap: 2px; }
+@media (max-width: 640px) { .splice-row { grid-template-columns: 24px 1fr auto; } .splice-quote { display: none; } }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;
