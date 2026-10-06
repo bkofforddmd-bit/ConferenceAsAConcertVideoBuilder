@@ -131,12 +131,17 @@ export default function VideoStudio({
   const [audioUrl, setAudioUrl] = useState("");
   const songVersion = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
   const totalSec = songVersion ? songVersion.durationSec : 0;
+  // true when the project names a song file that this browser doesn't have
+  // (audio lives on the device where it was made; projects moved elsewhere
+  // need the song uploaded again)
+  const [audioMissing, setAudioMissing] = useState(false);
   useEffect(() => {
     let url = "";
     (async () => {
+      setAudioMissing(false);
       if (!songVersion || !songVersion.mediaKey) { setAudioUrl(""); return; }
       const rec = await getMedia(songVersion.mediaKey);
-      if (!rec) { setAudioUrl(""); return; }
+      if (!rec) { setAudioUrl(""); setAudioMissing(true); return; }
       url = URL.createObjectURL(rec.blob);
       setAudioUrl(url);
     })();
@@ -449,6 +454,17 @@ export default function VideoStudio({
     }
     return segs.filter((x) => x.src);
   }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta, extraUrls]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Why the Render button is off, in plain words (the opening/closing clips are never required).
+  const renderBlocker = !songVersion
+    ? "there's no song yet — generate one or upload an MP3 on the Music step."
+    : audioMissing
+    ? "the song's audio file isn't stored in this browser. Song files stay on the device where they were made, so if you built this on another computer, open it there — or upload the song again on the Music step (the lyric sync and timing are kept)."
+    : !audioUrl
+    ? "loading the song…"
+    : !segments.length
+    ? "no scene has an image yet — generate or add images on the Storyboard step."
+    : "";
 
   // ---- tap-along per LINE: play the song, press Next for every lyric line ----
   const lineList = useMemo(() => {
@@ -921,7 +937,7 @@ export default function VideoStudio({
               {QUALITIES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
             {!rendering ? (
-              <button className="btn btn-primary" onClick={startRender} disabled={!audioUrl || !segments.length}>
+              <button className="btn btn-primary" onClick={startRender} disabled={!audioUrl || !segments.length} title={renderBlocker || "Render the music video"}>
                 {render && render.mediaKey ? "Render again" : "Render video"}
               </button>
             ) : (
@@ -929,6 +945,11 @@ export default function VideoStudio({
             )}
           </div>
         </div>
+        {renderBlocker && !rendering && (
+          <div className="music-card" style={{ margin: "0 0 10px", borderColor: "var(--warning)" }}>
+            <div className="note" style={{ margin: 0 }}><strong>Can't render yet:</strong> {renderBlocker}</div>
+          </div>
+        )}
         <p className="note" style={{ marginTop: 0 }}>
           Rendering happens in your browser in real time — a 3-minute song takes about 3 minutes. Keep this
           tab open and visible (Chrome or Edge). Nothing is uploaded.
