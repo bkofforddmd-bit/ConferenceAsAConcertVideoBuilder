@@ -212,6 +212,30 @@ export default function App() {
     setStep("lyrics");
   }
 
+  // Correct which talk this project points at (title, speaker, text, link)
+  // WITHOUT touching lyrics, song, scenes or video — for when the stored talk
+  // is wrong (e.g. an old bug kept the content but swapped the talk).
+  async function fixTalk(uri) {
+    const res = await fetch("/.netlify/functions/fetch-talk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: uri }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not load that talk.");
+    const monthName = String(data.month) === "10" ? "October" : "April";
+    const meta = {
+      title: data.title || "",
+      speaker: data.speaker || "",
+      speakerTitle: data.speakerTitle || "",
+      conferenceMonthYear: data.year ? `${monthName} ${data.year}` : "",
+      session: "",
+      sourceUrl: data.sourceUrl || `https://www.churchofjesuschrist.org${uri}?lang=eng`,
+    };
+    setTalkText((data.paragraphs || []).join("\n\n"));
+    setTalkMeta(meta);
+    setLyricSources(null); // any line index pointed at the old talk's paragraphs
+    setSaveMsg(`Project talk corrected to “${meta.title}”.`);
+    setTimeout(() => setSaveMsg(""), 6000);
+    return meta;
+  }
+
   function finalize() {
     setFinalLyrics(lyrics);
     setStep("music");
@@ -582,6 +606,7 @@ export default function App() {
               talkText={talkText}
               lyricSources={lyricSources}
               onLyricSources={setLyricSources}
+              onFixTalk={fixTalk}
             />
           )}
 

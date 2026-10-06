@@ -120,8 +120,59 @@ function UploadBox({ label, hint, onFile, busy }) {
   );
 }
 
+// ---- which talk? shows the project's talk; search the library to correct it ----
+function TalkChooser({ current, onPick, busy }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [idx, setIdx] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!open || idx) return;
+    fetch("/talks-index.json").then((r) => r.json()).then((d) => setIdx(d.talks || [])).catch(() => setIdx([]));
+  }, [open, idx]);
+  const results = useMemo(() => {
+    if (!idx) return [];
+    const t = q.trim().toLowerCase();
+    if (t.length < 2) return [];
+    const words = t.split(/\s+/).filter(Boolean);
+    return idx
+      .filter((x) => { const hay = `${x.title || ""} ${x.speaker || ""}`.toLowerCase(); return words.every((w) => hay.includes(w)); })
+      .sort((a, b) => Number(b.year) - Number(a.year))
+      .slice(0, 14);
+  }, [idx, q]);
+  const has = current && current.sourceUrl;
+  return (
+    <div className="talk-chooser">
+      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="note" style={{ margin: 0 }}>
+          Talk: <strong style={{ color: "var(--cloud)" }}>{has ? current.title || "untitled" : "none chosen"}</strong>
+          {has && current.speaker ? ` — ${current.speaker}` : ""}{has && current.conferenceMonthYear ? ` · ${current.conferenceMonthYear}` : ""}
+        </span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen((v) => !v)} disabled={busy}>{open ? "Cancel" : has ? "Not this talk? Choose the right one" : "Choose the talk"}</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <input type="text" className="picker-search-input" placeholder="search by title or speaker, e.g. peaceable things" value={q} onChange={(e) => setQ(e.target.value)} autoFocus style={{ width: "100%" }} />
+          <div className="para-list" style={{ maxHeight: 260 }}>
+            {results.map((t) => (
+              <button key={t.uri} className="para-row" onClick={async () => { setErr(""); try { await onPick(t.uri); setOpen(false); } catch (e) { setErr(e.message || String(e)); } }} title="Use this talk for the project">
+                <span className="para-time">{String(t.month) === "10" ? "Oct" : "Apr"} {t.year}</span>
+                <span className="para-text"><strong style={{ color: "var(--cloud)" }}>{t.title}</strong> — {t.speaker}</span>
+              </button>
+            ))}
+            {!idx && q.trim().length >= 2 && <p className="note">Loading the talk list…</p>}
+            {idx && q.trim().length >= 2 && !results.length && <p className="note">No talk matches that.</p>}
+          </div>
+          {err && <p className="note" style={{ color: "var(--danger)" }}>{err}</p>}
+          <p className="note" style={{ margin: "6px 0 0" }}>Picking one corrects the project's talk — its title, speaker, text and link — and leaves your lyrics, song, scenes and video exactly as they are.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- the talk's own video: find the moment, mark it, capture it ----
-function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSources, onCaptured }) {
+function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSources, onCaptured, onFixTalk }) {
   const [media, setMedia] = useState(null); // { audioUrl, video:{p360,p720,p1080} }
   const [quality, setQuality] = useState("p720");
   const [msg, setMsg] = useState("");
@@ -206,10 +257,10 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
   }
   const matchedSet = new Set(lineMatch ? lineMatch.paragraphs : []);
 
-  async function load() {
+  async function load(url) {
     setBusy(true); setMsg("Finding the talk's official video…");
     try {
-      const m = await resolveTalkMedia(talkMeta.sourceUrl);
+      const m = await resolveTalkMedia(url || talkMeta.sourceUrl);
       if (!m || !m.video || !(m.video.p720 || m.video.p360 || m.video.p1080)) throw new Error("No video recording is available for this talk.");
       setMedia(m);
       setQuality(m.video.p720 ? "p720" : m.video.p1080 ? "p1080" : "p360");
@@ -218,6 +269,16 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
     setBusy(false);
   }
   const src = media && media.video && media.video[quality] ? proxiedMediaUrl(media.video[quality]) : "";
+  async function pickTalk(uri) {
+    if (!onFixTalk) return;
+    setBusy(true);
+    try {
+      const meta = await onFixTalk(uri);
+      setMedia(null); setTimes(null); setTiming(""); setSegs([]); setInAt(null); setOutAt(null); setPicked(-1); setPickedLine(-1); setLineMatch(null);
+      if (meta && meta.sourceUrl) await load(meta.sourceUrl);
+    } finally { setBusy(false); }
+  }
+  const chooser = onFixTalk ? <TalkChooser current={talkMeta || {}} onPick={pickTalk} busy={busy} /> : null;
 
   async function pinTimes() {
     if (!media || !media.audioUrl) return;
@@ -290,17 +351,27 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
 
   const filtered = paragraphs.map((p, i) => ({ p, i })).filter(({ p }) => !q.trim() || p.toLowerCase().includes(q.trim().toLowerCase()));
 
-  if (!talkMeta || !talkMeta.sourceUrl) return <p className="note">Choose the talk in the Library first — then its official video can be searched here.</p>;
+  if (!talkMeta || !talkMeta.sourceUrl) {
+    return (
+      <div className="talk-picker">
+        {chooser || <p className="note">Choose the talk in the Library first — then its official video can be searched here.</p>}
+      </div>
+    );
+  }
   if (!media) {
     return (
-      <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn btn-primary btn-sm" onClick={load} disabled={busy}>{busy ? "Loading…" : "Load the talk's official video"}</button>
-        {msg && <span className="note" style={{ margin: 0 }}>{msg}</span>}
+      <div className="talk-picker">
+        {chooser}
+        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-primary btn-sm" onClick={() => load()} disabled={busy}>{busy ? "Loading…" : "Load the talk's official video"}</button>
+          {msg && <span className="note" style={{ margin: 0 }}>{msg}</span>}
+        </div>
       </div>
     );
   }
   return (
     <div className="talk-picker">
+      {chooser}
       <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <span className="note" style={{ margin: 0 }}>Quality</span>
         <select value={quality} onChange={(e) => setQuality(e.target.value)}>
@@ -403,7 +474,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
   );
 }
 
-export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics, sources, onSources }) {
+export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics, sources, onSources, onFixTalk }) {
   const bookends = tl.bookends || {};
   const [busy, setBusy] = useState("");
   const [closingMode, setClosingMode] = useState(talkMeta && talkMeta.sourceUrl ? "talk" : "upload");
@@ -454,7 +525,7 @@ export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkTex
                 <button className={`btn btn-sm ${closingMode === "upload" ? "btn-primary" : "btn-ghost"}`} onClick={() => setClosingMode("upload")}>Upload a file</button>
               </div>
               {closingMode === "talk"
-                ? <TalkClipPicker projectId={projectId} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={sources || null} onSources={onSources} onCaptured={(c) => setBookend("post", c)} />
+                ? <TalkClipPicker projectId={projectId} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={sources || null} onSources={onSources} onFixTalk={onFixTalk} onCaptured={(c) => setBookend("post", c)} />
                 : <UploadBox label="Upload a closing clip" hint="MP4 or WebM" onFile={(f) => upload("post", f)} busy={busy === "post"} />}
             </>
           )}

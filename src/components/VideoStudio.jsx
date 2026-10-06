@@ -112,7 +112,7 @@ function motionPromptFor(scene) {
 export default function VideoStudio({
   projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
-  config, onContinue, onSetCardImage, onSetSceneLyrics, talkMeta, talkText, lyricSources, onLyricSources,
+  config, onContinue, onSetCardImage, onSetSceneLyrics, talkMeta, talkText, lyricSources, onLyricSources, onFixTalk,
 }) {
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
@@ -909,7 +909,7 @@ export default function VideoStudio({
         <div className="panel-head">
           <h3>3 · Opening & closing clips <span className="chip">optional</span></h3>
         </div>
-        <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={lyricSources} onSources={onLyricSources} />
+        <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={lyricSources} onSources={onLyricSources} onFixTalk={onFixTalk} />
       </div>
 
       {/* ---------------- RENDER ---------------- */}

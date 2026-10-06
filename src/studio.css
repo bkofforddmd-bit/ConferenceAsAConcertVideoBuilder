@@ -389,6 +389,8 @@
 .splice-actions { display: flex; gap: 2px; }
 @media (max-width: 640px) { .splice-row { grid-template-columns: 24px 1fr auto; } .splice-quote { display: none; } }
 
+.talk-chooser { padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px; margin-bottom: 4px; }
+
 /* ---- Lyric sync (tap-along editor + karaoke display) ---- */
 .sync-overlay {
   position: fixed; inset: 0; z-index: 80;
