@@ -14,6 +14,8 @@ export default function LyricCreator({
   finalized,
 }) {
   const [revisionRequest, setRevisionRequest] = useState("");
+  // characters of sung lyric (section labels and blank lines not counted)
+  const lyricChars = String(lyrics || "").split("\n").filter((l) => l.trim() && !/^\s*\[[^\]]+\]\s*$/.test(l)).join("\n").length;
   const [pastedLyrics, setPastedLyrics] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -157,11 +159,15 @@ export default function LyricCreator({
             />
           </label>
 
+          <p className="note" style={{ margin: "4px 0 8px" }}>
+            <strong style={{ color: lyricChars > 1500 ? "var(--warning)" : "var(--cloud)" }}>{lyricChars.toLocaleString()} characters</strong> of lyric
+            {lyricChars > 1500 ? " — over the 1,500 default" : " — the generator aims for under 1,500"}. To change the target, say so in a revision (e.g. "make it longer, about 2,500 characters") or in the style line before generating.
+          </p>
           <label className="field">
             <span className="lbl">Request a revision</span>
             <input
               type="text"
-              placeholder="e.g. 'make the chorus more hopeful' or 'add a bridge about gratitude'"
+              placeholder="e.g. 'make the chorus more hopeful', 'add a bridge about gratitude', or 'make it longer — about 2,500 characters'"
               value={revisionRequest}
               onChange={(e) => setRevisionRequest(e.target.value)}
             />

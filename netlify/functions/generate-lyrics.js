@@ -51,6 +51,11 @@ export default async (req) => {
     "- Use a clear song structure with labeled sections:",
     "  [Verse 1], [Chorus], [Verse 2], [Bridge], etc.",
     "- Be singable: consistent meter, natural rhyme where it serves the line.",
+    "- LENGTH: keep the whole lyric under 1,500 characters (section labels not",
+    "  counted) — roughly 20 to 26 short lines: two verses, a chorus sung twice,",
+    "  and a bridge. This is the default; only go longer or shorter when the",
+    "  request explicitly asks for a different length (e.g. \"longer\", \"about",
+    "  2,500 characters\", \"three verses\").",
     "When a style reference is given, match its GENRE, mood, instrumentation feel,",
     "and energy — never imitate a specific artist's actual copyrighted lyrics or",
     "reproduce their songs. Treat the reference purely as a stylistic direction.",
@@ -75,6 +80,7 @@ export default async (req) => {
       `Here are the current lyrics:\n\n${currentLyrics}\n\n` +
       (styleReference ? `Style direction: ${styleReference}\n\n` : "") +
       `Please revise them per this request:\n${revisionRequest}\n\n` +
+      `Keep the result under 1,500 characters of lyric (labels not counted) unless the request above asks for a different length.\n\n` +
       (paras.length
         ? `Return the full revised lyrics with section labels, then the ===SOURCES=== block, nothing else.`
         : `Return ONLY the full revised lyrics with section labels, nothing else.`);
@@ -87,6 +93,7 @@ export default async (req) => {
           `(stylistic direction only — original words).\n\n`
         : "") +
       `TALK (numbered paragraphs):\n${numberedTalk || talkText}\n\n` +
+      `Length: under 1,500 characters of lyric (labels not counted) unless the style direction above says otherwise.\n` +
       `Return the lyrics with clear section labels, then the ===SOURCES=== block, nothing else.`;
   }
 
