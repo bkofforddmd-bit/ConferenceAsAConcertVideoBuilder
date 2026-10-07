@@ -14,6 +14,20 @@ export default function LyricCreator({
   finalized,
 }) {
   const [revisionRequest, setRevisionRequest] = useState("");
+  const [copied, setCopied] = useState(""); // "all" | "plain" while the confirmation shows
+  // Copy the lyrics for a music tool (MelodyCraft etc.) — with the [Section]
+  // labels, or just the sung lines.
+  async function copyLyrics(mode) {
+    const text = mode === "plain"
+      ? String(lyrics || "").split("\n").filter((l) => !/^\s*\[[^\]]+\]\s*$/.test(l)).join("\n").replace(/\n{3,}/g, "\n\n").trim()
+      : String(lyrics || "").trim();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+      else { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+      setCopied(mode);
+      setTimeout(() => setCopied(""), 1800);
+    } catch { setError("Couldn't copy — select the text in the box and copy it by hand."); }
+  }
   // characters of sung lyric (section labels and blank lines not counted)
   const lyricChars = String(lyrics || "").split("\n").filter((l) => l.trim() && !/^\s*\[[^\]]+\]\s*$/.test(l)).join("\n").length;
   const [pastedLyrics, setPastedLyrics] = useState("");
@@ -150,8 +164,16 @@ export default function LyricCreator({
 
       {lyrics && (
         <>
-          <label className="field" style={{ marginTop: 24 }}>
-            <span className="lbl">Lyrics (editable)</span>
+          <div className="row" style={{ marginTop: 24, alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="lbl" style={{ margin: 0 }}>Lyrics (editable)</span>
+            <button className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }} onClick={() => copyLyrics("all")} title="Copy the whole lyric, section labels included, ready to paste into MelodyCraft or another music tool">
+              {copied === "all" ? "Copied ✓" : "📋 Copy lyrics"}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => copyLyrics("plain")} title="Copy just the sung lines, without [Verse] / [Chorus] labels">
+              {copied === "plain" ? "Copied ✓" : "Copy without labels"}
+            </button>
+          </div>
+          <label className="field" style={{ marginTop: 6 }}>
             <textarea
               className="lyrics"
               value={lyrics}
