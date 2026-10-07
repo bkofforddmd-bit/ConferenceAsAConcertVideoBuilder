@@ -449,6 +449,8 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     }
     // Silent hold on the intro card before the music starts (the card is the
     // first segment; drawn still, so its motion begins with the song).
+    let leadTimer = 0;
+    cleanups.push(() => clearTimeout(leadTimer));
     if (lead > 0) {
       const s0 = segs[0], el0 = assets[0];
       const offset = pre ? pre.len : 0;
@@ -460,13 +462,19 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           if (t >= lead) { resolve(); return; }
           ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H);
           if (s0 && s0.kind === "textcard") drawTextCard(ctx, s0.card || {}, W, H);
-          else if (el0 && s0 && s0.kind !== "video") drawCover(ctx, el0, W, H, 1, 0, 0);
+          else if (el0 && s0 && s0.kind !== "video") {
+            // the card's pan/zoom spans the hold AND its segment in the song: one continuous move
+            const span = lead + Math.max(0.01, s0.end - s0.start);
+            const p = Math.max(0, Math.min(1, t / span));
+            if (s0.motion === "custom" && s0.path) drawViewport(ctx, el0, W, H, pathRectAt(s0.path, p));
+            else { const mv = motionAt(s0.motion || "auto", p, 0, s0.isCard ? 0.5 : 1); drawCover(ctx, el0, W, H, mv.zoom, mv.panX, mv.panY); }
+          }
           const a = Math.min(1, t / 0.6); // ease in from black
           if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
           if (offset + t - lastProgressAt >= 0.25) { lastProgressAt = offset + t; onProgress?.((offset + t) / grand, `Intro card · ${stamp(offset + t)} of ${stamp(grand)}`); }
-          raf = requestAnimationFrame(draw);
+          leadTimer = setTimeout(draw, 33); // a timer, so the hold always ends even if the tab loses focus
         };
-        raf = requestAnimationFrame(draw);
+        draw();
       });
     }
     audioEl.currentTime = 0;
@@ -508,7 +516,9 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
             }
           } else {
             // Ken Burns on the still, per the shot's motion setting (or a custom path).
-            const p = Math.max(0, Math.min(1, (t - s.start) / Math.max(0.01, s.end - s.start)));
+            // The intro card held before the music continues the move it began during the hold.
+            const held = i === 0 && lead > 0 && s.isCard ? lead : 0;
+            const p = Math.max(0, Math.min(1, (held + (t - s.start)) / Math.max(0.01, held + (s.end - s.start))));
             if (s.motion === "custom" && s.path) {
               drawViewport(ctx, el, W, H, pathRectAt(s.path, p));
             } else {
