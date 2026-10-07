@@ -14,7 +14,7 @@ import {
 } from "../lib/api.js";
 import { downloadFullPortrait, fullPortraitUrlFor, loadPortraits } from "./SpeakerFace.jsx";
 
-export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, onStateChange, onRenumber }) {
+export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, liveState, onStateChange, onRenumber }) {
   const [portraitAvail, setPortraitAvail] = useState(false);
   const [portraitMsg, setPortraitMsg] = useState("");
   const [portraitBusy, setPortraitBusy] = useState(false);
@@ -67,21 +67,32 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
   const [unmatched, setUnmatched] = useState([]); // data URLs not auto-placed
   const [error, setError] = useState("");
 
-  // Restore from a loaded project file.
+  // Restore the storyboard.
+  //   - On MOUNT (coming back to this step) use the LIVE state the app holds —
+  //     it includes every image generated since the project was last loaded.
+  //     (Restoring from the load-time snapshot here is what used to wipe
+  //     images and scenes after navigating away and back.)
+  //   - While mounted, a new restoreState (a project being opened) replaces it.
+  const mountedRef = React.useRef(false);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     // Clear transient per-scene/card notes whenever the project changes
     // (loading a saved project, or starting a new one).
     setCardNotes({});
     setEditNotes({});
-    if (restoreState) {
-      setStyleBible(restoreState.styleBible || null);
-      setScenes(Array.isArray(restoreState.scenes) ? restoreState.scenes : []);
-      setImages(restoreState.images || {});
-      setSaved(restoreState.saved || {});
-      if (restoreState.meta) setMeta(restoreState.meta);
-      if (restoreState.endcards) setEndcards(restoreState.endcards);
+    const live = liveState && liveState.current;
+    const src = !mountedRef.current && live && Array.isArray(live.scenes) ? live : restoreState;
+    mountedRef.current = true;
+    if (src) {
+      setStyleBible(src.styleBible || null);
+      setScenes(Array.isArray(src.scenes) ? src.scenes : []);
+      setImages(src.images || {});
+      setSaved(src.saved || {});
+      if (src.meta) setMeta(src.meta);
+      if (src.endcards) setEndcards(src.endcards);
     }
-  }, [restoreState]);
+    setHydrated(true);
+  }, [restoreState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill the Title & Credits panel from the chosen talk. Only fills fields
   // that are still blank, so anything the user typed (or a restored project)
@@ -98,10 +109,12 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     }));
   }, [talkMeta]);
 
-  // Report current state up so the project can be saved at any time.
+  // Report current state up so the project can be saved at any time — but
+  // never the blank initial state before the restore above has applied.
   useEffect(() => {
+    if (!hydrated) return;
     if (onStateChange) onStateChange({ styleBible, scenes, images, saved, meta, endcards });
-  }, [styleBible, scenes, images, saved, meta, endcards, onStateChange]);
+  }, [hydrated, styleBible, scenes, images, saved, meta, endcards, onStateChange]);
 
   // Step 1: style bible + outline. Step 2: expand each scene one-by-one.
   async function buildOutlineFromImages(fileList) {

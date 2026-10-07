@@ -81,17 +81,30 @@ export default function App() {
   }, []);
 
   // ---- restore the last session ----
+  // localStorage holds at most ~5 MB, so a project with storyboard images
+  // silently stops fitting there and the copy goes stale. IndexedDB has the
+  // full, current project — so restore whichever copy is NEWER, and never let
+  // a stale localStorage copy win (it used to, and then got autosaved over
+  // the good IndexedDB copy: images and scenes "vanished").
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUTOSAVE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (saved && saved.app === APP_ID) {
-        applyProject(saved);
-        setRestoredNote(true);
-        if (saved.talkText || saved.lyrics) setView("create");
+    (async () => {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch {}
+      if (saved && saved.app !== APP_ID) saved = null;
+      let best = saved && !saved.pointer ? saved : null;
+      const pid = saved && saved.projectId;
+      if (pid) {
+        try {
+          const row = await idbLoadProject(pid);
+          const full = row && row.data;
+          if (full && (!best || String(full.savedAt || "") >= String(best.savedAt || ""))) best = full;
+        } catch {}
       }
-    } catch {}
+      if (!best) return;
+      applyProject(best);
+      setRestoredNote(true);
+      if (best.talkText || best.lyrics) setView("create");
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyProject(p) {
@@ -162,7 +175,13 @@ export default function App() {
   useEffect(() => {
     autosaveDirty.current = true;
     const save = () => {
-      try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
+      const p = buildProject();
+      try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(p)); }
+      catch {
+        // Too big for localStorage (images): leave a pointer so the next
+        // launch restores the full project from IndexedDB instead.
+        try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ app: APP_ID, projectId, savedAt: p.savedAt, pointer: true })); } catch {}
+      }
     };
     const saveIdb = () => {
       if (!hasContent) return;
@@ -173,13 +192,19 @@ export default function App() {
       autosaveDirty.current = false;
       save(); saveIdb();
     };
+    const flush = () => { if (!isRendering()) { save(); saveIdb(); autosaveDirty.current = false; } };
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
     const id = setInterval(tick, 5000);
-    window.addEventListener("beforeunload", save);
-    return () => { clearInterval(id); window.removeEventListener("beforeunload", save); };
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => { clearInterval(id); window.removeEventListener("beforeunload", flush); window.removeEventListener("pagehide", flush); document.removeEventListener("visibilitychange", onHide); };
   }, [talkText, lyrics, finalLyrics, styleReference, lyricSources, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveNow() {
-    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildProject())); } catch {}
+    const p = buildProject();
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(p)); }
+    catch { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ app: APP_ID, projectId, savedAt: p.savedAt, pointer: true })); } catch {} }
     if (hasContent) await idbSaveProject(projectId, projectTitle(), buildProject(), projectSummary());
     setProjectsRefresh((n) => n + 1);
   }
@@ -573,6 +598,7 @@ export default function App() {
               styleReference={styleReference}
               talkMeta={talkMeta}
               restoreState={restoreState}
+              liveState={sceneStateRef}
               onStateChange={onSceneStateChange}
               onRenumber={renumberScenes}
             />
