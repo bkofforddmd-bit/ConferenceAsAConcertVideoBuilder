@@ -390,7 +390,8 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     let pre = null, post = null;
     try { pre = await prepClip(bookends.pre); } catch { pre = null; }
     try { post = await prepClip(bookends.post); } catch { post = null; }
-    const grand = (pre ? pre.len : 0) + total + (post ? post.len : 0);
+    const lead = Math.max(0, Math.min(30, Number(plan.introLead) || 0)); // intro card held in silence before the music
+    const grand = (pre ? pre.len : 0) + lead + total + (post ? post.len : 0);
     const stamp = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
     const canvas = previewCanvas || document.createElement("canvas");
@@ -403,7 +404,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     // fade at both ends. offset = seconds of output already recorded.
     const playClipPhase = (clip, offset, label) => new Promise((resolve, reject) => {
       const { el, inAt, outAt } = clip;
-      const fade = 0.4;
+      const fade = Math.max(0, Math.min(5, Number(clip.fade) || 0.4));
       const draw = () => {
         if (cancelled) { reject(new Error("Cancelled.")); return; }
         const t = el.currentTime;
@@ -439,12 +440,34 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     cleanups.push(() => cancelAnimationFrame(raf));
     const fadeSec = 0.6;
     let lastProgressAt = -1;
-    const songOffset = pre ? pre.len : 0;
+    const songOffset = (pre ? pre.len : 0) + lead;
 
     if (pre) {
       await playClipPhase(pre, 0, "Opening clip");
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
       await new Promise((r) => setTimeout(r, 250));
+    }
+    // Silent hold on the intro card before the music starts (the card is the
+    // first segment; drawn still, so its motion begins with the song).
+    if (lead > 0) {
+      const s0 = segs[0], el0 = assets[0];
+      const offset = pre ? pre.len : 0;
+      await new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const draw = () => {
+          if (cancelled) { reject(new Error("Cancelled.")); return; }
+          const t = (performance.now() - t0) / 1000;
+          if (t >= lead) { resolve(); return; }
+          ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H);
+          if (s0 && s0.kind === "textcard") drawTextCard(ctx, s0.card || {}, W, H);
+          else if (el0 && s0 && s0.kind !== "video") drawCover(ctx, el0, W, H, 1, 0, 0);
+          const a = Math.min(1, t / 0.6); // ease in from black
+          if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
+          if (offset + t - lastProgressAt >= 0.25) { lastProgressAt = offset + t; onProgress?.((offset + t) / grand, `Intro card · ${stamp(offset + t)} of ${stamp(grand)}`); }
+          raf = requestAnimationFrame(draw);
+        };
+        raf = requestAnimationFrame(draw);
+      });
     }
     audioEl.currentTime = 0;
     await audioEl.play();

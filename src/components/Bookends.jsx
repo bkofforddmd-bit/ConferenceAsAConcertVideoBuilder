@@ -137,8 +137,15 @@ function ClipCard({ clip, title, onChange, onRemove }) {
           <button className="btn btn-ghost btn-sm" onClick={preview}>▶ Preview the trimmed part</button>
         </div>
       )}
-      <div className="row" style={{ gap: 8, marginTop: 8 }}>
-        <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={onRemove}>Remove clip</button>
+      <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label className="row" style={{ gap: 6, fontSize: 13 }} title="Fade in at the start and out at the end of this clip in the finished video">
+          Edge fade
+          <select value={Number(clip.fade) || 0.4} onChange={(e) => onChange({ ...clip, fade: Number(e.target.value) })}>
+            {[0.25, 0.4, 0.5, 0.75, 1, 1.5, 2, 3].map((v) => <option key={v} value={v}>{v} s</option>)}
+          </select>
+        </label>
+        {clip.segments && clip.segments.length > 1 && <span className="note" style={{ margin: 0 }}>joins were captured with a {clip.fade || 0.5}-second fade — recapture to change that</span>}
+        <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)", marginLeft: "auto" }} onClick={onRemove}>Remove clip</button>
       </div>
     </div>
   );
@@ -223,6 +230,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
   const [picked, setPicked] = useState(-1);
   const [capMsg, setCapMsg] = useState("");
   const [segs, setSegs] = useState([]); // spliced sections: [{ from, to, quote }]
+  const [fadeSec, setFadeSec] = useState(1.0); // fade out/in at every join, and at the clip's edges in the video
   const [lyricQ, setLyricQ] = useState("");
   const [pickedLine, setPickedLine] = useState(-1);
   const [tracing, setTracing] = useState("");
@@ -370,7 +378,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
     try {
       const prog = (p) => setCapMsg(`Capturing… ${Math.round(p * 100)}% (plays in real time${list.length > 1 ? ", fading between sections" : ""})`);
       const { blob, ext } = list.length > 1
-        ? await captureSegments({ src, segments: list, fade: 0.5, onProgress: prog })
+        ? await captureSegments({ src, segments: list, fade: fadeSec, onProgress: prog })
         : await captureClip({ src, start: list[0].from, end: list[0].to, onProgress: prog });
       const lv = await soundLevel(blob);
       if (lv.ok && lv.rms < SILENT) throw new Error("The capture came out silent. Make sure the video actually played with sound (press play once in the player above, then capture again).");
@@ -379,7 +387,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
       const name = list.length > 1
         ? `${talkMeta.speaker || "Speaker"} · ${list.length} sections · ${list.map((g) => `${fmtS(g.from)}–${fmtS(g.to)}`).join(" + ")}`
         : `${talkMeta.speaker || "Speaker"} · ${fmtS(list[0].from)}–${fmtS(list[0].to)}`;
-      onCaptured({ mediaKey, kind: "talk", name, in: 0, out: total, duration: total, quote: list.map((g) => g.quote).filter(Boolean).join(" … "), sourceUrl: media.video[quality], segments: list });
+      onCaptured({ mediaKey, kind: "talk", name, in: 0, out: total, duration: total, quote: list.map((g) => g.quote).filter(Boolean).join(" … "), sourceUrl: media.video[quality], segments: list, fade: fadeSec });
       setCapMsg("");
       setSegs([]);
     } catch (e) { setCapMsg(`Capture failed: ${e.message || e}`); }
@@ -423,6 +431,12 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
         <span className="chip">{inAt == null ? "no start yet" : `start ${fmt(inAt)}`}{outAt != null ? ` → end ${fmt(outAt)} · ${fmt(outAt - inAt)}` : ""}</span>
         <button className="btn btn-ghost btn-sm" onClick={previewSelection} disabled={inAt == null}>▶ Preview selection</button>
         <button className="btn btn-ghost btn-sm" onClick={addSegment} disabled={inAt == null || outAt == null} title="Keep this section and mark another; they'll be spliced in order with a fade between them">＋ Add as a section to splice</button>
+        <label className="row" style={{ gap: 6, fontSize: 13 }} title="How long the picture and sound fade out and back in — between spliced sections, and at the start and end of the clip in the finished video">
+          Fade
+          <select value={fadeSec} onChange={(e) => setFadeSec(Number(e.target.value))}>
+            {[0.25, 0.5, 0.75, 1, 1.5, 2, 3].map((v) => <option key={v} value={v}>{v} s</option>)}
+          </select>
+        </label>
         <button className="btn btn-primary btn-sm" onClick={capture} disabled={busy || (!segs.length && (inAt == null || outAt == null))}>
           {busy ? "Working…" : segs.length ? `✂ Capture ${segs.length} section${segs.length === 1 ? "" : "s"} as one clip (${fmt(segTotal)})` : "✂ Capture this clip for the ending"}
         </button>
@@ -432,7 +446,7 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
         <div className="splice-list">
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <strong>Sections to splice</strong>
-            <span className="note" style={{ margin: 0 }}>played in this order, with a half-second fade out and in at each join · {fmt(segTotal)} total</span>
+            <span className="note" style={{ margin: 0 }}>played in this order, with a {fadeSec}-second fade out and in at each join · {fmt(segTotal)} total</span>
             <button className="btn btn-ghost btn-sm" onClick={previewSegments} style={{ marginLeft: "auto" }}>▶ Preview all</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setSegs([])}>Clear</button>
           </div>

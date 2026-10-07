@@ -618,11 +618,11 @@ export default function VideoStudio({
     const q = QUALITIES.find((x) => x.id === quality) || QUALITIES[0];
     const be = tl.bookends || {};
     const bookends = {
-      pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out } : null,
-      post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out } : null,
+      pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out, fade: be.pre.fade } : null,
+      post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark, bookends },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark, bookends, introLead: tl.introLeadSec || 0 },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -840,9 +840,10 @@ export default function VideoStudio({
               {tapIdx >= 0 && <div className="timeline-head" style={{ left: `${(tapTime / totalSec) * 100}%` }} />}
             </div>
             <div className="timeline-rows">
-              {includeIntro && (
+              {includeIntro && (<>
                 <div className="timeline-row"><span className="lbl2">Intro card length (before Scene 1)</span><input type="number" min="0" step="0.5" value={tl.introSec} onChange={(e) => setTimeline({ ...tl, introSec: Number(e.target.value) || 0 })} /> s</div>
-              )}
+                <div className="timeline-row" title="The intro card holds on screen in silence for this long, THEN the music starts. Use it when the lyrics begin almost immediately and the card needs time to be read."><span className="lbl2">Hold intro before the music starts</span><input type="number" min="0" max="30" step="0.5" value={tl.introLeadSec || 0} onChange={(e) => setTimeline({ ...tl, introLeadSec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })} /> s</div>
+              </>)}
               {ordered.map((sc) => (
                 <div className="timeline-row" key={sc.sceneNumber}>
                   <span className="lbl2">Scene {sc.sceneNumber}{sc.lyrics ? ` · ${sc.lyrics.slice(0, 30)}` : ""}</span>
