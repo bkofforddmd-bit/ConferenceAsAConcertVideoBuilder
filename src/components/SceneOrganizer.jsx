@@ -225,6 +225,8 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             setProgress("");
             setBusy(false);
             // Fully hands-off: start generating all images right away, in order.
+            const empties = sb.scenes.filter((sc) => !(sc.imagePrompt || "").trim());
+            if (empties.length) await fillMissingPrompts(sb.scenes);
             if (autoGenEnabled) autoGenerateAll(sb.scenes);
             return;
           }
@@ -279,6 +281,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
         setScenes(expanded.slice()); // show progress as scenes arrive
       }
       setProgress("");
+      if (expanded.some((sc) => !(sc.imagePrompt || "").trim())) await fillMissingPrompts(expanded);
       // Hands-off image generation for the fallback flow too.
       if (autoGenEnabled && expanded.some((s) => s.imagePrompt)) {
         autoGenerateAll(expanded);
@@ -1186,6 +1189,34 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     }
   }
 
+  // Scenes the AI returned without an image prompt: write one for each from
+  // the scene's description and the style bible (it happens occasionally
+  // when the outline pass runs long). Also used automatically after a build.
+  const missingPrompts = scenes.filter((sc) => !(sc.imagePrompt || "").trim());
+  const [fillingPrompts, setFillingPrompts] = useState(false);
+  async function fillMissingPrompts(list) {
+    const targets = (list || scenes).filter((sc) => !(sc.imagePrompt || "").trim());
+    if (!targets.length) return;
+    setFillingPrompts(true);
+    setError("");
+    for (const sc of targets) {
+      setProgress(`Writing the image prompt for scene ${sc.sceneNumber}…`);
+      try {
+        const detail = await generateSceneDetail({
+          styleBible,
+          scene: { sceneNumber: sc.sceneNumber, lyricSection: sc.lyricSection, beat: sc.description || sc.lyricSection || sc.lyrics || "" },
+          styleReference,
+          talkText: talkText || "",
+        });
+        setScenes((prev) => prev.map((x) => (x.sceneNumber === sc.sceneNumber ? { ...x, description: x.description || detail.description || "", imagePrompt: detail.imagePrompt || x.imagePrompt || "" } : x)));
+      } catch (e) {
+        setError(`Scene ${sc.sceneNumber}: couldn't write a prompt (${e.message}). Try "Write the image prompt" on that scene again.`);
+      }
+    }
+    setProgress("");
+    setFillingPrompts(false);
+  }
+
   async function reviseScene(scene) {
     setError("");
     const notes = (editNotes[scene.sceneNumber] || "").trim();
@@ -1641,6 +1672,17 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
         </div>
       )}
 
+      {missingPrompts.length > 0 && (
+        <div className="music-card" style={{ margin: "10px 0", borderColor: "var(--warning)" }}>
+          <div className="note" style={{ margin: "0 0 8px" }}>
+            <strong>{missingPrompts.length === 1 ? "One scene" : `${missingPrompts.length} scenes`} came back without an image prompt</strong> (scene{missingPrompts.length === 1 ? "" : "s"} {missingPrompts.map((x) => x.sceneNumber).join(", ")}). The AI occasionally leaves it blank when the outline runs long. Write {missingPrompts.length === 1 ? "it" : "them"} now from each scene's description — nothing else changes.
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => fillMissingPrompts()} disabled={fillingPrompts || busy}>
+            {fillingPrompts && <span className="spinner" />}
+            {fillingPrompts ? "Writing prompts…" : `✨ Write the missing prompt${missingPrompts.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      )}
       {scenes.map((scene) => {
         const working = images[scene.sceneNumber];
         const isSaved = saved[scene.sceneNumber];
@@ -1747,19 +1789,32 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             </label>
 
             <div className="row end">
-              <button
-                className="btn btn-ghost"
-                onClick={() => reviseScene(scene)}
-                disabled={perSceneBusy[`rev-${scene.sceneNumber}`] || !(editNotes[scene.sceneNumber] || "").trim()}
-                title="Rewrite this scene's description and image prompt using your notes"
-              >
-                {perSceneBusy[`rev-${scene.sceneNumber}`] && <span className="spinner" />}
-                Revise scene text
-              </button>
+              {!(scene.imagePrompt || "").trim() ? (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => fillMissingPrompts([scene])}
+                  disabled={fillingPrompts || perSceneBusy[`rev-${scene.sceneNumber}`]}
+                  title="This scene has no image prompt yet — write one from its description"
+                >
+                  {fillingPrompts && <span className="spinner" />}
+                  ✨ Write the image prompt
+                </button>
+              ) : (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => reviseScene(scene)}
+                  disabled={perSceneBusy[`rev-${scene.sceneNumber}`] || !(editNotes[scene.sceneNumber] || "").trim()}
+                  title="Rewrite this scene's description and image prompt using your notes"
+                >
+                  {perSceneBusy[`rev-${scene.sceneNumber}`] && <span className="spinner" />}
+                  Revise scene text
+                </button>
+              )}
               <button
                 className="btn btn-ghost"
                 onClick={() => genImage(scene)}
-                disabled={sceneBusy || !scene.imagePrompt}
+                disabled={sceneBusy || !((scene.imagePrompt || scene.description || "").trim())}
+                title={(scene.imagePrompt || "").trim() ? "Generate this scene's image" : "No prompt yet — generates from the description (better: write the prompt first)"}
               >
                 {sceneBusy && <span className="spinner" />}
                 {sceneBusy
