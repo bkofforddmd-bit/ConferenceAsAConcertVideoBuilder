@@ -25,6 +25,7 @@ import TalkStudio, { buildOutlineHtml } from "./TalkStudio.jsx";
 import ProgressBoard, { computeStreakData } from "./ProgressBoard.jsx";
 import { cutClipToWav, fmtClock } from "../lib/audio-clip.js";
 import { recordClipToVideo } from "../lib/video-clip.js";
+import { loadTalksIndex, byConferenceDesc, expectedConferences } from "../lib/talks-index.js";
 import SpeakerFace from "./SpeakerFace.jsx";
 import SonosButton from "./SonosButton.jsx";
 
@@ -1598,21 +1599,21 @@ ${rows}</body></html>`;
   }
 
   // ---- browse-by-conference state ----
-  const [year, setYear] = useState(String(new Date().getFullYear()));
-  const [month, setMonth] = useState("04");
+  // Default to the most recent conference (October once October has come).
+  const [year, setYear] = useState(expectedConferences()[0].year);
+  const [month, setMonth] = useState(expectedConferences()[0].month);
   const [sessions, setSessions] = useState(null);
   const [sessionIdx, setSessionIdx] = useState(null);
   const [phase, setPhase] = useState("idle");     // idle | listing | listed
   const [browseError, setBrowseError] = useState("");
 
-  // Load the speaker index once (small static file, cached by the browser).
+  // Load the speaker index once (small static file, cached by the browser),
+  // topped up live with any conference newer than the file (see lib/talks-index.js).
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/talks-index.json", { cache: "force-cache" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await loadTalksIndex();
         if (!alive) return;
         setIndex(data);
         setIndexState("ready");
@@ -1662,7 +1663,7 @@ ${rows}</body></html>`;
       byName.get(t.speaker).push(t);
     }
     const groups = [...byName.entries()]
-      .map(([speaker, talks]) => ({ speaker, talks }))
+      .map(([speaker, talks]) => ({ speaker, talks: talks.slice().sort(byConferenceDesc) }))
       .sort((a, b) => a.speaker.localeCompare(b.speaker));
     const total = groups.reduce((n, g) => n + g.talks.length, 0);
     return { groups, total };

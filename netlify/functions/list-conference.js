@@ -104,6 +104,12 @@ async function fetchToc(year, month) {
   return sessions.filter((s) => s.talks.length > 0);
 }
 
+// HTML fallback (the TOC content API has been returning 404 since 2026).
+// The conference page lists every item as an <a href=".../{year}/{month}/{slug}">
+// whose title sits in an itemTitle <span> and whose speaker is a "subtitle"
+// paragraph. Session headers link to "...-session" and carry no subtitle;
+// we use them to group the talks that follow. Same markup since 1971 and the
+// same parser as scripts/build-talk-index.js.
 async function fetchTocHtml(year, month) {
   const pageUrl = `https://www.churchofjesuschrist.org/study/general-conference/${year}/${month}?lang=eng`;
   const res = await fetch(pageUrl, {
@@ -111,23 +117,37 @@ async function fetchTocHtml(year, month) {
   });
   if (!res.ok) throw new Error(`TOC page responded ${res.status}`);
   const html = await res.text();
-  const linkRe = new RegExp(
-    `<a[^>]+href="([^"]*${year}/${month}/[^"#?]+)[^"]*"[^>]*>([\\s\\S]*?)</a>`,
-    "gi"
-  );
-  const talks = [];
+  return parseConferenceHtml(html, year, month);
+}
+
+export function parseConferenceHtml(html, year, month) {
+  const base = `/study/general-conference/${year}/${month}/`;
+  const anchorRe = /<a\b[^>]*?href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const sessions = [];
+  const seen = new Set();
+  let current = null;
   let m;
-  while ((m = linkRe.exec(html)) !== null) {
-    const href = m[1].startsWith("http") ? new URL(m[1]).pathname : m[1].split("?")[0];
-    if (!isTalkUri(href, year, month)) continue;
-    const parts = stripHtml(m[2]).split(/\s{2,}|\n/).map((x) => x.trim()).filter(Boolean);
-    const title = parts[0] || stripHtml(m[2]);
-    const speaker = parts.slice(1).join(" ") || "";
-    const slug = href.split("/").pop();
-    if (!talks.find((t) => t.slug === slug)) talks.push({ title, speaker, slug, uri: href });
+  while ((m = anchorRe.exec(html)) !== null) {
+    const href = m[1];
+    const inner = m[2];
+    if (!href.includes(base)) continue;
+    const slug = (href.split(base)[1] || "").split(/[?#]/)[0];
+    if (!slug || slug.includes("/") || seen.has(slug)) continue;
+    const titleM = inner.match(/<span[^>]*>([\s\S]*?)<\/span>/i);
+    const title = stripHtml(titleM ? titleM[1] : inner);
+    const subM = inner.match(/class="subtitle-[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
+    const speaker = subM ? stripHtml(subM[1]) : "";
+    if (!speaker) {
+      // A session header (or "Contents"): start a new group.
+      if (/session/i.test(slug) && title) { current = { title, talks: [] }; sessions.push(current); seen.add(slug); }
+      continue;
+    }
+    if (!title || !isTalkUri(`${base}${slug}`, year, month)) continue;
+    seen.add(slug);
+    if (!current) { current = { title: "General Sessions", talks: [] }; sessions.push(current); }
+    current.talks.push({ title, speaker, slug, uri: `${base}${slug}` });
   }
-  if (!talks.length) return [];
-  return [{ title: "All talks", talks }];
+  return sessions.filter((s) => s.talks.length > 0);
 }
 
 function stripHtml(html) {

@@ -83,9 +83,29 @@ and publishes `dist/` with `netlify/functions`.
 
 ## Data refresh after each conference
 
-- `node scripts/build-talk-index.js` → `public/talks-index.json` + topics
-- `node scripts/build-search-index.js` → `public/search-index.json`
-- `node scripts/build-portraits-index.js` → `public/portraits-index.json`
+The talk pages go up on churchofjesuschrist.org the weekend of conference.
+Until this refresh is deployed, the app tops up the static talk list live
+(`src/lib/talks-index.js` asks `list-conference` for any conference newer than
+`talks-index.json`), so speaker search and the Video step's talk chooser still
+find the new talks — but topics, AI search, Insights and the scripture index
+only know the new conference after these run, in this order:
+
+1. `node scripts/build-talk-index.js` → `public/talks-index.json` + `topics-index.json`
+2. `node scripts/build-search-index.js` → `public/search-index.json` (caches talk text in `data/talk-texts/`)
+3. `node scripts/build-portraits-index.js` → `public/portraits-index.json` (new speakers' photos)
+4. `node scripts/crawl-text.mjs` → `data/talk-text.jsonl` (only the new talks are fetched)
+5. `node scripts/crawl-citations.mjs` → `data/citations.jsonl` (only the new talks)
+6. `node scripts/compile-citations.cjs` → `public/scripture-index.json` (+ `data/scripture-index.v1.json`)
+7. `node scripts/compile-text.cjs` → `public/talk-text/d<decade>.json` (Insights → Words & phrases)
+8. `node scripts/compile-citations-v2.cjs` → `public/scripture-index.json` with unmarked quotations
+   (needs `data/scriptures.jsonl`; build it once with `node scripts/crawl-scriptures.mjs`)
+
+`data/` is a gitignored local cache — keep it between refreshes so each run
+only fetches what's new. Everything in it is keyed by talk uri, so it survives
+the position shifts that adding a conference causes in `talks-index.json`
+(`topics-index.json`, `search-index.json`, `scripture-index.json` and the
+`talk-text/` bundles all refer to talks by position and must be regenerated
+together with `talks-index.json`).
 
 ## Notes
 

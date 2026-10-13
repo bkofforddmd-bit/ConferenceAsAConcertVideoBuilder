@@ -17,6 +17,7 @@ import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
 import { captureClip, captureSegments } from "../lib/video-render.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
+import { loadTalksIndex, byConferenceDesc } from "../lib/talks-index.js";
 
 // ---- instant lyric → paragraph matching by weighted word overlap ----
 const STOP = new Set("the a an and or but of to in on at for with by from as is are was were be been being it its this that these those we our us you your he she his her they their them i me my will shall can may might do does did not no so than then there here when where which who whom what how all any each every some such only own same too very just also into over under again further once up down out off about above below between through during before after because while until unless if".split(" "));
@@ -170,7 +171,7 @@ function TalkChooser({ current, onPick, busy }) {
   const [err, setErr] = useState("");
   useEffect(() => {
     if (!open || idx) return;
-    fetch("/talks-index.json").then((r) => r.json()).then((d) => setIdx(d.talks || [])).catch(() => setIdx([]));
+    loadTalksIndex().then((d) => setIdx(d.talks || [])).catch(() => setIdx([]));
   }, [open, idx]);
   const results = useMemo(() => {
     if (!idx) return [];
@@ -179,7 +180,7 @@ function TalkChooser({ current, onPick, busy }) {
     const words = t.split(/\s+/).filter(Boolean);
     return idx
       .filter((x) => { const hay = `${x.title || ""} ${x.speaker || ""}`.toLowerCase(); return words.every((w) => hay.includes(w)); })
-      .sort((a, b) => Number(b.year) - Number(a.year))
+      .sort(byConferenceDesc)
       .slice(0, 14);
   }, [idx, q]);
   const has = current && current.sourceUrl;
