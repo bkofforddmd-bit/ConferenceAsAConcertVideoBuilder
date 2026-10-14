@@ -83,10 +83,26 @@ export default async (req) => {
     // Keep the record fresh while the upload runs so the browser can tell a
     // slow upload from a dead job.
     const heartbeat = setInterval(() => { progress("uploading", count, off).catch(() => {}); }, 20000);
+    // When the storage answers early with an error (an expired link gives a
+    // 403) while a large body is still being sent, Node's fetch never settles:
+    // the function hangs, Netlify re-runs it, and the job sits at "running"
+    // forever. Seen on the live site with a 300 MB body. So the upload gets a
+    // deadline sized to the file (≥ 1 MB/s, 2–12 minutes) and reports a
+    // failure instead of hanging.
+    const deadlineMs = Math.min(12 * 60 * 1000, Math.max(2 * 60 * 1000, off / 1048576 * 1000));
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), deadlineMs);
     let up;
     try {
-      up = await fetch(to, { method: "PUT", headers: { "content-type": contentType }, body: whole });
+      up = await fetch(to, { method: "PUT", headers: { "content-type": contentType }, body: whole, signal: ac.signal });
+    } catch (e) {
+      if (ac.signal.aborted) {
+        return fail(`The upload to the Concert storage stalled after ${Math.round(deadlineMs / 60000)} minutes — usually the upload link had expired or the storage refused the file mid-upload. Try publishing again.`,
+          "Add the Studio's address to the Concert storage's CORS policy so videos upload straight from the browser.");
+      }
+      throw e;
     } finally {
+      clearTimeout(timer);
       clearInterval(heartbeat);
     }
     if (!up.ok) {
