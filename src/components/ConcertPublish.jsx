@@ -8,9 +8,10 @@
 import React, { useEffect, useState } from "react";
 import { getMedia } from "../lib/project-store.js";
 import { parseSync } from "../lib/lyric-sync.js";
+import AttachFile from "./AttachFile.jsx";
 import { publishToConcert, updateConcertEntry, uploadVideoOnly, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
 
-export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference, render }) {
+export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
   const hasVideo = Boolean(render && render.mediaKey);
   const [includeVideo, setIncludeVideo] = useState(true);
   const [youtube, setYoutube] = useState("");
@@ -59,7 +60,8 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       let videoUrl = "";
       if (hasVideo && includeVideo && !youtube.trim() && !target.videoUrl) {
         const vrec = await getMedia(render.mediaKey);
-        if (vrec && vrec.blob) videoUrl = await uploadVideoOnly({ password: pw.trim(), title: f.title, video: vrec.blob, onStep: setStep });
+        if (!vrec || !vrec.blob) throw new Error("The music video isn't in this browser's storage. Attach the video file above, or untick \"Also publish the music video\".");
+        videoUrl = await uploadVideoOnly({ password: pw.trim(), title: f.title, video: vrec.blob, onStep: setStep });
       }
       setStep("Updating the library entry…");
       const entry = await updateConcertEntry({
@@ -99,13 +101,14 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
     setBusy(true);
     try {
       const rec = await getMedia(active.mediaKey);
-      if (!rec || !rec.blob) throw new Error("The song's audio isn't in this browser's storage. Re-open the project where it was made, or upload the file on the Music step.");
+      if (!rec || !rec.blob) throw new Error("The song's audio isn't in this browser's storage. Attach the song file above, or upload it on the Music step.");
       saveConcertPassword(pw.trim());
       const lyricTimings = sync ? syncToLyricTimings(lyrics, sync) : null;
       let videoBlob = null;
       if (hasVideo && includeVideo && !youtube.trim()) {
         const vrec = await getMedia(render.mediaKey);
-        if (vrec && vrec.blob) videoBlob = vrec.blob;
+        if (!vrec || !vrec.blob) throw new Error("The music video isn't in this browser's storage. Attach the video file above, or untick \"Also publish the music video\".");
+        videoBlob = vrec.blob;
       }
       const entry = await publishToConcert({
         password: pw.trim(),
@@ -126,7 +129,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
 
   return (
     <div className="music-card" style={{ marginBottom: 16 }}>
-      <h3>Publish to Conference Concert {active ? <span className="chip ok">song ready</span> : <span className="chip">needs a song</span>}{sync ? <span className="chip ok" style={{ marginLeft: 6 }}>lyrics synced</span> : null}</h3>
+      <h3>Publish to Conference Concert {active ? (missing.song ? <span className="chip warn">song file missing</span> : <span className="chip ok">song ready</span>) : <span className="chip">needs a song</span>}{sync ? <span className="chip ok" style={{ marginLeft: 6 }}>lyrics synced</span> : null}{hasVideo ? (missing.video ? <span className="chip warn" style={{ marginLeft: 6 }}>video file missing</span> : <span className="chip ok" style={{ marginLeft: 6 }}>video ready</span>) : null}</h3>
       <p className="note" style={{ marginTop: 0 }}>
         Sends the finished song to the Conference Concert library at {CONCERT_SITE.replace("https://", "")}: the audio,
         the lyrics with their sung-line timing, and the talk details. Same result as the band upload form there, prefilled.
@@ -152,6 +155,33 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
           </label>
         </div>
       </div>
+
+      {(missing.song || missing.video) && (
+        <div className="music-card" style={{ margin: "10px 0 0", borderColor: "var(--warning)" }}>
+          <div className="note" style={{ margin: 0 }}>
+            <strong>Files to attach on this computer.</strong> A project .json carries the details only — the song and
+            the video stay in the browser that made them. Attach the copies you saved and the publish will include them.
+          </div>
+          {missing.song && onAttachSong && (
+            <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="note" style={{ margin: 0 }}>Song audio{active ? ` ("${active.title}")` : ""}:</span>
+              <AttachFile className="btn btn-primary btn-sm" label="Attach the song file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" onFile={onAttachSong} />
+            </div>
+          )}
+          {missing.video && onAttachVideo && (
+            <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="note" style={{ margin: 0 }}>Music video{render && render.sizeMB ? ` (about ${render.sizeMB} MB)` : ""}:</span>
+              <AttachFile className="btn btn-primary btn-sm" label="Attach the video file" accept="video/*,.mp4,.webm,.mov" onFile={onAttachVideo} />
+            </div>
+          )}
+        </div>
+      )}
+      {!hasVideo && onAttachVideo && (
+        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="note" style={{ margin: 0 }}>Have the finished movie as a file (made on your phone or elsewhere)?</span>
+          <AttachFile className="btn btn-ghost btn-sm" label="Attach a video file" accept="video/*,.mp4,.webm,.mov" onFile={onAttachVideo} />
+        </div>
+      )}
 
       <div className="row" style={{ gap: 8, marginTop: 12 }}>
         <label className="field" style={{ margin: 0, flex: "1 1 220px", maxWidth: 360 }}>

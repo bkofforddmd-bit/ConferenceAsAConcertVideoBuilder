@@ -24,7 +24,8 @@ import ConcertPublish from "./components/ConcertPublish.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
 import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
-import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId, getMedia } from "./lib/project-store.js";
+import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId, getMedia, putMedia } from "./lib/project-store.js";
+import AttachFile from "./components/AttachFile.jsx";
 import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
 import { isRendering } from "./lib/video-render.js";
 
@@ -467,6 +468,65 @@ export default function App() {
 
   const activeSong = (song.versions || []).find((v) => v.id === song.activeId) || null;
 
+  // ---- media that the project refers to but this browser doesn't hold ----
+  // A project .json carries the details only; the song and the rendered video
+  // live in the browser (IndexedDB) that made them. Opened on another device,
+  // the project "remembers" them but the files are missing until attached.
+  const [mediaTick, setMediaTick] = useState(0);
+  const [mediaMissing, setMediaMissing] = useState({ song: false, video: false });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const songRec = activeSong && activeSong.mediaKey ? await getMedia(activeSong.mediaKey) : null;
+      const vidRec = render && render.mediaKey ? await getMedia(render.mediaKey) : null;
+      if (alive) setMediaMissing({ song: Boolean(activeSong && activeSong.mediaKey && !songRec), video: Boolean(render && render.mediaKey && !vidRec) });
+    })();
+    return () => { alive = false; };
+  }, [activeSong && activeSong.mediaKey, render && render.mediaKey, mediaTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Attach a finished video file (e.g. rendered on the phone, or made elsewhere)
+  // as this project's music video. Reuses the project's render key when it has
+  // one, so the Export step and the Concert publish see the same video.
+  async function attachVideoFile(file) {
+    if (!file) return;
+    const mime = file.type && /^video\//.test(file.type) ? file.type : "video/mp4";
+    const blob = file.type ? file : new Blob([file], { type: mime });
+    const ext = mime.includes("webm") ? "webm" : "mp4";
+    const mediaKey = (render && render.mediaKey) || `${projectId}:render:${Date.now().toString(36)}`;
+    await putMedia(mediaKey, blob, { ext, mime, provider: "upload", name: file.name });
+    setRender({ ...(render || {}), mediaKey, ext, mime, createdAt: Date.now(), sizeMB: +(blob.size / 1048576).toFixed(1), source: "upload", fileName: file.name });
+    setMediaTick((t) => t + 1);
+    setSaveMsg(`Attached "${file.name}" as the music video.`);
+  }
+
+  // Attach the song's audio file. When the project already has a take (its
+  // title and lyric timing), the audio goes back under that take; otherwise it
+  // becomes a new take, like "Upload a song file" on the Music step.
+  async function attachSongFile(file) {
+    if (!file) return;
+    const blob = file.type ? file : new Blob([file], { type: "audio/mpeg" });
+    const durationSec = await new Promise((res) => {
+      const a = document.createElement("audio");
+      const u = URL.createObjectURL(blob);
+      a.onloadedmetadata = () => { res(a.duration || 0); URL.revokeObjectURL(u); };
+      a.onerror = () => { res(0); URL.revokeObjectURL(u); };
+      a.src = u;
+    });
+    if (!durationSec) { setSaveMsg("That file couldn't be played as audio. Use an .mp3, .wav or .m4a."); return; }
+    if (activeSong && activeSong.mediaKey) {
+      await putMedia(activeSong.mediaKey, blob, { provider: "upload", name: file.name });
+      setSong((prev) => ({ ...prev, versions: (prev.versions || []).map((v) => (v.id === activeSong.id ? { ...v, mimeType: blob.type, durationSec: v.durationSec || durationSec, fileName: file.name } : v)) }));
+    } else {
+      const id = "u_" + Date.now().toString(36);
+      const mediaKey = `${projectId}:song:${id}`;
+      await putMedia(mediaKey, blob, { provider: "upload", name: file.name });
+      const version = { id, provider: "upload", title: file.name.replace(/\.[a-z0-9]+$/i, ""), style: "", vocals: "", mediaKey, mimeType: blob.type, durationSec, createdAt: Date.now(), fileName: file.name };
+      setSong((prev) => ({ versions: [...((prev && prev.versions) || []), version], activeId: id }));
+    }
+    setMediaTick((t) => t + 1);
+    setSaveMsg(`Attached "${file.name}" as the song.`);
+  }
+
   return (
     <div className="app-shell">
       <header className="masthead">
@@ -624,6 +684,7 @@ export default function App() {
               setTimeline={setTimeline}
               render={render}
               setRender={setRender}
+              onAttachVideo={attachVideoFile}
               config={config}
               onContinue={() => setStep("export")}
               onSetCardImage={setCardImage}
@@ -641,7 +702,10 @@ export default function App() {
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={setStep}
               onDownloadJson={downloadProject}
-              concertPublish={<ConcertPublish song={song} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} />}
+              concertPublish={<ConcertPublish song={song} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
+              missing={mediaMissing}
+              onAttachVideo={attachVideoFile}
+              onAttachSong={attachSongFile}
               folder={folder}
               onPickFolder={pickFolder}
               onReconnectFolder={reconnectPickedFolder}
@@ -679,7 +743,7 @@ export default function App() {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
   const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
@@ -688,15 +752,25 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
   const items = [
     {
       title: "Music video",
-      ok: Boolean(render && render.mediaKey),
-      body: render && render.mediaKey ? `Rendered ${new Date(render.createdAt).toLocaleDateString()} · ${render.sizeMB || "?"} MB ${String(render.ext || "mp4").toUpperCase()}` : "Not rendered yet.",
-      action: { label: render && render.mediaKey ? "Open Video step to download" : "Go to Video", go: "video" },
+      ok: Boolean(render && render.mediaKey) && !missing.video,
+      body: render && render.mediaKey
+        ? (missing.video
+          ? `The project remembers a ${render.sizeMB || "?"} MB render, but the file isn't on this computer — a project .json carries the details only. Attach the movie you saved.`
+          : `${render.source === "upload" ? "Attached" : "Rendered"} ${new Date(render.createdAt).toLocaleDateString()} · ${render.sizeMB || "?"} MB ${String(render.ext || "mp4").toUpperCase()}`)
+        : "Not rendered yet — render it on the Video step, or attach a movie made elsewhere.",
+      action: { label: render && render.mediaKey && !missing.video ? "Open Video step to download" : "Go to Video", go: "video" },
+      extra: onAttachVideo ? <AttachFile className={missing.video ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"} label={missing.video ? "Attach the video file" : "Attach a video file"} accept="video/*,.mp4,.webm,.mov" onFile={onAttachVideo} title="Use a finished video file (e.g. rendered on your phone) as this project's music video" /> : null,
     },
     {
       title: "Song audio",
-      ok: Boolean(activeSong),
-      body: activeSong ? `${activeSong.title} · ${Math.floor(activeSong.durationSec / 60)}:${String(Math.floor(activeSong.durationSec % 60)).padStart(2, "0")}` : "No song generated yet.",
-      action: { label: activeSong ? "Open Music step to download" : "Go to Music", go: "music" },
+      ok: Boolean(activeSong) && !missing.song,
+      body: activeSong
+        ? (missing.song
+          ? `"${activeSong.title}" is the project's take, but its audio isn't on this computer. Attach the song file (.mp3) you saved.`
+          : `${activeSong.title} · ${Math.floor(activeSong.durationSec / 60)}:${String(Math.floor(activeSong.durationSec % 60)).padStart(2, "0")}`)
+        : "No song generated yet.",
+      action: { label: activeSong && !missing.song ? "Open Music step to download" : "Go to Music", go: "music" },
+      extra: missing.song && onAttachSong ? <AttachFile className="btn btn-primary btn-sm" label="Attach the song file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" onFile={onAttachSong} /> : null,
     },
     {
       title: "Storyboard",
@@ -756,7 +830,7 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
           <div className="export-card" key={it.title}>
             <h3>{it.title} {it.ok ? <span className="chip ok">ready</span> : <span className="chip">pending</span>}</h3>
             <p>{it.body}</p>
-            <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => onGo(it.action.go)}>{it.action.label}</button></div>
+            <div className="row" style={{ gap: 8 }}>{it.extra}<button className="btn btn-ghost btn-sm" onClick={() => onGo(it.action.go)}>{it.action.label}</button></div>
           </div>
         ))}
       </div>

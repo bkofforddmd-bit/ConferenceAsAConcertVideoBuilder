@@ -16,6 +16,7 @@ import { hasKey } from "../lib/keys.js";
 import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import Bookends from "./Bookends.jsx";
+import AttachFile from "./AttachFile.jsx";
 import PathEditor from "./PathEditor.jsx";
 
 function fmt(sec) {
@@ -605,7 +606,7 @@ export default function VideoStudio({
       setFinalUrl(url);
     })();
     return () => { if (url) URL.revokeObjectURL(url); };
-  }, [render && render.mediaKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [render && render.mediaKey, render && render.createdAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startRender() {
     setError("");
@@ -937,6 +938,9 @@ export default function VideoStudio({
             <select value={quality} onChange={(e) => setQuality(e.target.value)} disabled={rendering} title="Picture size and file size. 'Web' is plenty for the library and YouTube; 'high' for archiving.">
               {QUALITIES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
+            {!rendering && onAttachVideo && (
+              <AttachFile className="btn btn-ghost" label="Attach a video file" accept="video/*,.mp4,.webm,.mov" onFile={onAttachVideo} title="Use a finished video file instead — e.g. one rendered on your phone, or edited elsewhere" />
+            )}
             {!rendering ? (
               <button className="btn btn-primary" onClick={startRender} disabled={!audioUrl || !segments.length} title={renderBlocker || "Render the music video"}>
                 {render && render.mediaKey ? "Render again" : "Render video"}
@@ -969,7 +973,7 @@ export default function VideoStudio({
               <video src={finalUrl} controls playsInline />
               <div className="row" style={{ marginTop: 10 }}>
                 <button className="btn btn-primary" onClick={downloadFinal}>Download {render.ext ? render.ext.toUpperCase() : "video"}{render.sizeMB ? ` (${render.sizeMB} MB)` : ""}</button>
-                <span className="note" style={{ margin: 0 }}>Rendered {new Date(render.createdAt).toLocaleString()}</span>
+                <span className="note" style={{ margin: 0 }}>{render.source === "upload" ? `Attached${render.fileName ? ` "${render.fileName}"` : ""}` : "Rendered"} {new Date(render.createdAt).toLocaleString()}</span>
               </div>
             </div>
           )}
