@@ -128,21 +128,19 @@ async function uploadMedia({ password, blob, contentType, filename, titleHint, l
   }
   if (!sign.uploadUrl || !sign.publicUrl) throw new Error("The Concert app didn't return an upload link.");
 
-  onStep(`Uploading the ${label} (${(blob.size / 1048576).toFixed(1)} MB)…`);
-  let uploaded = false;
-  try {
-    const put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "content-type": contentType }, body: blob });
-    uploaded = put.ok;
-  } catch {
-    uploaded = false;
-  }
+  const totalMB = (blob.size / 1048576).toFixed(1);
+  onStep(`Uploading the ${label} (${totalMB} MB)…`);
+  // Fast path: straight from the browser to the storage (needs this site in the
+  // bucket's CORS policy). Otherwise fall back to pieces via the Studio.
+  const uploaded = await putDirect(sign.uploadUrl, blob, contentType, (pct, loaded) => onStep(`Uploading the ${label}… ${Math.round(pct * 100)}% (${(loaded / 1048576).toFixed(1)} of ${totalMB} MB)`));
   if (!uploaded) await uploadInPieces({ blob, contentType, uploadUrl: sign.uploadUrl, label, onStep });
   return sign.publicUrl;
 }
 
 // song: { title, talk, speaker, session, theme, style, talkUrl, youtube, lyrics, duration, blurb, lyricTimings }
 // audio: Blob; video: Blob|null. onStep(text) reports progress. Returns the saved catalog entry.
-export async function publishToConcert({ password, song, audio, video = null, onStep = () => {} }) {
+export function publishToConcert(args) { return withWakeLock(() => publishToConcertInner(args)); }
+async function publishToConcertInner({ password, song, audio, video = null, onStep = () => {} }) {
   onStep("Checking the band password…");
   await relay(password, "verify", {});
 
@@ -179,57 +177,98 @@ export async function publishToConcert({ password, song, audio, video = null, on
   return saved.entry || entry;
 }
 
+// Fallback when the storage won't take a direct browser upload (its CORS policy
+// doesn't list this site): send the file in ≤3 MB pieces to a Studio function
+// (Netlify caps a single request at a few MB), several pieces at a time, then
+// let a Studio background job stitch them and deliver the whole file.
 async function uploadInPieces({ blob, contentType, uploadUrl, label, onStep }) {
-  const audio = blob;
-  const sign = { uploadUrl };
-  const ct = contentType;
-  {
-    // The Concert storage doesn't accept uploads straight from this site, so
-    // send the song in pieces and let a Studio background job deliver it.
-    const CHUNK = 3 * 1048576;
-    const count = Math.ceil(audio.size / CHUNK);
-    const uploadId = "up_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-    for (let n = 0; n < count; n++) {
-      onStep(`Uploading the ${label} in pieces… ${n + 1} of ${count}`);
-      const piece = audio.slice(n * CHUNK, Math.min(audio.size, (n + 1) * CHUNK));
-      let ok = false, lastErr = "";
-      for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-        try {
-          const r = await fetch(`${BASE}/concert-chunk?id=${uploadId}&n=${n}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: piece });
-          if (r.ok) ok = true;
-          else { const d = await r.json().catch(() => ({})); lastErr = d.error || `piece ${n + 1} failed (${r.status})`; }
-        } catch (e) { lastErr = e.message; }
-        if (!ok) await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
-      }
-      if (!ok) throw new Error(`Couldn't upload piece ${n + 1} of ${count}: ${lastErr}`);
+  const CHUNK = 3 * 1048576;
+  const PARALLEL = 4; // pieces in flight at once — phones and home uplinks saturate around here
+  const count = Math.ceil(blob.size / CHUNK);
+  const uploadId = "up_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  const totalMB = (blob.size / 1048576).toFixed(1);
+  let doneBytes = 0, donePieces = 0, next = 0;
+  const report = () => onStep(`Uploading the ${label} in pieces… ${donePieces} of ${count} (${(doneBytes / 1048576).toFixed(1)} of ${totalMB} MB)`);
+  report();
+
+  async function sendPiece(n) {
+    const piece = blob.slice(n * CHUNK, Math.min(blob.size, (n + 1) * CHUNK));
+    let lastErr = "";
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const r = await fetch(`${BASE}/concert-chunk?id=${uploadId}&n=${n}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: piece });
+        if (r.ok) { doneBytes += piece.size; donePieces++; report(); return; }
+        const d = await r.json().catch(() => ({}));
+        lastErr = d.error || `piece ${n + 1} failed (${r.status})`;
+      } catch (e) { lastErr = e.message; }
+      await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
     }
-    onStep(`Pieces received — delivering the ${label} to the Concert storage…`);
-    const jobId = "cj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-    const start = await fetch(`${BASE}/concert-assemble-background`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId, uploadId, count, to: sign.uploadUrl, contentType: ct }),
-    });
-    if (start.status !== 202 && start.status !== 200) {
-      const d = await start.json().catch(() => ({}));
-      throw new Error(d.error || `Couldn't start the delivery job (${start.status}).`);
-    }
-    const t0 = Date.now();
-    let delay = 2500;
-    while (true) {
-      await new Promise((res) => setTimeout(res, delay));
-      delay = Math.min(delay * 1.2, 8000);
-      let s = {};
-      try { s = await (await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`)).json(); } catch { continue; }
-      if (s.status === "done") break;
-      if (s.status === "failed") throw new Error((s.error || "Delivery failed.") + (s.detail ? ` ${s.detail}` : ""));
-      if (Date.now() - t0 > 14 * 60 * 1000) throw new Error(`Timed out delivering the ${label} to the Concert storage.`);
-    }
+    throw new Error(`Couldn't upload piece ${n + 1} of ${count}: ${lastErr}`);
+  }
+  async function worker() { while (next < count) { const n = next++; await sendPiece(n); } }
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, count) }, worker));
+
+  onStep(`Pieces received — delivering the ${label} to the Concert storage…`);
+  const jobId = "cj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  const start = await fetch(`${BASE}/concert-assemble-background`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jobId, uploadId, count, to: uploadUrl, contentType }),
+  });
+  if (start.status !== 202 && start.status !== 200) {
+    const d = await start.json().catch(() => ({}));
+    throw new Error(d.error || `Couldn't start the delivery job (${start.status}).`);
+  }
+  const t0 = Date.now();
+  let delay = 2500;
+  while (true) {
+    await new Promise((res) => setTimeout(res, delay));
+    delay = Math.min(delay * 1.2, 8000);
+    let st = {};
+    try { st = await (await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`)).json(); } catch { continue; }
+    if (st.status === "done") break;
+    if (st.status === "failed") throw new Error((st.error || "Delivery failed.") + (st.detail ? ` ${st.detail}` : ""));
+    if (Date.now() - t0 > 14 * 60 * 1000) throw new Error(`Timed out delivering the ${label} to the Concert storage.`);
+  }
+}
+
+// Direct PUT with upload progress (fetch can't report it; XMLHttpRequest can).
+// Resolves true on a 2xx, false on any failure — including the CORS rejection
+// that happens when the storage's policy doesn't list this site.
+function putDirect(url, blob, contentType, onPct) {
+  return new Promise((resolve) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("content-type", contentType);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable && onPct) onPct(e.loaded / e.total, e.loaded); };
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+      xhr.onerror = () => resolve(false);
+      xhr.onabort = () => resolve(false);
+      xhr.send(blob);
+    } catch { resolve(false); }
+  });
+}
+
+// Keep the phone's screen awake while a publish runs: a locked screen or a
+// backgrounded tab pauses the upload loop, and iOS drops it altogether.
+async function withWakeLock(fn) {
+  let lock = null;
+  const acquire = async () => {
+    try { if (navigator.wakeLock && document.visibilityState === "visible") lock = await navigator.wakeLock.request("screen"); } catch { lock = null; }
+  };
+  const onVis = () => { if (document.visibilityState === "visible" && !lock) acquire(); };
+  await acquire();
+  document.addEventListener("visibilitychange", onVis);
+  try { return await fn(); } finally {
+    document.removeEventListener("visibilitychange", onVis);
+    try { if (lock) await lock.release(); } catch {}
   }
 }
 
 // Upload just the video for a song already in the library (returns its URL).
-export async function uploadVideoOnly({ password, title, video, onStep = () => {} }) {
+export function uploadVideoOnly(args) { return withWakeLock(() => uploadVideoOnlyInner(args)); }
+async function uploadVideoOnlyInner({ password, title, video, onStep = () => {} }) {
   onStep("Checking the band password…");
   await relay(password, "verify", {});
   const safe = (title || "song").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
