@@ -1,0 +1,78 @@
+/* Campus Sessions mode — phone-first, big targets, same brand tokens as the Studio. */
+.campus { min-height: 100vh; display: flex; flex-direction: column; color: var(--cloud); }
+.campus-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(46,95,169,0.25), transparent); }
+.campus-top .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.04em; font-size: 14px; }
+.campus-top .brand small { display: block; font-weight: 400; letter-spacing: 0.12em; font-size: 10px; color: var(--sky); text-transform: uppercase; }
+.campus-body { flex: 1; padding: 16px; max-width: 620px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.campus h1 { font-size: 24px; margin: 6px 0 10px; line-height: 1.2; }
+.campus h2 { font-size: 20px; margin: 0 0 8px; }
+.campus p { line-height: 1.5; }
+.campus .lead { font-size: 17px; color: var(--cloud); }
+
+.c-btn { display: block; width: 100%; box-sizing: border-box; padding: 16px 18px; margin: 10px 0; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--cloud); font-size: 18px; font-weight: 600; text-align: left; cursor: pointer; }
+.c-btn.primary { background: var(--air); border-color: var(--air); }
+.c-btn.big { font-size: 22px; padding: 22px 20px; text-align: center; }
+.c-btn.ghost { background: transparent; font-weight: 500; }
+.c-btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+.c-btn:disabled { opacity: 0.5; cursor: default; }
+.c-btn small { display: block; font-size: 13px; font-weight: 400; color: var(--silver); margin-top: 3px; }
+.c-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.c-row .c-btn { flex: 1 1 140px; margin: 6px 0; }
+
+.c-field { display: block; margin: 12px 0; }
+.c-field .lbl { display: block; font-size: 13px; color: var(--sky); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+.c-field input, .c-field textarea, .c-field select { width: 100%; box-sizing: border-box; font-size: 17px; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,0.25); color: var(--cloud); }
+.c-field textarea { min-height: 120px; line-height: 1.4; }
+
+.c-card { border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; background: rgba(255,255,255,0.04); }
+.c-card.warn { border-color: var(--warning); }
+.c-card.ok { border-color: var(--success); }
+.c-card.worker { border-style: dashed; }
+.c-worker-tag { display: inline-block; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--warning); border: 1px solid var(--warning); border-radius: 999px; padding: 2px 8px; margin-bottom: 8px; }
+.c-note { color: var(--silver); font-size: 14px; }
+.c-err { color: var(--danger); font-size: 15px; margin: 8px 0; }
+.c-ok { color: var(--success); font-size: 15px; margin: 8px 0; }
+
+/* student-facing progress: Your Favorite Talk → Your Lyrics → Your Song */
+.c-progress { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 14px; font-size: 13px; color: var(--silver); flex-wrap: wrap; }
+.c-progress .st { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.c-progress .st.on { color: var(--navy); background: var(--sky); border-color: var(--sky); font-weight: 600; }
+.c-progress .st.done { color: var(--success); border-color: var(--success); }
+.c-progress .arrow { opacity: 0.6; }
+
+.c-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+.c-chip { padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cloud); font-size: 15px; cursor: pointer; }
+.c-chip.on { background: var(--sky); color: var(--navy); border-color: var(--sky); font-weight: 600; }
+
+.c-list { display: flex; flex-direction: column; gap: 8px; }
+.c-talk { text-align: left; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--cloud); cursor: pointer; }
+.c-talk .t { font-size: 17px; font-weight: 600; }
+.c-talk .s { font-size: 14px; color: var(--silver); margin-top: 2px; }
+.c-talk .tag { float: right; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--success); border: 1px solid var(--success); border-radius: 999px; padding: 2px 8px; margin-left: 8px; }
+
+.c-lyrics { white-space: pre-wrap; font-size: 18px; line-height: 1.55; padding: 14px; border-radius: 14px; background: rgba(0,0,0,0.25); border: 1px solid var(--line); }
+.c-release { max-height: 38vh; overflow: auto; white-space: pre-wrap; font-size: 15px; line-height: 1.5; padding: 14px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+
+.sig-wrap { margin: 8px 0; }
+.sig-canvas { width: 100%; display: block; border-radius: 12px; border: 2px dashed var(--sky); background: #fff; }
+.sig-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.sig-hint { font-size: 13px; color: var(--silver); }
+
+.c-spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--sky); border-top-color: transparent; border-radius: 50%; animation: cspin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
+@keyframes cspin { to { transform: rotate(360deg); } }
+
+.c-thanks { text-align: center; padding: 30px 10px; }
+.c-thanks h1 { font-size: 30px; }
+.c-thanks .big-emoji { font-size: 64px; margin: 10px 0; }
+
+.c-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 12px 0; }
+.c-stat { border: 1px solid var(--line); border-radius: 14px; padding: 12px; text-align: center; }
+.c-stat b { display: block; font-size: 26px; }
+.c-stat span { font-size: 12px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.c-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.c-table th, .c-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.c-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px; }
+.c-tabs button { padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cloud); cursor: pointer; }
+.c-tabs button.on { background: var(--air); border-color: var(--air); font-weight: 600; }
+code.c-code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px; font-size: 13px; word-break: break-all; }

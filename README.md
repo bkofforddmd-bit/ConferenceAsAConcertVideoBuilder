@@ -107,6 +107,45 @@ the position shifts that adding a conference causes in `talks-index.json`
 `talk-text/` bundles all refer to talks by position and must be regenerated
 together with `talks-index.json`).
 
+## Campus Sessions (BYU student engagement experiment)
+
+A separate, sign-in-only mode at **/campus** (workers) and **/campus/admin**
+(administrators). Nothing links to it from the public Studio. A worker asks a
+student for their favorite October 2026 talk, checks whether the Concert
+library already has a song for it, captures a media-release consent (finger
+signature), writes lyrics with the Studio's generator, hands off to MelodyCraft
+AI for the song, and records the outcome. Every step is saved on the server so
+an interrupted session resumes from the home screen.
+
+Code: `netlify/functions/campus-*.js`, `netlify/lib/campus-*.js`,
+`src/campus/`. Data lives in the Netlify Blobs store `campus` (documents:
+`user:`, `email:`, `invite:`, `session:`, `consent:`, `settings:`,
+`consent-version:`). No database or migration is involved. Participant names,
+emails and signatures exist only in `consent:` records, which only an
+administrator can read, by session id.
+
+### Setup (one time)
+
+1. In Netlify → Site configuration → Environment variables add
+   `CAMPUS_SESSION_SECRET` (any long random string; signs sign-in tokens) and
+   `CAMPUS_ADMIN_SECRET` (the one-time setup secret for the first administrator).
+   Make sure `ANTHROPIC_API_KEY` is set on the site too — workers never enter
+   AI keys. Redeploy.
+2. Open `/campus`, tap **First time here? Set up the administrator**, enter
+   the setup secret, your name, email and a password.
+3. Admin panel → **Release text**: read the draft media release, edit it if
+   needed, and have it reviewed by legal counsel before public use of any
+   recording. Tick "reviewed by legal counsel" when that's done.
+4. Admin panel → **Settings**: confirm the MelodyCraft AI address.
+5. Admin panel → **Workers**: invite each worker; send them the one-time link.
+
+Tests: `node --test tests/campus.test.mjs` (authorization, consent rules,
+session state transitions, admin-only lookups).
+
+Phases still to come: 2 — timekeeping (clock in/out, corrections, monthly
+pay periods, payroll report); 3 — analytics (funnel, by worker and date,
+CSV export); 4 — QR sharing and follow-ups.
+
 ## Notes
 
 - Talks are © Intellectual Reserve, Inc. Lyrics are original paraphrase; the
