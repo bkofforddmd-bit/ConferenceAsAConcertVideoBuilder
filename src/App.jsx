@@ -105,6 +105,9 @@ export default function App() {
       applyProject(best);
       setRestoredNote(true);
       if (best.talkText || best.lyrics) setView("create");
+      // "Reload and open the Library" from the crash screen: land on the Library so a
+      // step that crashes while drawing can be stepped around.
+      try { if (sessionStorage.getItem("cac-open-library")) { sessionStorage.removeItem("cac-open-library"); setView("library"); } } catch {}
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

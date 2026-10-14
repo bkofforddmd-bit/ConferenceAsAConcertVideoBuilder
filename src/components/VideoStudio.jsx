@@ -114,6 +114,7 @@ export default function VideoStudio({
   projectId, scenes, images, endcards, song, meta, lyrics = "",
   clips, setClips, timeline, setTimeline, render, setRender,
   config, onContinue, onSetCardImage, onSetSceneLyrics, talkMeta, talkText, lyricSources, onLyricSources, onFixTalk,
+  onAttachVideo,
 }) {
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
