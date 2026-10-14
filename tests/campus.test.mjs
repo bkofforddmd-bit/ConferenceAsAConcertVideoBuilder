@@ -40,6 +40,18 @@ before(async () => {
   }
 });
 
+test("local development: the setup secret \"dev\" works only when no deploy environment is present", async () => {
+  const saved = process.env.CAMPUS_ADMIN_SECRET;
+  delete process.env.CAMPUS_ADMIN_SECRET;
+  const ok = await call(auth, { action: "bootstrap", secret: "dev", email: "dev@x.com", name: "Dev", password: "password1" });
+  assert.equal(ok.status, 200);
+  process.env.NETLIFY = "true";
+  const no = await call(auth, { action: "bootstrap", secret: "dev", email: "dev2@x.com", name: "Dev", password: "password1" });
+  assert.equal(no.status, 403);
+  delete process.env.NETLIFY;
+  process.env.CAMPUS_ADMIN_SECRET = saved;
+});
+
 test("unauthenticated visitors are refused everywhere", async () => {
   assert.equal((await call(sessions, { action: "mine" })).status, 401);
   assert.equal((await call(admin, { action: "workers" })).status, 401);

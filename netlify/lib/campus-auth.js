@@ -15,21 +15,25 @@
 // can be tested without configuration.
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { docGet, docSet, docList, newId, now } from "./campus-store.js";
+import { docGet, docSet, docList, newId, now, storeMode } from "./campus-store.js";
 
-const DEPLOYED = Boolean(process.env.NETLIFY);
+// Development conveniences (a fixed signing secret, setup secret "dev") are
+// allowed only when documents are going to local memory — never on a site
+// that stores real data. Decided from the store itself, not from an
+// environment flag that may be absent inside a running function.
+const devMode = () => !(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY_BLOBS_CONTEXT || process.env.DEPLOY_ID) && storeMode() !== "blobs-confirmed";
 const TOKEN_DAYS = 30;
 
 function secret() {
   const s = (process.env.CAMPUS_SESSION_SECRET || "").trim();
   if (s) return s;
-  if (DEPLOYED) throw new Error("CAMPUS_SESSION_SECRET isn't set on the site.");
+  if (!devMode()) throw new Error("CAMPUS_SESSION_SECRET isn't set on the site (Netlify → Environment variables).");
   return "dev-campus-secret";
 }
 
 export function adminSecretMatches(candidate) {
   const s = (process.env.CAMPUS_ADMIN_SECRET || "").trim();
-  if (!s) return !DEPLOYED && candidate === "dev";
+  if (!s) return devMode() && candidate === "dev";
   const a = Buffer.from(String(candidate || ""));
   const b = Buffer.from(s);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -104,7 +108,8 @@ export async function authFrom(req, roles = ["worker", "admin"]) {
   const payload = verifyToken(token);
   if (!payload) return { error: "Please sign in.", status: 401 };
   const user = await docGet(`user:${payload.uid}`);
-  if (!user || !user.active) return { error: "This account is no longer active.", status: 401 };
+  if (!user) return { error: "Your sign-in no longer matches an account — please sign in again.", status: 401 };
+  if (!user.active) return { error: "This account has been deactivated.", status: 401 };
   if (!roles.includes(user.role)) return { error: "You don't have access to that.", status: 403 };
   return { user };
 }
