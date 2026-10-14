@@ -133,8 +133,17 @@ async function uploadMedia({ password, blob, contentType, filename, titleHint, l
   // Fast path: straight from the browser to the storage (needs this site in the
   // bucket's CORS policy). Otherwise fall back to pieces via the Studio.
   const uploaded = await putDirect(sign.uploadUrl, blob, contentType, (pct, loaded) => onStep(`Uploading the ${label}… ${Math.round(pct * 100)}% (${(loaded / 1048576).toFixed(1)} of ${totalMB} MB)`));
-  if (!uploaded) await uploadInPieces({ blob, contentType, uploadUrl: sign.uploadUrl, label, onStep });
-  return sign.publicUrl;
+  if (uploaded) return sign.publicUrl;
+  // The upload link only lives 10 minutes and sending a big video in pieces
+  // can take longer than that, so the pieces route asks for a fresh link once
+  // every piece is in — just before the delivery job uses it.
+  const resign = async () => {
+    const fresh = await relay(password, "sign", { filename, contentType, titleHint });
+    if (!fresh.uploadUrl || !fresh.publicUrl) throw new Error("The Concert app didn't return an upload link.");
+    return fresh;
+  };
+  const delivered = await uploadInPieces({ blob, contentType, label, onStep, resign });
+  return delivered.publicUrl;
 }
 
 // song: { title, talk, speaker, session, theme, style, talkUrl, youtube, lyrics, duration, blurb, lyricTimings }
@@ -181,7 +190,7 @@ async function publishToConcertInner({ password, song, audio, video = null, onSt
 // doesn't list this site): send the file in ≤3 MB pieces to a Studio function
 // (Netlify caps a single request at a few MB), several pieces at a time, then
 // let a Studio background job stitch them and deliver the whole file.
-async function uploadInPieces({ blob, contentType, uploadUrl, label, onStep }) {
+async function uploadInPieces({ blob, contentType, label, onStep, resign }) {
   const CHUNK = 3 * 1048576;
   const PARALLEL = 4; // pieces in flight at once — phones and home uplinks saturate around here
   const count = Math.ceil(blob.size / CHUNK);
@@ -208,12 +217,14 @@ async function uploadInPieces({ blob, contentType, uploadUrl, label, onStep }) {
   async function worker() { while (next < count) { const n = next++; await sendPiece(n); } }
   await Promise.all(Array.from({ length: Math.min(PARALLEL, count) }, worker));
 
-  onStep(`Pieces received — delivering the ${label} to the Concert storage…`);
+  onStep(`Pieces received — asking for a fresh ${label} upload link…`);
+  const sign = await resign();
+  onStep(`Delivering the ${label} to the Concert storage…`);
   const jobId = "cj_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   const start = await fetch(`${BASE}/concert-assemble-background`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jobId, uploadId, count, to: uploadUrl, contentType }),
+    body: JSON.stringify({ jobId, uploadId, count, size: blob.size, to: sign.uploadUrl, contentType }),
   });
   if (start.status !== 202 && start.status !== 200) {
     const d = await start.json().catch(() => ({}));
@@ -228,8 +239,20 @@ async function uploadInPieces({ blob, contentType, uploadUrl, label, onStep }) {
     try { st = await (await fetch(`${BASE}/art-status?id=${encodeURIComponent(jobId)}`)).json(); } catch { continue; }
     if (st.status === "done") break;
     if (st.status === "failed") throw new Error((st.error || "Delivery failed.") + (st.detail ? ` ${st.detail}` : ""));
-    if (Date.now() - t0 > 14 * 60 * 1000) throw new Error(`Timed out delivering the ${label} to the Concert storage.`);
+    if (st.status === "running") {
+      onStep(st.phase === "uploading"
+        ? `Delivering the ${label} to the Concert storage… (${totalMB} MB on its way)`
+        : `Delivering the ${label}… joining piece ${st.pieces || 0} of ${count}`);
+    }
+    // A job that stops reporting for 3 minutes has died (the function was cut
+    // off); a job still writing progress gets the full window.
+    const silentFor = st.updatedAt ? Date.now() - st.updatedAt : 0;
+    if (st.status === "running" && silentFor > 3 * 60 * 1000) {
+      throw new Error(`The ${label} delivery job stopped responding. For a video this size, add the Studio's address to the Concert storage's CORS policy so it uploads straight from your browser instead.`);
+    }
+    if (Date.now() - t0 > 14 * 60 * 1000) throw new Error(`Timed out delivering the ${label} to the Concert storage. Add the Studio's address to the Concert storage's CORS policy so videos upload straight from your browser.`);
   }
+  return sign;
 }
 
 // Direct PUT with upload progress (fetch can't report it; XMLHttpRequest can).
