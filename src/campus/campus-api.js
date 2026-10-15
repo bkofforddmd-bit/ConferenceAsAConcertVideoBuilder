@@ -68,7 +68,10 @@ export async function fetchTalk(uri) {
   const res = await fetch(`${BASE}/fetch-talk`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: uri }) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Couldn't load the talk.");
-  return data; // { text, title, speaker, speakerTitle, year, month, sourceUrl }
+  // The function returns the talk as paragraphs; the lyric writer wants one text.
+  const text = Array.isArray(data.paragraphs) ? data.paragraphs.join("\n\n") : String(data.text || "");
+  if (!text.trim()) throw new Error("The talk's text couldn't be read from the Church site. Check the connection and try again.");
+  return { ...data, text }; // { text, paragraphs, title, speaker, speakerTitle, year, month, sourceUrl }
 }
 
 export async function conferenceSessions(year, month) {
