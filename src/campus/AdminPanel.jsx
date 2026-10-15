@@ -51,7 +51,7 @@ function Workers({ me }) {
         <button className="c-btn primary" type="submit">Create invitation link</button>
         {link && (
           <div className="c-card ok">
-            <p>Send this link to the worker (text or email). It works once:</p>
+            <p>Send this link to the person (text or email). It works once and lets them choose a password — for a new account or a forgotten one:</p>
             <code className="c-code">{link}</code>
             <button type="button" className="c-btn" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {} }}>{copied ? "Copied ✓" : "Copy link"}</button>
           </div>
@@ -69,7 +69,10 @@ function Workers({ me }) {
                   <td>{w.name}<br /><span className="c-note">{w.email}</span></td>
                   <td>{w.id === me.id ? "admin (you)" : <select value={w.role} onChange={(e) => adminApi.setRole(w.id, e.target.value).then(reload).catch((e2) => setErr(e2.message))}><option value="worker">worker</option><option value="admin">admin</option></select>}</td>
                   <td>{w.active ? "active" : "deactivated"}</td>
-                  <td>{w.id !== me.id && <button className="btn btn-ghost btn-sm" onClick={() => adminApi.setActive(w.id, !w.active).then(reload).catch((e2) => setErr(e2.message))}>{w.active ? "Deactivate" : "Reactivate"}</button>}</td>
+                  <td>{w.id !== me.id && <>
+                    <button className="btn btn-ghost btn-sm" onClick={() => adminApi.setActive(w.id, !w.active).then(reload).catch((e2) => setErr(e2.message))}>{w.active ? "Deactivate" : "Reactivate"}</button>{" "}
+                    <button className="btn btn-ghost btn-sm" title="Makes a one-time link that lets this person choose a new password" onClick={() => adminApi.invite({ email: w.email, name: w.name, role: w.role }).then((r) => { setLink(r.link); reload(); window.scrollTo({ top: 0, behavior: "smooth" }); }).catch((e2) => setErr(e2.message))}>Reset link</button>
+                  </>}</td>
                 </tr>
               ))}
             </tbody>

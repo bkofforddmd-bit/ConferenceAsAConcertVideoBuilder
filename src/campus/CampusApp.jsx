@@ -176,12 +176,12 @@ function SignIn({ onSignedIn, admin }) {
         </>
       ) : mode === "bootstrap" ? (
         <>
-          <h1>Set up the first administrator</h1>
-          <p className="c-note">Needs the setup secret from the site's environment settings (CAMPUS_ADMIN_SECRET).</p>
+          <h1>{showBootstrap ? "Set up the first administrator" : "Reset the administrator password"}</h1>
+          <p className="c-note">Needs the setup secret from the site's environment settings (CAMPUS_ADMIN_SECRET). Enter the administrator's email and a new password — the account keeps everything else. Workers get a new password from a fresh invitation link in the admin panel.</p>
           <label className="c-field"><span className="lbl">Setup secret</span><input type="password" value={f.secret} onChange={up("secret")} required /></label>
           <label className="c-field"><span className="lbl">Your name</span><input value={f.name} onChange={up("name")} required /></label>
           <label className="c-field"><span className="lbl">Email</span><input type="email" value={f.email} onChange={up("email")} required /></label>
-          <label className="c-field"><span className="lbl">Password (8+ characters)</span><input type="password" value={f.password} onChange={up("password")} autoComplete="new-password" required minLength={8} /></label>
+          <label className="c-field"><span className="lbl">{showBootstrap ? "Password (8+ characters)" : "New password (8+ characters)"}</span><input type="password" value={f.password} onChange={up("password")} autoComplete="new-password" required minLength={8} /></label>
         </>
       ) : (
         <>
@@ -191,8 +191,9 @@ function SignIn({ onSignedIn, admin }) {
         </>
       )}
       {err && <div className="c-err">{err}</div>}
-      <button className="c-btn primary" type="submit" disabled={busy}>{busy ? "One moment…" : mode === "invite" ? "Create my account" : mode === "bootstrap" ? "Create administrator" : "Sign in"}</button>
+      <button className="c-btn primary" type="submit" disabled={busy}>{busy ? "One moment…" : mode === "invite" ? "Create my account" : mode === "bootstrap" ? (showBootstrap ? "Create administrator" : "Reset password & sign in") : "Sign in"}</button>
       {mode === "login" && showBootstrap && <button type="button" className="c-btn ghost" onClick={() => setMode("bootstrap")}>First time here? Set up the administrator</button>}
+      {mode === "login" && status && status.hasUsers && <button type="button" className="c-btn ghost" onClick={() => setMode("bootstrap")}>Forgot the administrator password? Reset it with the setup secret</button>}
       {mode === "bootstrap" && <button type="button" className="c-btn ghost" onClick={() => setMode("login")}>Back to sign-in</button>}
       <p className="c-note">Workers get their account from an invitation link sent by the administrator.</p>
     </form>
