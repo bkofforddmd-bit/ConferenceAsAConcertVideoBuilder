@@ -13,6 +13,7 @@ import TalkSearch, { CONFERENCE } from "./TalkSearch.jsx";
 import SignaturePad from "./SignaturePad.jsx";
 import { firstName } from "./CampusApp.jsx";
 import { guessTitle } from "./title.js";
+import MelodyCraftPicker from "../components/MelodyCraftPicker.jsx";
 import { downloadCampusProject } from "../lib/campus-import.js";
 
 const MOODS = ["Hopeful", "Peaceful", "Joyful", "Reflective", "Energetic", "Reverent"];
@@ -25,11 +26,13 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   const [busy, setBusy] = useState("");
   const [lyricsText, setLyricsText] = useState("");
   const [songTitle, setSongTitle] = useState("");
+  const [reference, setReference] = useState("");
+  const [mc, setMc] = useState({ genres: [], moods: [] });
   const [talkText, setTalkText] = useState("");
   const [firstNameOf, setFirstNameOf] = useState("");
 
   useEffect(() => {
-    sessionApi.get(id).then((r) => { setS(r.session); if (r.session.lyrics && r.session.lyrics.text) setLyricsText(r.session.lyrics.text); if (r.session.lyrics && r.session.lyrics.title) setSongTitle(r.session.lyrics.title); }).catch((e) => setErr(e.message));
+    sessionApi.get(id).then((r) => { setS(r.session); if (r.session.lyrics && r.session.lyrics.text) setLyricsText(r.session.lyrics.text); if (r.session.lyrics && r.session.lyrics.title) setSongTitle(r.session.lyrics.title); if (r.session.lyrics && r.session.lyrics.reference) setReference(r.session.lyrics.reference); if (r.session.lyrics && r.session.lyrics.melodyCraft) setMc(r.session.lyrics.melodyCraft); }).catch((e) => setErr(e.message));
     libraryByTalk().then(setLibrary);
   }, [id]);
 
@@ -114,17 +117,19 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   // ---------------- lyrics ----------------
   if (s.step === "lyrics") {
     return <LyricsScreen s={s} busy={busy} err={err} lyricsText={lyricsText} setLyricsText={setLyricsText} talkText={talkText} setTalkText={setTalkText}
+      reference={reference} setReference={setReference}
       onGenerate={(opts) => guard("lyrics", async () => {
+        if (opts.reference !== undefined) setReference(opts.reference);
         let text = talkText;
         if (!text) { const t = await fetchTalk(s.talk.uri); text = t.text || ""; setTalkText(text); }
-        const styleBits = [opts.genre && `${opts.genre} style`, opts.mood && `${opts.mood.toLowerCase()} mood`, opts.message && `center the song on this message from the talk: "${opts.message}"`].filter(Boolean).join("; ");
+        const styleBits = [opts.reference && `in the spirit of ${opts.reference}`, opts.genre && `${opts.genre} style`, opts.mood && `${opts.mood.toLowerCase()} mood`, opts.message && `center the song on this message from the talk: "${opts.message}"`].filter(Boolean).join("; ");
         const r = lyricsText && opts.regenerate
           ? await generateLyrics({ talkText: text, currentLyrics: lyricsText, revisionRequest: "Write a completely fresh take with different images and a different hook" + (styleBits ? `; ${styleBits}` : ""), styleReference: styleBits })
           : await generateLyrics({ talkText: text, styleReference: styleBits });
         setLyricsText(r.lyrics || "");
         const title = guessTitle(r.lyrics || "", s.talk.title);
         setSongTitle(title);
-        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "" } });
+        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "", reference: opts.reference || "" } });
       })}
       onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "song" }))}
       onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "outcome" }))}
@@ -139,6 +144,20 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         {progress("song")}
         <h1>Let's Hear Your Song! 🎵</h1>
         <p className="lead">Copy the title and the lyrics, then open MelodyCraft AI and paste them in to make the song.</p>
+        <div className="c-card" style={{ padding: 12 }}>
+          <MelodyCraftPicker
+            compact
+            reference={reference}
+            onReference={(r) => { setReference(r); patch({ lyrics: { reference: r } }).catch(() => {}); }}
+            value={mc}
+            onChange={(v) => { setMc(v); patch({ lyrics: { melodyCraft: { genres: v.genres || [], moods: v.moods || [] } } }).catch(() => {}); }}
+            lyrics={lyricsText}
+            talkTitle={s.talk ? s.talk.title : ""}
+            moodHint={(s.lyrics && s.lyrics.mood) || ""}
+            btnClass="btn btn-ghost"
+            primaryClass="btn btn-primary"
+          />
+        </div>
         <label className="c-field">
           <span className="lbl">Song title</span>
           <span className="c-row" style={{ gap: 8, flexWrap: "nowrap" }}>
@@ -276,7 +295,7 @@ function ConsentScreen({ s, config, busy, err, onBack, onSubmit }) {
   );
 }
 
-function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish }) {
+function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference }) {
   const [mood, setMood] = useState("");
   const [genre, setGenre] = useState("");
   const [message, setMessage] = useState("");
@@ -296,8 +315,9 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
         <span className="c-note">Style</span>
         <div className="c-chips">{GENRES.map((g) => <button key={g} className={`c-chip ${genre === g ? "on" : ""}`} onClick={() => setGenre(genre === g ? "" : g)}>{g}</button>)}</div>
         <label className="c-field"><span className="lbl">Favorite message from the talk (optional)</span><input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="e.g. God’s love never gives up on us" /></label>
+        <label className="c-field"><span className="lbl">Sound like a song or artist (optional)</span><input value={reference || ""} onChange={(e) => setReference(e.target.value)} placeholder='e.g. "Forrest Frank" or "Oceans by Hillsong"' /></label>
         {err && <div className="c-err">{err}</div>}
-        <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message })}>{busy ? <><span className="c-spinner" />Writing your lyrics… (about 30 seconds)</> : "✨ Write my lyrics"}</button>
+        <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message, reference })}>{busy ? <><span className="c-spinner" />Writing your lyrics… (about 30 seconds)</> : "✨ Write my lyrics"}</button>
       </div>
     );
   }
@@ -308,7 +328,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
       {editing ? <textarea className="c-lyrics" style={{ width: "100%", minHeight: "40vh", boxSizing: "border-box" }} value={lyricsText} onChange={(e) => { setLyricsText(e.target.value); setEdited(true); }} /> : <div className="c-lyrics">{lyricsText}</div>}
       {err && <div className="c-err">{err}</div>}
       <div className="c-row">
-        <button className="c-btn" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message, regenerate: true })}>{busy === "lyrics" ? <><span className="c-spinner" />Rewriting…</> : "🔁 Try again"}</button>
+        <button className="c-btn" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message, reference, regenerate: true })}>{busy === "lyrics" ? <><span className="c-spinner" />Rewriting…</> : "🔁 Try again"}</button>
         <button className="c-btn" onClick={() => setEditing((v) => !v)}>{editing ? "Done editing" : "✏️ Edit"}</button>
       </div>
       <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onAccept(edited)}>Let's Hear Your Song! 🎵</button>

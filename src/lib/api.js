@@ -47,6 +47,7 @@ export const generateStyleBible = (payload) => post("generate-style-bible", payl
 export const generateOutline = (payload) => post("generate-outline", payload);
 export const generateSceneDetail = (payload) => post("generate-scene-detail", payload);
 export const extractMeta = (payload) => post("extract-meta", payload);
+export const melodyCraftSuggest = (payload) => post("melodycraft-suggest", payload);
 // Scene images take 30–90 s, longer than a normal Netlify function may run, so
 // generation happens in a background function and the browser polls for the
 // result. If the background function isn't available (old deploy / plan), fall

@@ -9,6 +9,7 @@
 //   { versions: [ { id, provider, title, style, vocals, mediaKey, mimeType,
 //                   durationSec, createdAt } ], activeId }
 
+import MelodyCraftPicker from "./MelodyCraftPicker.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { musicStart, musicStatus, pollJob, fetchMediaBlob } from "../lib/api.js";
 import { putMedia, getMedia } from "../lib/project-store.js";
@@ -282,6 +283,22 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
             Generation runs on the provider's servers; you can switch tabs but keep this page open. Lyrics
             are sent exactly as finalized — labels like [Verse 1] and [Chorus] guide the structure.
           </p>
+        </div>
+
+        <div className="music-card">
+          <h3>MelodyCraft AI settings <span className="chip">for songs made in MelodyCraft</span></h3>
+          <p className="note" style={{ marginTop: 0 }}>
+            Making the song in the MelodyCraft AI app instead? Tell it what to sound like and get the genre + mood combination
+            to select there — drawn only from MelodyCraft's own list. Then upload the finished MP3 above.
+          </p>
+          <MelodyCraftPicker
+            reference={(song && song.melodyCraft && song.melodyCraft.reference) || styleReference || ""}
+            onReference={(r) => setSong((p) => ({ ...p, melodyCraft: { ...((p && p.melodyCraft) || {}), reference: r } }))}
+            value={(song && song.melodyCraft) || { genres: [], moods: [] }}
+            onChange={(v) => setSong((p) => ({ ...p, melodyCraft: { ...((p && p.melodyCraft) || {}), ...v } }))}
+            lyrics={lyrics}
+            talkTitle={title || ""}
+          />
         </div>
 
         <div className="music-card">
