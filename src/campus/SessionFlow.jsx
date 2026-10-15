@@ -171,23 +171,59 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   }
 
   // ---------------- done ----------------
+  const declined = s.participation === "declined";
+  const line = s.song && s.song.generated ? "Your favorite talk is now a song."
+    : s.lyrics && s.lyrics.generated ? "Your favorite talk has its own lyrics."
+    : s.songified && s.songified.existing ? "Your favorite talk already lives as a song."
+    : "Thanks for sharing your favorite talk.";
   return (
-    <div className="c-thanks">
-      <div className="big-emoji">{s.participation === "declined" ? "👋" : "🎉"}</div>
-      <h1>{s.participation === "declined" ? "Thanks for your time!" : `Thank you${firstNameOf ? `, ${firstNameOf}` : ""}!`}</h1>
-      {s.participation !== "declined" && <p className="lead">{s.song && s.song.generated ? "Your favorite talk is now a song." : s.lyrics && s.lyrics.generated ? "Your favorite talk has its own lyrics." : s.songified && s.songified.existing ? "Your favorite talk already lives as a song." : "Thanks for sharing your favorite talk."} Higher ground through holier sound.</p>}
-      {s.songified && s.songified.existing && !s.songified.newInterpretation && <p><a href="https://conferenceconcert.netlify.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--sky)" }}>Find this song in the Conference Concert library ↗</a></p>}
-      <button className="c-btn primary big" onClick={onLeave}>Start another session</button>
+    <div className="c-hero">
+      <div className="c-hero-sky" aria-hidden="true">
+        <div className="c-hero-rays" />
+        <div className="c-hero-glow" />
+        <div className="c-hero-clouds" />
+        <div className="c-hero-ridge" />
+        <svg className="c-hero-staff" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true">
+          <g fill="none" stroke="#f3d9a4" strokeOpacity="0.55" strokeWidth="1.2">
+            <path d="M-20 300 C 200 230, 380 380, 600 300 S 1000 220, 1220 300" />
+            <path d="M-20 318 C 200 248, 380 398, 600 318 S 1000 238, 1220 318" />
+            <path d="M-20 336 C 200 266, 380 416, 600 336 S 1000 256, 1220 336" />
+            <path d="M-20 354 C 200 284, 380 434, 600 354 S 1000 274, 1220 354" />
+            <path d="M-20 372 C 200 302, 380 452, 600 372 S 1000 292, 1220 372" />
+          </g>
+          <g fill="#f3d9a4" fillOpacity="0.8">
+            <ellipse cx="150" cy="330" rx="13" ry="9" transform="rotate(-20 150 330)" /><rect x="160" y="270" width="3" height="62" />
+            <ellipse cx="420" cy="372" rx="13" ry="9" transform="rotate(-20 420 372)" /><rect x="430" y="312" width="3" height="62" />
+            <ellipse cx="760" cy="318" rx="13" ry="9" transform="rotate(-20 760 318)" /><rect x="770" y="258" width="3" height="62" />
+            <ellipse cx="1040" cy="352" rx="13" ry="9" transform="rotate(-20 1040 352)" /><rect x="1050" y="292" width="3" height="62" />
+            <ellipse cx="1068" cy="346" rx="13" ry="9" transform="rotate(-20 1068 346)" /><rect x="1078" y="286" width="3" height="62" /><rect x="1050" y="286" width="31" height="4" />
+          </g>
+        </svg>
+        <div className="c-hero-bokeh" />
+      </div>
+      <div className="c-hero-content">
+        <h1 className="c-hero-title">{declined ? "Thank You" : "Thank You!"}</h1>
+        <div className="c-hero-rule" aria-hidden="true"><span /><i /><span /></div>
+        <p className="c-hero-line">
+          {declined ? "Thanks for your time today." : <>{firstNameOf ? `${firstNameOf}, ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line}</>}
+          <br />
+          Higher ground through holier sound.
+        </p>
+        {s.songified && s.songified.existing && !s.songified.newInterpretation && (
+          <p className="c-hero-link"><a href="https://conferenceconcert.netlify.app" target="_blank" rel="noopener noreferrer">Find this song in the Conference Concert library ↗</a></p>
+        )}
+        <button className="c-hero-btn" onClick={onLeave}>Start another session <span aria-hidden="true">›</span></button>
+      </div>
       {s.lyrics && s.lyrics.generated && (
-        <div className="c-card worker" style={{ textAlign: "left" }}>
-          <div className="c-worker-tag">Worker</div>
-          <p className="c-note" style={{ margin: "0 0 8px" }}>Turn this into a music video later: open the Studio with this session's talk and lyrics (upload the MelodyCraft MP3 on the Music step, sync the lyrics, then storyboard and render).</p>
+        <details className="c-hero-worker">
+          <summary>Worker: turn this into a music video</summary>
+          <p className="c-note" style={{ margin: "8px 0" }}>Open the Studio with this session's talk and lyrics (upload the MelodyCraft MP3 on the Music step, sync the lyrics, then storyboard and render).</p>
           <div className="c-row">
             <a className="c-btn" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Open in the Studio</a>
             <button className="c-btn ghost" onClick={() => downloadCampusProject(s.id).catch((e) => setErr(e.message))}>⬇ Download project .json</button>
           </div>
           {err && <div className="c-err">{err}</div>}
-        </div>
+        </details>
       )}
     </div>
   );
