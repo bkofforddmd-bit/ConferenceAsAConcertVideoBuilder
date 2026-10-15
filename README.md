@@ -139,6 +139,47 @@ administrator can read, by session id.
 4. Admin panel → **Settings**: confirm the MelodyCraft AI address.
 5. Admin panel → **Workers**: invite each worker; send them the one-time link.
 
+### Video clips (in-app recording → private Cloudflare R2)
+
+When a student authorizes recording, the session screens show a small 🎥
+camera window (lyrics reaction, song reaction, closing testimony). Clips upload
+straight from the phone to a PRIVATE R2 bucket through short-lived signed
+links; they're never public. Administrators see and download a session's clips
+from Consent lookup; in the Studio, a project opened from a session can splice
+its clips into the opening of the music video (Video step → Opening clip →
+"From the campus session").
+
+One-time setup:
+
+1. Cloudflare → R2 → Create bucket (e.g. `cac-campus-clips`). Leave public
+   access OFF.
+2. R2 → Manage R2 API Tokens → Create token: permission **Object Read & Write**,
+   limited to that bucket. Copy the Access Key ID and Secret Access Key.
+3. Bucket → Settings → CORS policy:
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://conferenceasaconcertvideobuilder.netlify.app"],
+       "AllowedMethods": ["GET", "PUT"],
+       "AllowedHeaders": ["*"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+4. Netlify → Environment variables: `R2_ACCOUNT_ID` (R2 → Overview, right
+   side), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_CAMPUS_BUCKET`.
+   Redeploy. Until these are set the recorder stays hidden.
+5. Admin panel → Release text: the built-in release is now version 2 and
+   describes in-app recording. If you saved your own version earlier, update
+   its "Recording" paragraph the same way and have it reviewed.
+
+Limits: 3 minutes and 400 MB per clip, 12 clips per session. Clips are kept
+until an administrator deletes the session's clips (worker delete during the
+session, or the session purge — retention policy to come with Phase 3).
+
 Tests: `node --test tests/campus.test.mjs` (authorization, consent rules,
 session state transitions, admin-only lookups).
 

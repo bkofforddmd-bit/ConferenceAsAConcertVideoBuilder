@@ -21,6 +21,7 @@ import { json, readJson } from "../lib/keys.js";
 import { docGet, docSet, docList, newId, now } from "../lib/campus-store.js";
 import { authFrom, normEmail, publicUser, listUsers } from "../lib/campus-auth.js";
 import { CONSENT_TEXT, CONSENT_VERSION } from "../lib/campus-consent-default.js";
+import { r2Configured, presign } from "../lib/r2.js";
 
 export async function currentConsent() {
   const cur = await docGet("settings:consent");
@@ -106,7 +107,9 @@ export default async (req) => {
       const consent = await docGet(`consent:${sid}`);
       const session = await docGet(`session:${sid}`);
       if (!consent && !session) return json({ error: "No session with that id." }, 404);
-      return json({ consent, session: session && summary(session) });
+      let clips = [];
+      try { if (session && r2Configured()) clips = (session.clips || []).filter((c) => c.status === "ready").map((c) => ({ id: c.id, stage: c.stage, durationSec: c.durationSec, bytes: c.bytes, at: c.at, url: presign({ method: "GET", key: c.key, expiresSec: 3600 }) })); } catch {}
+      return json({ consent, session: session && summary(session), clips });
     }
 
     if (action === "consent-withdraw") {
@@ -139,5 +142,6 @@ export function summary(s) {
     songified: s.songified ? { existing: Boolean(s.songified.existing), libraryId: s.songified.libraryId || null, newInterpretation: Boolean(s.songified.newInterpretation) } : null,
     participation: s.participation || null, consentVersion: s.consentVersion || null, lyrics: s.lyrics ? { ...s.lyrics, text: undefined, hasText: Boolean(s.lyrics.text) } : null, song: s.song || null,
     reaction: s.reaction || null, recordingCaptured: s.recordingCaptured ?? null, hasVideoRef: Boolean(s.videoRef), notes: s.notes || "",
+    clipCount: (s.clips || []).filter((c) => c.status === "ready").length,
   };
 }

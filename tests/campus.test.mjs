@@ -92,7 +92,7 @@ test("scenario 1: unsongified talk, lyrics only, recorded consent, completed", a
   assert.equal(con.status, 200);
   assert.equal(con.data.session.participation, "recorded");
   assert.equal(con.data.session.step, "lyrics");
-  assert.equal(con.data.session.consentVersion, 1);
+  assert.equal(con.data.session.consentVersion, 2);
   assert.ok(!JSON.stringify(con.data.session).includes("Pat Student"), "session never carries the participant's name");
   await call(sessions, { action: "update", id: s.id, patch: { lyrics: { generated: true, accepted: true, mood: "Hopeful" }, step: "outcome" } }, workerTok);
   const done = await call(sessions, { action: "complete", id: s.id, outcome: { reaction: "positive", recordingCaptured: true, videoRef: "IMG_0412.MOV" } }, workerTok);
@@ -183,12 +183,12 @@ test("admin: deactivated workers lose access; consent text is versioned; setting
   assert.equal((await call(auth, { action: "login", email: "w2@x.com", password: "workerpass1" })).status, 403);
   await call(admin, { action: "set-active", userId: w2.id, active: true }, adminTok);
   const v1 = await call(admin, { action: "consent-text" }, adminTok);
-  assert.equal(v1.data.version, 1);
+  assert.equal(v1.data.version, 2);
   assert.equal(v1.data.reviewed, false);
   const v2 = await call(admin, { action: "set-consent-text", text: "New release text. ".repeat(20), reviewed: true }, adminTok);
-  assert.equal(v2.data.version, 2);
+  assert.equal(v2.data.version, 3);
   const cfg = await call(sessions, { action: "config" }, workerTok);
-  assert.equal(cfg.data.consent.version, 2);
+  assert.equal(cfg.data.consent.version, 3);
   assert.equal(cfg.data.settings.melodyCraftUrl, "https://melodycraft.app");
   assert.equal((await call(admin, { action: "set-settings", melodyCraftUrl: "javascript:alert(1)" }, adminTok)).status, 400);
   const set = await call(admin, { action: "set-settings", melodyCraftUrl: "https://example.com/melody", defaultCampus: "BYU Provo" }, adminTok);

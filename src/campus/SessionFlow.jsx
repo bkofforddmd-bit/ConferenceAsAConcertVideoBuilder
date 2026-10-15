@@ -15,6 +15,8 @@ import { firstName } from "./CampusApp.jsx";
 import { guessTitle } from "./title.js";
 import MelodyCraftPicker from "../components/MelodyCraftPicker.jsx";
 import { downloadCampusProject } from "../lib/campus-import.js";
+import VideoRecorder from "./VideoRecorder.jsx";
+import { mediaApi } from "./campus-api.js";
 
 const MOODS = ["Hopeful", "Peaceful", "Joyful", "Reflective", "Energetic", "Reverent"];
 const GENRES = ["Pop", "Acoustic", "Worship", "Hip-hop", "Country", "Cinematic", "Folk"];
@@ -27,6 +29,17 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   const [lyricsText, setLyricsText] = useState("");
   const [songTitle, setSongTitle] = useState("");
   const [reference, setReference] = useState("");
+  const [clips, setClips] = useState([]);
+  const [mediaOk, setMediaOk] = useState(false);
+  // Video storage configured on the site? (The recorder only shows when it is.)
+  useEffect(() => { mediaApi.status().then((r) => setMediaOk(Boolean(r.configured))).catch(() => setMediaOk(false)); }, []);
+  // Clips already recorded for this session (after a resume).
+  useEffect(() => {
+    if (!s || s.participation !== "recorded" || !mediaOk) return;
+    mediaApi.list(id).then((r) => setClips(r.clips || [])).catch(() => {});
+  }, [s && s.participation, mediaOk, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const canRecord = Boolean(s && s.participation === "recorded" && mediaOk);
+  const recorder = (stage, compact) => (canRecord ? <VideoRecorder sessionId={id} stage={stage} clips={clips} onClips={setClips} compact={compact} /> : null);
   const [mc, setMc] = useState({ genres: [], moods: [] });
   const [talkText, setTalkText] = useState("");
   const [firstNameOf, setFirstNameOf] = useState("");
@@ -109,6 +122,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         <div className="c-card">
           <p className="lead" style={{ margin: 0 }}>“What did you think of hearing your favorite conference message turned into music?”</p>
         </div>
+        {recorder("song-reaction")}
         <button className="c-btn primary" onClick={() => patch({ step: "outcome" })}>Finish</button>
       </div>
     );
@@ -131,6 +145,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         setSongTitle(title);
         await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "", reference: opts.reference || "" } });
       })}
+      recorder={recorder("lyrics-reaction")}
       onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "song" }))}
       onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "outcome" }))}
     />;
@@ -173,6 +188,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         <div className="c-card">
           <p className="lead" style={{ margin: 0 }}>“What did you think of hearing your favorite conference message turned into music?”</p>
         </div>
+        {recorder("song-reaction")}
         <div className="c-card worker">
           <div className="c-worker-tag">Worker</div>
           <label className="c-row" style={{ fontSize: 17, gap: 10 }}><input type="checkbox" checked={Boolean(s.song.generated)} onChange={(e) => patch({ song: { generated: e.target.checked } })} /> The song was generated in MelodyCraft</label>
@@ -233,6 +249,12 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         )}
         <button className="c-hero-btn" onClick={onLeave}>Start another session <span aria-hidden="true">›</span></button>
       </div>
+      {canRecord && (
+        <div className="c-hero-worker" style={{ marginTop: 22 }}>
+          <div className="c-note" style={{ marginBottom: 6 }}>One more thing? A short testimony or a closing thought from the student.</div>
+          {recorder("testimony")}
+        </div>
+      )}
       {s.lyrics && s.lyrics.generated && (
         <details className="c-hero-worker">
           <summary>Worker: turn this into a music video</summary>
@@ -295,7 +317,7 @@ function ConsentScreen({ s, config, busy, err, onBack, onSubmit }) {
   );
 }
 
-function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference }) {
+function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference, recorder }) {
   const [mood, setMood] = useState("");
   const [genre, setGenre] = useState("");
   const [message, setMessage] = useState("");
@@ -327,6 +349,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
       <h1>Your Lyrics 🎤</h1>
       {editing ? <textarea className="c-lyrics" style={{ width: "100%", minHeight: "40vh", boxSizing: "border-box" }} value={lyricsText} onChange={(e) => { setLyricsText(e.target.value); setEdited(true); }} /> : <div className="c-lyrics">{lyricsText}</div>}
       {err && <div className="c-err">{err}</div>}
+      {recorder}
       <div className="c-row">
         <button className="c-btn" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message, reference, regenerate: true })}>{busy === "lyrics" ? <><span className="c-spinner" />Rewriting…</> : "🔁 Try again"}</button>
         <button className="c-btn" onClick={() => setEditing((v) => !v)}>{editing ? "Done editing" : "✏️ Edit"}</button>
@@ -353,6 +376,7 @@ function OutcomeScreen({ s, busy, err, onComplete, onAbandon }) {
           <tr><td>Lyrics generated</td><td>{s.lyrics && s.lyrics.generated ? `yes${s.lyrics.regenerated ? ` (${s.lyrics.regenerated} rewrite${s.lyrics.regenerated === 1 ? "" : "s"})` : ""}` : "no"}</td></tr>
           <tr><td>Song generated</td><td>{s.song && s.song.generated ? "yes" : "no"}</td></tr>
           <tr><td>Recording authorized</td><td>{s.participation === "recorded" ? "yes" : "no"}</td></tr>
+          {s.participation === "recorded" && <tr><td>Clips in the app</td><td>{(s.clips || []).filter((c) => c.status === "ready").length}</td></tr>}
         </tbody>
       </table>
       {s.participation !== "declined" && (

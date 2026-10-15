@@ -63,6 +63,14 @@ export const adminApi = {
   sessions: (from, to) => call("campus-admin", { action: "sessions", from, to }),
 };
 
+export const mediaApi = {
+  status: () => call("campus-media", { action: "status" }),
+  signUpload: (sessionId, stage, mime, bytes) => call("campus-media", { action: "sign-upload", sessionId, stage, mime, bytes }),
+  confirm: (sessionId, clipId, bytes, durationSec) => call("campus-media", { action: "confirm", sessionId, clipId, bytes, durationSec }),
+  list: (sessionId) => call("campus-media", { action: "list", sessionId }),
+  remove: (sessionId, clipId) => call("campus-media", { action: "delete", sessionId, clipId }),
+};
+
 // ---- talks (reuses the Studio's own data) ----
 export async function fetchTalk(uri) {
   const res = await fetch(`${BASE}/fetch-talk`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: uri }) });

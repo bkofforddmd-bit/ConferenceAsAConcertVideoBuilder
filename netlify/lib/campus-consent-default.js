@@ -8,7 +8,7 @@
 // The admin dashboard flags it "needs legal review" until an administrator
 // marks it reviewed. Do not treat it as legally sufficient on its own.
 
-export const CONSENT_VERSION = 1;
+export const CONSENT_VERSION = 2;
 
 export const CONSENT_TEXT = `Conference as a Concert — Campus Sessions
 Participation and Media Release (DRAFT — pending legal review)
@@ -17,7 +17,7 @@ What this is
 Conference as a Concert turns General Conference talks into original songs. In this short activity you pick a favorite talk, and the app writes song lyrics inspired by it. If you like, you can go on to hear it as a song.
 
 Recording
-With your permission, the person running this session may record the interaction on video and audio using a separate camera or phone. The recording may include your voice, your face, your name as you give it, and your reactions. The app itself does not record you.
+With your permission, the person running this session may record parts of the interaction on video and audio — using this app's camera window on their phone, or a separate camera. Recording starts and stops only when they press the button, and they will tell you when it is on. The recording may include your voice, your face, your name as you give it, and your reactions. Clips are stored in private storage controlled by Conference as a Concert and are not published automatically.
 
 How a recording may be used
 If you authorize recording, you give Conference as a Concert permission to edit the recording and to use it, in whole or in part, in social media posts, promotional and demonstration videos, presentations, websites, and other public materials, now and in the future, without payment to you. You will not be identified beyond what appears in the recording unless you ask to be.

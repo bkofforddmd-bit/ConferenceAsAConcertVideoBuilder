@@ -162,6 +162,17 @@ function Lookup() {
                 <tr><td>Video reference</td><td>{c.videoRef || "—"}</td></tr>
                 <tr><td>Withdrawn</td><td>{c.withdrawn ? `${new Date(c.withdrawn.at).toLocaleString()} — ${c.withdrawn.note || ""}` : "no"}</td></tr>
               </tbody></table>
+              {res.clips && res.clips.length > 0 && (
+                <div style={{ margin: "10px 0" }}>
+                  <div className="c-note" style={{ marginBottom: 6 }}>Video clips recorded in the app ({res.clips.length}) — links work for an hour:</div>
+                  {res.clips.map((k) => (
+                    <div key={k.id} style={{ marginBottom: 8 }}>
+                      <video src={k.url} controls playsInline preload="metadata" style={{ width: "100%", maxWidth: 360, borderRadius: 8, background: "#000" }} />
+                      <div className="c-note" style={{ margin: 0 }}>{k.stage} · {k.durationSec ? `${Math.round(k.durationSec)} s · ` : ""}{(k.bytes / 1048576).toFixed(1)} MB · <a href={k.url} download style={{ color: "var(--sky)" }}>download</a></div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {c.signaturePng && <img src={c.signaturePng} alt="signature" style={{ maxWidth: 320, width: "100%", background: "#fff", borderRadius: 8, margin: "8px 0" }} />}
               <details><summary>Release text as accepted</summary><div className="c-release" style={{ marginTop: 8 }}>{c.text}</div></details>
               {!c.withdrawn && (
@@ -199,7 +210,7 @@ function Sessions() {
       <table className="c-table">
         <thead><tr><th>When</th><th>Talk</th><th>Result</th><th>Id</th></tr></thead>
         <tbody>
-          {list.map((s) => <tr key={s.id}><td>{new Date(s.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>{s.talk ? s.talk.title : "—"}</td><td>{s.status === "abandoned" ? "unfinished" : s.participation === "declined" ? "declined" : s.participation === "recorded" ? "recorded" : s.participation || "—"}{s.song && s.song.generated ? " · song" : s.lyrics && s.lyrics.generated ? " · lyrics" : ""}</td><td><code className="c-code">{s.id}</code>{s.lyrics && s.lyrics.hasText && <> <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Studio</a></>}</td></tr>)}
+          {list.map((s) => <tr key={s.id}><td>{new Date(s.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>{s.talk ? s.talk.title : "—"}</td><td>{s.status === "abandoned" ? "unfinished" : s.participation === "declined" ? "declined" : s.participation === "recorded" ? "recorded" : s.participation || "—"}{s.song && s.song.generated ? " · song" : s.lyrics && s.lyrics.generated ? " · lyrics" : ""}{s.clipCount ? ` · 🎥 ${s.clipCount}` : ""}</td><td><code className="c-code">{s.id}</code>{s.lyrics && s.lyrics.hasText && <> <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Studio</a></>}</td></tr>)}
         </tbody>
       </table>
       <button className="c-btn ghost" onClick={reload}>Refresh</button>

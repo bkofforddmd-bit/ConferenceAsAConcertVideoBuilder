@@ -45,7 +45,8 @@ export async function campusSessionToProject(sessionId, { projectId, version = 3
     scene: { styleBible: null, scenes: [], images: {}, saved: {}, meta: title ? { songTitle: title, speaker: talk.speaker || s.talk.speaker || "" } : {}, endcards: {} },
     song: { versions: [], activeId: null, melodyCraft: { reference: (s.lyrics && s.lyrics.reference) || "", genres: (s.lyrics && s.lyrics.melodyCraft && s.lyrics.melodyCraft.genres) || [], moods: (s.lyrics && s.lyrics.melodyCraft && s.lyrics.melodyCraft.moods) || [] } },
     clips: {},
-    timeline: { starts: {}, introSec: 4, outroSec: 6, lyricsOverlay: true },
+    timeline: { starts: {}, introSec: 4, outroSec: 6, lyricsOverlay: true, campusSessionId: s.id },
+    campusClips: (s.clips || []).filter((c) => c.status === "ready").map((c) => ({ id: c.id, stage: c.stage, durationSec: c.durationSec })),
     render: null,
   };
 }

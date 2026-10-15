@@ -681,6 +681,105 @@ export function captureClip({ src, start, end, onProgress }) {
   return captureSegments({ src, segments: [{ from: start, to: end }], fade: 0, onProgress });
 }
 
+// Splice several separate clips (e.g. a campus session's reaction and
+// testimony clips) into ONE clip, in order, with a fade to black at every
+// join. Each source is played in real time, drawn to a canvas, its sound
+// routed through WebAudio, and the whole thing recorded — the same path as
+// captureSegments, but across different files. Sources are letterboxed into
+// a 16:9 frame so phone (portrait) clips and widescreen clips can mix.
+//   sources: [{ src, in?, out? }]   (in/out in seconds; default = whole clip)
+export function captureConcat({ sources, fade = 0.5, width = 1280, height = 720, onProgress }) {
+  return new Promise(async (resolve, reject) => {
+    const cleanups = [];
+    const cleanup = () => { for (const f of cleanups.splice(0)) { try { f(); } catch {} } };
+    try {
+      const mime = pickRenderMime();
+      if (!mime) throw new Error("This browser can't record video — use Chrome or Edge.");
+      const list = (sources || []).filter((s) => s && s.src);
+      if (!list.length) throw new Error("No clips to splice.");
+
+      const W = width, H = height;
+      const canvas = document.createElement("canvas");
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const ACtx = window.AudioContext || window.webkitAudioContext;
+      const actx = new ACtx();
+      cleanups.push(() => { try { actx.close(); } catch {} });
+      const gain = actx.createGain();
+      const dest = actx.createMediaStreamDestination();
+      gain.connect(dest);
+      await actx.resume();
+
+      const stream = canvas.captureStream(30);
+      for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+      const chunks = [];
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 160_000 });
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((res) => { rec.onstop = res; });
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+
+      // Load every clip first so the total length is known for progress.
+      const els = [];
+      for (const s of list) {
+        const el = document.createElement("video");
+        el.crossOrigin = "anonymous"; el.preload = "auto"; el.playsInline = true; el.src = s.src;
+        await new Promise((res, rej) => { el.onloadedmetadata = res; el.onerror = () => rej(new Error("A clip couldn't be loaded — its link may have expired; reopen this step and try again.")); });
+        const from = Math.max(0, Number(s.in) || 0);
+        const to = Math.min(el.duration || 0, Number(s.out) > 0 ? Number(s.out) : (el.duration || 0));
+        if (to > from) els.push({ el, from, to });
+        cleanups.push(() => { try { el.pause(); el.removeAttribute("src"); el.load(); } catch {} });
+      }
+      if (!els.length) throw new Error("The clips have no playable length.");
+      const total = els.reduce((a, x) => a + (x.to - x.from), 0);
+
+      let started = false, doneSec = 0;
+      for (let i = 0; i < els.length; i++) {
+        const { el, from, to } = els[i];
+        const node = actx.createMediaElementSource(el);
+        node.connect(gain);
+        const len = to - from;
+        const f = Math.min(fade, len / 3);
+        await new Promise((res) => { const on = () => { el.removeEventListener("seeked", on); res(); }; el.addEventListener("seeked", on); el.currentTime = from; });
+        gain.gain.value = 0;
+        // letterbox the clip into the frame
+        const vw = el.videoWidth || W, vh = el.videoHeight || H;
+        const scale = Math.min(W / vw, H / vh);
+        const dw = Math.round(vw * scale), dh = Math.round(vh * scale), dx = Math.round((W - dw) / 2), dy = Math.round((H - dh) / 2);
+        await el.play();
+        if (!started) { rec.start(500); started = true; }
+        else if (rec.state === "paused") rec.resume();
+        await new Promise((res, rej) => {
+          const draw = () => {
+            const t = el.currentTime;
+            if (t >= to - 0.04 || el.ended) { res(); return; }
+            const a = f > 0 ? Math.max(0, Math.min(1, (t - from) / f, (to - t) / f)) : 1;
+            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+            ctx.drawImage(el, dx, dy, dw, dh);
+            if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
+            gain.gain.value = a;
+            onProgress?.(Math.min(1, (doneSec + (t - from)) / total));
+            setTimeout(draw, 33);
+          };
+          el.onerror = () => rej(new Error("Playback failed while splicing."));
+          draw();
+        });
+        el.pause();
+        gain.gain.value = 0;
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+        doneSec += len;
+        if (i < els.length - 1 && rec.state === "recording") rec.pause();
+      }
+      await new Promise((r) => setTimeout(r, 150));
+      if (!started) throw new Error("The clips never started playing.");
+      rec.stop();
+      await stopped;
+      cleanup();
+      const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+      resolve({ blob: new Blob(chunks, { type: mime.split(";")[0] }), ext, duration: total });
+    } catch (e) { cleanup(); reject(e); }
+  });
+}
+
 // Even split helper: scene timings proportional to lyric word counts.
 export function autoTimeline(scenes, totalSec, { introSec = 4, outroSec = 6, hasIntro = true, hasOutro = true } = {}) {
   const body = Math.max(1, totalSec - (hasIntro ? introSec : 0) - (hasOutro ? outroSec : 0));

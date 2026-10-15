@@ -15,7 +15,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
-import { captureClip, captureSegments } from "../lib/video-render.js";
+import { captureClip, captureSegments, captureConcat } from "../lib/video-render.js";
+import { mediaApi } from "../campus/campus-api.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
 import { loadTalksIndex, byConferenceDesc } from "../lib/talks-index.js";
 
@@ -115,12 +116,12 @@ function ClipCard({ clip, title, onChange, onRemove }) {
     const stop = () => { if (v.currentTime >= outAt - 0.05) { v.pause(); v.removeEventListener("timeupdate", stop); } };
     v.addEventListener("timeupdate", stop);
   }
-  const trimmable = clip.kind === "upload";
+  const trimmable = clip.kind === "upload" || clip.kind === "campus";
   return (
     <div className="bookend-card">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
         <strong>{title}</strong>
-        <span className="note" style={{ margin: 0 }}>{clip.name || (clip.kind === "talk" ? "from the talk's video" : "clip")} · {fmt(len)} used</span>
+        <span className="note" style={{ margin: 0 }}>{clip.name || (clip.kind === "talk" ? "from the talk's video" : clip.kind === "campus" ? "from the campus session" : "clip")} · {fmt(len)} used</span>
       </div>
       {url && <video ref={ref} src={url} controls playsInline className="bookend-video" onTimeUpdate={(e) => setT(e.target.currentTime)} />}
       {sound && (
@@ -526,10 +527,74 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
   );
 }
 
+// ---- clips recorded in a Campus Session → spliced into the opening clip ----
+// The project came from /?campus=<id>; the clips live in the private R2
+// bucket and are read with the Campus Sessions sign-in in this browser.
+function CampusClipsPicker({ projectId, sessionId, fade, onCaptured }) {
+  const [clips, setClips] = useState(null);
+  const [picked, setPicked] = useState([]); // clip ids in splice order
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    mediaApi.list(sessionId).then((r) => { if (alive) { setClips(r.clips || []); setPicked((r.clips || []).map((c) => c.id)); } }).catch((e) => { if (alive) { setClips([]); setMsg(e.message || String(e)); } });
+    return () => { alive = false; };
+  }, [sessionId]);
+  const LABEL = { "lyrics-reaction": "Lyrics reaction", "song-reaction": "Song reaction", testimony: "Testimony", other: "Clip" };
+  const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const move = (id, dir) => setPicked((p) => { const i = p.indexOf(id), j = i + dir; if (i < 0 || j < 0 || j >= p.length) return p; const n = p.slice(); [n[i], n[j]] = [n[j], n[i]]; return n; });
+  async function splice() {
+    const order = picked.map((id) => (clips || []).find((c) => c.id === id)).filter(Boolean);
+    if (!order.length) { setMsg("Tick at least one clip."); return; }
+    setBusy(true); setMsg(""); setPct(0);
+    try {
+      const total = order.reduce((a, c) => a + (c.durationSec || 0), 0);
+      if (total > 240) throw new Error("Keep the opening under 4 minutes in total — untick a clip or two.");
+      const { blob, ext, duration } = await captureConcat({ sources: order.map((c) => ({ src: c.url })), fade, onProgress: setPct });
+      const mediaKey = `${projectId}:bookend:pre`;
+      await putMedia(mediaKey, blob, { ext, source: "campus", clips: order.map((c) => c.id) });
+      onCaptured({ mediaKey, kind: "campus", name: `Campus session · ${order.length} clip${order.length === 1 ? "" : "s"}`, in: 0, out: Math.round(duration * 10) / 10, duration: Math.round(duration * 10) / 10, fade, segments: order.map((c) => ({ from: 0, to: c.durationSec || 0, quote: LABEL[c.stage] || "" })) });
+    } catch (e) { setMsg(e.message || String(e)); }
+    setBusy(false);
+  }
+  if (clips === null) return <p className="note">Loading the session's clips…</p>;
+  if (!clips.length) return <p className="note">{msg || "This session has no video clips yet. Record them on the campus phone (lyrics reaction, song reaction, testimony) and they'll appear here."}</p>;
+  return (
+    <div className="talk-picker">
+      <p className="note" style={{ marginTop: 0 }}>Tick the clips to include and set their order — they play back to back with a fade at each join, before the intro card.</p>
+      <div className="para-list" style={{ maxHeight: 320 }}>
+        {clips.map((c) => {
+          const i = picked.indexOf(c.id);
+          return (
+            <div key={c.id} className="para-row" style={{ display: "flex", gap: 10, alignItems: "center", cursor: "default" }}>
+              <input type="checkbox" checked={i >= 0} onChange={() => toggle(c.id)} />
+              <video src={c.url} controls playsInline preload="metadata" style={{ width: 150, borderRadius: 6, background: "#000" }} />
+              <div style={{ flex: 1 }}>
+                <div><strong style={{ color: "var(--cloud)" }}>{i >= 0 ? `${i + 1}. ` : ""}{LABEL[c.stage] || "Clip"}</strong></div>
+                <div className="note" style={{ margin: 0 }}>{c.durationSec ? `${Math.round(c.durationSec)} s · ` : ""}{(c.bytes / 1048576).toFixed(1)} MB</div>
+                {i >= 0 && <div className="row" style={{ gap: 4, marginTop: 4 }}><button className="btn btn-ghost btn-sm" onClick={() => move(c.id, -1)}>▲</button><button className="btn btn-ghost btn-sm" onClick={() => move(c.id, 1)}>▼</button></div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn btn-primary" onClick={splice} disabled={busy || !picked.length}>{busy ? `Splicing… ${Math.round(pct * 100)}%` : `✂ Splice ${picked.length} clip${picked.length === 1 ? "" : "s"} into the opening`}</button>
+        {busy && <span className="note" style={{ margin: 0 }}>plays in real time — keep this tab in front</span>}
+      </div>
+      {msg && <p className="note" style={{ color: "var(--danger)" }}>{msg}</p>}
+    </div>
+  );
+}
+
 export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics, sources, onSources, onFixTalk }) {
   const bookends = tl.bookends || {};
   const [busy, setBusy] = useState("");
   const [closingMode, setClosingMode] = useState(talkMeta && talkMeta.sourceUrl ? "talk" : "upload");
+  const campusSessionId = tl.campusSessionId || "";
+  const [openingMode, setOpeningMode] = useState(campusSessionId ? "campus" : "upload");
+  const [openingFade, setOpeningFade] = useState(0.5);
   const [err, setErr] = useState("");
 
   function setBookend(kind, clip) {
@@ -561,9 +626,26 @@ export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkTex
         <div>
           <h4>Opening clip <span className="note" style={{ margin: 0 }}>optional · plays before the intro card</span></h4>
           <p className="note">A short clip of someone introducing the talk — what they loved most, and the song line that goes with it. Its own sound plays; the song starts after.</p>
-          {bookends.pre
-            ? <ClipCard clip={bookends.pre} title="Opening clip" onChange={(c) => setBookend("pre", c)} onRemove={() => remove("pre")} />
-            : <UploadBox label="Upload an opening clip" hint="MP4 or WebM from a phone or webcam" onFile={(f) => upload("pre", f)} busy={busy === "pre"} />}
+          {bookends.pre ? (
+            <ClipCard clip={bookends.pre} title="Opening clip" onChange={(c) => setBookend("pre", c)} onRemove={() => remove("pre")} />
+          ) : (
+            <>
+              {campusSessionId && (
+                <div className="row" style={{ gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className={`btn btn-sm ${openingMode === "campus" ? "btn-primary" : "btn-ghost"}`} onClick={() => setOpeningMode("campus")}>From the campus session</button>
+                  <button className={`btn btn-sm ${openingMode === "upload" ? "btn-primary" : "btn-ghost"}`} onClick={() => setOpeningMode("upload")}>Upload a file</button>
+                  {openingMode === "campus" && (
+                    <label className="row" style={{ gap: 6, fontSize: 13 }}>Fade
+                      <select value={openingFade} onChange={(e) => setOpeningFade(Number(e.target.value))}>{[0.25, 0.5, 0.75, 1, 1.5, 2].map((v) => <option key={v} value={v}>{v} s</option>)}</select>
+                    </label>
+                  )}
+                </div>
+              )}
+              {campusSessionId && openingMode === "campus"
+                ? <CampusClipsPicker projectId={projectId} sessionId={campusSessionId} fade={openingFade} onCaptured={(c) => setBookend("pre", c)} />
+                : <UploadBox label="Upload an opening clip" hint="MP4 or WebM from a phone or webcam" onFile={(f) => upload("pre", f)} busy={busy === "pre"} />}
+            </>
+          )}
         </div>
         <div>
           <h4>Closing clip <span className="note" style={{ margin: 0 }}>optional · plays after the outro card</span></h4>
