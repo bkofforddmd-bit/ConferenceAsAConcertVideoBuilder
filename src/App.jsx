@@ -26,6 +26,7 @@ import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
 import { saveProject as idbSaveProject, loadProject as idbLoadProject, newProjectId, getMedia, putMedia } from "./lib/project-store.js";
 import AttachFile from "./components/AttachFile.jsx";
+import { campusSessionIdFromUrl, campusSessionToProject } from "./lib/campus-import.js";
 import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
 import { isRendering } from "./lib/video-render.js";
 
@@ -89,6 +90,21 @@ export default function App() {
   // the good IndexedDB copy: images and scenes "vanished").
   useEffect(() => {
     (async () => {
+      // A Campus Sessions hand-off (/?campus=<sessionId>): build a project from
+      // the session's talk and lyrics and land on the Music step.
+      const campusId = campusSessionIdFromUrl();
+      if (campusId) {
+        try {
+          const project = await campusSessionToProject(campusId, { projectId: newProjectId(), version: PROJECT_VERSION });
+          applyProject(project);
+          setView("create");
+          setSaveMsg(`Opened the campus session for "${project.talkMeta.title}" — upload the MelodyCraft song on the Music step.`);
+          try { window.history.replaceState({}, "", window.location.pathname); } catch {}
+          return;
+        } catch (e) {
+          setSaveMsg(`Couldn't open the campus session: ${e.message || e}`);
+        }
+      }
       let saved = null;
       try { saved = JSON.parse(localStorage.getItem(AUTOSAVE_KEY) || "null"); } catch {}
       if (saved && saved.app !== APP_ID) saved = null;

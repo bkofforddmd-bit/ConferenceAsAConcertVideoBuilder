@@ -154,6 +154,19 @@ test("scenario 6/7: an interrupted session resumes, and a new start abandons it"
   assert.ok(after.data.recent.every((r) => !("videoRef" in r) && !("name" in r)));
 });
 
+test("lyric text and title are kept with the session; summaries say hasText but never carry the words", async () => {
+  const s = (await call(sessions, { action: "start" }, workerTok)).data.session;
+  await call(sessions, { action: "update", id: s.id, patch: { talk: { uri: "/study/general-conference/2026/10/27kearon", title: "Jesus Lives to Lift", speaker: "Patrick Kearon", year: "2026", month: "10" }, lyrics: { generated: true, text: "[Chorus]\nJesus lives to lift us", title: "Jesus Lives to Lift Us" } } }, workerTok);
+  const got = await call(sessions, { action: "get", id: s.id }, workerTok);
+  assert.equal(got.data.session.lyrics.text, "[Chorus]\nJesus lives to lift us");
+  assert.equal(got.data.session.lyrics.title, "Jesus Lives to Lift Us");
+  const all = await call(admin, { action: "sessions" }, adminTok);
+  const row = all.data.sessions.find((x) => x.id === s.id);
+  assert.equal(row.lyrics.hasText, true);
+  assert.equal(row.lyrics.text, undefined);
+  await call(sessions, { action: "abandon", id: s.id }, workerTok);
+});
+
 test("scenario 11: a worker cannot read or change another worker's session", async () => {
   const s = (await call(sessions, { action: "start" }, workerTok)).data.session;
   assert.equal((await call(sessions, { action: "get", id: s.id }, worker2Tok)).status, 403);

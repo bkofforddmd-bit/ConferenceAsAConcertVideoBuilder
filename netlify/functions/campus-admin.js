@@ -137,7 +137,7 @@ export function summary(s) {
     id: s.id, workerId: s.workerId, campus: s.campus, startedAt: s.startedAt, endedAt: s.endedAt || null, durationSec: s.durationSec || null,
     status: s.status, step: s.step, talk: s.talk ? { uri: s.talk.uri, title: s.talk.title, speaker: s.talk.speaker, session: s.talk.session } : null,
     songified: s.songified ? { existing: Boolean(s.songified.existing), libraryId: s.songified.libraryId || null, newInterpretation: Boolean(s.songified.newInterpretation) } : null,
-    participation: s.participation || null, consentVersion: s.consentVersion || null, lyrics: s.lyrics || null, song: s.song || null,
+    participation: s.participation || null, consentVersion: s.consentVersion || null, lyrics: s.lyrics ? { ...s.lyrics, text: undefined, hasText: Boolean(s.lyrics.text) } : null, song: s.song || null,
     reaction: s.reaction || null, recordingCaptured: s.recordingCaptured ?? null, hasVideoRef: Boolean(s.videoRef), notes: s.notes || "",
   };
 }

@@ -108,6 +108,7 @@ export default function CampusApp() {
                   <td>{new Date(s.startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</td>
                   <td>{s.talk ? s.talk.title : "—"}</td>
                   <td>{s.status === "completed" ? (s.participation === "declined" ? "declined" : s.song && s.song.generated ? "song" : s.lyrics && s.lyrics.generated ? "lyrics" : "done") : "unfinished"}</td>
+                  <td>{s.lyrics && s.lyrics.generated && s.lyrics.hasText && <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer" title="Open this session's talk and lyrics in the Studio to make the music video">🎬 Studio</a>}</td>
                 </tr>
               ))}
             </tbody>

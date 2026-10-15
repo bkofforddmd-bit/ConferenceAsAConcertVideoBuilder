@@ -13,6 +13,7 @@ import TalkSearch, { CONFERENCE } from "./TalkSearch.jsx";
 import SignaturePad from "./SignaturePad.jsx";
 import { firstName } from "./CampusApp.jsx";
 import { guessTitle } from "./title.js";
+import { downloadCampusProject } from "../lib/campus-import.js";
 
 const MOODS = ["Hopeful", "Peaceful", "Joyful", "Reflective", "Energetic", "Reverent"];
 const GENRES = ["Pop", "Acoustic", "Worship", "Hip-hop", "Country", "Cinematic", "Folk"];
@@ -28,7 +29,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   const [firstNameOf, setFirstNameOf] = useState("");
 
   useEffect(() => {
-    sessionApi.get(id).then((r) => setS(r.session)).catch((e) => setErr(e.message));
+    sessionApi.get(id).then((r) => { setS(r.session); if (r.session.lyrics && r.session.lyrics.text) setLyricsText(r.session.lyrics.text); if (r.session.lyrics && r.session.lyrics.title) setSongTitle(r.session.lyrics.title); }).catch((e) => setErr(e.message));
     libraryByTalk().then(setLibrary);
   }, [id]);
 
@@ -123,10 +124,10 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         setLyricsText(r.lyrics || "");
         const title = guessTitle(r.lyrics || "", s.talk.title);
         setSongTitle(title);
-        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title } });
+        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "" } });
       })}
-      onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited) }, step: "song" }))}
-      onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited) }, step: "outcome" }))}
+      onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "song" }))}
+      onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "outcome" }))}
     />;
   }
 
@@ -177,6 +178,17 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
       {s.participation !== "declined" && <p className="lead">{s.song && s.song.generated ? "Your favorite talk is now a song." : s.lyrics && s.lyrics.generated ? "Your favorite talk has its own lyrics." : s.songified && s.songified.existing ? "Your favorite talk already lives as a song." : "Thanks for sharing your favorite talk."} Higher ground through holier sound.</p>}
       {s.songified && s.songified.existing && !s.songified.newInterpretation && <p><a href="https://conferenceconcert.netlify.app" target="_blank" rel="noopener noreferrer" style={{ color: "var(--sky)" }}>Find this song in the Conference Concert library ↗</a></p>}
       <button className="c-btn primary big" onClick={onLeave}>Start another session</button>
+      {s.lyrics && s.lyrics.generated && (
+        <div className="c-card worker" style={{ textAlign: "left" }}>
+          <div className="c-worker-tag">Worker</div>
+          <p className="c-note" style={{ margin: "0 0 8px" }}>Turn this into a music video later: open the Studio with this session's talk and lyrics (upload the MelodyCraft MP3 on the Music step, sync the lyrics, then storyboard and render).</p>
+          <div className="c-row">
+            <a className="c-btn" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Open in the Studio</a>
+            <button className="c-btn ghost" onClick={() => downloadCampusProject(s.id).catch((e) => setErr(e.message))}>⬇ Download project .json</button>
+          </div>
+          {err && <div className="c-err">{err}</div>}
+        </div>
+      )}
     </div>
   );
 }
