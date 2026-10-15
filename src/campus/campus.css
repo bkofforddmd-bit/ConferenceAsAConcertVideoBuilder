@@ -127,3 +127,6 @@ code.c-code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px;
 .vr-rec { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(232,147,138,0.85); color: #fff; font-weight: 600; font-size: 13px; letter-spacing: 0.06em; }
 .vr-saved { display: grid; gap: 8px; margin-top: 8px; }
 .vr-saved-row video { width: 100%; max-height: 220px; border-radius: 10px; background: #000; }
+
+/* back link at the top of each session screen */
+.c-back { display: inline-block; background: transparent; border: 0; color: var(--sky); font-size: 16px; padding: 8px 0; margin: 0 0 4px; cursor: pointer; }

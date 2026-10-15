@@ -115,6 +115,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   if (s.step === "existing") {
     return (
       <div>
+        <button type="button" className="c-back" onClick={() => patch({ step: "talk" })}>← Back</button>
         {progress("song")}
         <h1>Your Song 🎧</h1>
         <p className="lead">"{s.songified.libraryTitle}" — inspired by {s.talk.speaker}'s talk.</p>
@@ -147,6 +148,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "", reference: opts.reference || "" } });
       })}
       recorder={recorder("lyrics-reaction")}
+      onBack={() => patch({ step: "talk" })}
       onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "song" }))}
       onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "outcome" }))}
     />;
@@ -157,6 +159,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
     const url = (config && config.settings && config.settings.melodyCraftUrl) || "https://melodycraft.app";
     return (
       <div>
+        <button type="button" className="c-back" onClick={() => patch({ step: "lyrics" })}>← Back to the lyrics</button>
         {progress("song")}
         <h1>Let's Hear Your Song! 🎵</h1>
         <p className="lead">Copy the title and the lyrics, then open MelodyCraft AI and paste them in to make the song.</p>
@@ -203,7 +206,8 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
 
   // ---------------- outcome (worker only) ----------------
   if (s.step === "outcome") {
-    return <OutcomeScreen s={s} busy={busy} err={err} onComplete={(o) => guard("complete", async () => { const r = await sessionApi.complete(id, o); setS(r.session); })} onAbandon={() => guard("abandon", async () => { await sessionApi.abandon(id, "Marked unfinished by the worker"); onLeave(); })} />;
+    const backTo = s.participation === "declined" ? "" : s.song && (s.song.opened || s.song.generated) ? "song" : s.lyrics && s.lyrics.generated ? "lyrics" : s.songified && s.songified.existing && !s.songified.newInterpretation ? "existing" : "talk";
+    return <OutcomeScreen s={s} busy={busy} err={err} onBack={backTo ? () => patch({ step: backTo }) : null} onComplete={(o) => guard("complete", async () => { const r = await sessionApi.complete(id, o); setS(r.session); })} onAbandon={() => guard("abandon", async () => { await sessionApi.abandon(id, "Marked unfinished by the worker"); onLeave(); })} />;
   }
 
   // ---------------- done ----------------
@@ -318,7 +322,7 @@ function ConsentScreen({ s, config, busy, err, onBack, onSubmit }) {
   );
 }
 
-function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference, recorder }) {
+function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference, recorder, onBack }) {
   const [mood, setMood] = useState("");
   const [genre, setGenre] = useState("");
   const [message, setMessage] = useState("");
@@ -330,6 +334,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
   if (!lyricsText) {
     return (
       <div>
+        <button type="button" className="c-back" onClick={onBack}>← Back to the talk</button>
         {progress}
         <h1>Your Lyrics ✍️</h1>
         <p className="lead">"{s.talk.title}" by {s.talk.speaker}. A few optional taps, then we write.</p>
@@ -346,6 +351,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
   }
   return (
     <div>
+      <button type="button" className="c-back" onClick={onBack}>← Back to the talk</button>
       {progress}
       <h1>Your Lyrics 🎤</h1>
       {editing ? <textarea className="c-lyrics" style={{ width: "100%", minHeight: "40vh", boxSizing: "border-box" }} value={lyricsText} onChange={(e) => { setLyricsText(e.target.value); setEdited(true); }} /> : <div className="c-lyrics">{lyricsText}</div>}
@@ -361,7 +367,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
   );
 }
 
-function OutcomeScreen({ s, busy, err, onComplete, onAbandon }) {
+function OutcomeScreen({ s, busy, err, onComplete, onAbandon, onBack }) {
   const [reaction, setReaction] = useState(s.reaction || "");
   const [captured, setCaptured] = useState(s.recordingCaptured === true);
   const [videoRef, setVideoRef] = useState(s.videoRef || "");
@@ -369,6 +375,7 @@ function OutcomeScreen({ s, busy, err, onComplete, onAbandon }) {
   const minutes = Math.round((Date.now() - Date.parse(s.startedAt)) / 60000);
   return (
     <div className="c-card worker">
+      {onBack && <button type="button" className="c-back" onClick={onBack}>← Back</button>}
       <div className="c-worker-tag">Worker only</div>
       <h2>Wrap up ({minutes} min)</h2>
       <table className="c-table">
