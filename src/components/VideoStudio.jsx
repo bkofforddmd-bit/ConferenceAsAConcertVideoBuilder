@@ -445,7 +445,7 @@ export default function VideoStudio({
       const clip = clips && clips[n];
       const primarySrc = clip && clip.mediaKey && clipUrls[n] ? clipUrls[n] : (images[n] || "");
       const primary = { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "auto" };
-      const common = { lyrics: s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, isCard: false };
+      const common = { lyrics: ((tl.phrases || {})[n]) || s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, isCard: false };
       pushShots(primary, n, start, end, common, `Scene ${n}`);
     }
     if (includeOutro && totalSec - outroStart > 0.2) {
@@ -472,11 +472,35 @@ export default function VideoStudio({
   const lineList = useMemo(() => {
     const out = [];
     for (const s of ordered) {
-      const lines = sceneLineList(s.lyrics);
+      const lines = sceneLineList(((tl.phrases || {})[s.sceneNumber]) || s.lyrics);
       lines.forEach((text, i) => out.push({ scene: s.sceneNumber, i, n: lines.length, text }));
     }
     return out;
-  }, [ordered]);
+  }, [ordered, tl.phrases]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ---- phrase splitting: shorter pieces so each fits bigger on screen ----
+  const [phrasesOpen, setPhrasesOpen] = useState(false);
+  const [phraseDraft, setPhraseDraft] = useState({});
+  function openPhrases() {
+    const d = {};
+    for (const s of ordered) d[s.sceneNumber] = ((tl.phrases || {})[s.sceneNumber]) || sceneLineList(s.lyrics).join("\n");
+    setPhraseDraft(d);
+    setPhrasesOpen(true);
+  }
+  function splitAtCommas() {
+    const d = {};
+    for (const [n, text] of Object.entries(phraseDraft)) d[n] = String(text).split("\n").flatMap((ln) => ln.split(/,\s+|;\s+|\s+[—–]\s+/)).map((x) => x.trim()).filter(Boolean).join("\n");
+    setPhraseDraft(d);
+  }
+  function applyPhrases() {
+    const phrases = {};
+    for (const s of ordered) {
+      const n = s.sceneNumber;
+      const text = String(phraseDraft[n] || "").split("\n").map((x) => x.trim()).filter(Boolean).join("\n");
+      if (text && text !== sceneLineList(s.lyrics).join("\n")) phrases[n] = text;
+    }
+    setTimeline({ ...tl, phrases, lineStarts: {} });
+    setPhrasesOpen(false);
+  }
   const [lineTapIdx, setLineTapIdx] = useState(-1);
   const lineTapsRef = useRef({});
   function startLineTap() {
@@ -624,7 +648,7 @@ export default function VideoStudio({
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", watermark, bookends, introLead: tl.introLeadSec || 0 },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0 },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -900,6 +924,18 @@ export default function VideoStudio({
                 <input type="checkbox" checked={overlayOn} onChange={(e) => { setOverlayOn(e.target.checked); setTimeline({ ...tl, lyricsOverlay: e.target.checked }); }} />
                 <span className="note" style={{ margin: 0 }}>Show lyrics on screen</span>
               </label>
+              {overlayOn && (
+                <label className="row" style={{ gap: 6 }} title="How big the lyrics are drawn in the finished video">
+                  <span className="note" style={{ margin: 0 }}>Size</span>
+                  <select value={tl.lyricsSize || "medium"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
+                    <option value="small">small</option>
+                    <option value="medium">medium</option>
+                    <option value="large">large</option>
+                    <option value="xl">extra large</option>
+                  </select>
+                </label>
+              )}
+              {overlayOn && <button className="btn btn-ghost btn-sm" onClick={() => (phrasesOpen ? setPhrasesOpen(false) : openPhrases())} title="Break long lines into shorter phrases so each shows bigger on screen, e.g. 'Go' / 'declare glad tidings' / 'in the Savior's name'">✂ Split lines into phrases{Object.keys(tl.phrases || {}).length ? ` (${Object.keys(tl.phrases || {}).length} scene${Object.keys(tl.phrases || {}).length === 1 ? "" : "s"})` : ""}</button>}
               {overlayOn && tappedLineCount > 0 && (
                 <span className="note" style={{ margin: 0 }}>
                   <span className="chip ok">line timing from your taps</span>{" "}
@@ -917,6 +953,32 @@ export default function VideoStudio({
                 </label>
               )}
             </div>
+            {phrasesOpen && (
+              <div className="music-card" style={{ marginTop: 10 }}>
+                <h3>Phrases on screen</h3>
+                <p className="note" style={{ marginTop: 0 }}>
+                  One phrase per line — press Enter where a line should split. "Go, declare glad tidings, in the Savior's name" becomes three short phrases that each fit bigger on screen.
+                  Applying clears the line taps, so tap the lines again afterwards (or use Auto-time).
+                </p>
+                <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={splitAtCommas}>Split every line at commas and dashes</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { const d = {}; for (const s of ordered) d[s.sceneNumber] = sceneLineList(s.lyrics).join("\n"); setPhraseDraft(d); }}>Reset to the storyboard lines</button>
+                </div>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+                  {ordered.map((s) => (
+                    <label key={s.sceneNumber} className="field" style={{ margin: 0 }}>
+                      <span className="lbl">Scene {s.sceneNumber}</span>
+                      <textarea value={phraseDraft[s.sceneNumber] || ""} onChange={(e) => setPhraseDraft({ ...phraseDraft, [s.sceneNumber]: e.target.value })} style={{ minHeight: 90, fontSize: 13 }} />
+                    </label>
+                  ))}
+                </div>
+                <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                  <button className="btn btn-primary btn-sm" onClick={applyPhrases}>Apply phrases</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setPhrasesOpen(false)}>Cancel</button>
+                  {Object.keys(tl.phrases || {}).length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => { setTimeline({ ...tl, phrases: {}, lineStarts: {} }); setPhrasesOpen(false); }}>Remove all phrase splits</button>}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <p className="note">Generate the song in step 3 and the timeline appears here.</p>

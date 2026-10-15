@@ -129,7 +129,24 @@ function ClipCard({ clip, title, onChange, onRemove }) {
           ? <div className="note" style={{ margin: "4px 0 0", color: "var(--success)" }}>Sound check ✓ — this clip carries audio{sound.seconds ? ` (${fmt(sound.seconds)} recorded)` : ""}.</div>
           : <div className="music-card" style={{ margin: "6px 0 0", borderColor: "var(--danger)" }}><div className="note" style={{ margin: 0 }}><strong>This clip has no sound.</strong> It was captured before the sound fix, so it will be silent in the video. Remove it and capture it again — the new capture records the speaker's voice.</div></div>
       )}
-      {clip.quote && <div className="note" style={{ margin: "4px 0 0" }}>“{clip.quote}”</div>}
+      {clip.quote && !(clip.captions && clip.captions.on) && <div className="note" style={{ margin: "4px 0 0" }}>“{clip.quote}”</div>}
+      {(clip.kind === "talk" || clip.quote || (clip.captions && clip.captions.on)) && (
+        <div style={{ marginTop: 8 }}>
+          <label className="row" style={{ gap: 6, fontSize: 13 }} title="Draw the speaker's words at the bottom of the clip, phrase by phrase">
+            <input type="checkbox" checked={Boolean(clip.captions && clip.captions.on)} onChange={(e) => onChange({ ...clip, captions: { on: e.target.checked, text: (clip.captions && clip.captions.text) || clip.quote || "" } })} />
+            Caption the speaker's words
+          </label>
+          {clip.captions && clip.captions.on && (
+            <>
+              <textarea value={clip.captions.text || ""} onChange={(e) => onChange({ ...clip, captions: { ...clip.captions, text: e.target.value } })} style={{ width: "100%", minHeight: 90, fontSize: 13, marginTop: 6, boxSizing: "border-box" }} placeholder="Exactly what is said in this clip" />
+              <p className="note" style={{ margin: "4px 0 0" }}>
+                Timing spreads the words across the clip by length, so trim this to exactly what's said in the clip for the best fit.
+                {clip.segments && clip.segments.length > 1 ? " With several spliced sections, keep one " + "“ … ”" + " between each section's words and every section gets its own captions." : ""}
+              </p>
+            </>
+          )}
+        </div>
+      )}
       {trimmable && (
         <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
           <label className="row" style={{ gap: 4 }}>Start <input type="number" step="0.1" min="0" value={inAt} onChange={(e) => onChange({ ...clip, in: Math.max(0, Math.min(outAt - 0.5, Number(e.target.value) || 0)) })} style={{ width: 70 }} /> s</label>

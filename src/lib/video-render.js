@@ -84,15 +84,63 @@ function wrapLines(ctx, text, maxWidth) {
   return out;
 }
 
-function drawLyrics(ctx, text, W, H, alpha) {
+// On-screen lyric size as a share of the frame height (chosen on the Video step).
+export const LYRIC_SIZES = { small: 0.034, medium: 0.042, large: 0.054, xl: 0.068 };
+export const lyricScale = (size) => LYRIC_SIZES[size] || LYRIC_SIZES.medium;
+
+// Split a lyric block into the pieces shown one at a time: new lines, or
+// " / " and " | " typed inside a line to break it into phrases.
+export const lyricPieces = (text) => String(text || "").split(/\n|\s+\/\s+|\s+\|\s+/).map((x) => x.trim()).filter(Boolean);
+
+// Captions for a talk clip: the speaker's words spread across the clip in
+// short phrases, timed by word count (an estimate — there is no word-level
+// timing for the recording). Returns [{ from, to, text }] in clip-local
+// seconds. With several spliced sections and a matching number of " … "
+// separated texts, each section gets its own words.
+export function captionSchedule(clip, len) {
+  const caps = clip && clip.captions;
+  if (!caps || !caps.on || !String(caps.text || "").trim() || !(len > 0)) return [];
+  const phrasesOf = (text) => {
+    const out = [];
+    const raw = String(text).replace(/\s+/g, " ").split(/(?<=[.!?;:…])\s+|(?<=,)\s+|\s+[—–]\s+/).map((x) => x.trim()).filter(Boolean);
+    for (let r of raw) {
+      const w = r.split(" ");
+      while (w.length > 10) { out.push(w.splice(0, 8).join(" ")); }
+      if (w.length) out.push(w.join(" "));
+    }
+    // merge very short tails into the previous phrase
+    const merged = [];
+    for (const p of out) { if (merged.length && p.split(" ").length <= 2 && merged[merged.length - 1].split(" ").length <= 8) merged[merged.length - 1] += " " + p; else merged.push(p); }
+    return merged;
+  };
+  const spread = (text, from, to) => {
+    const ph = phrasesOf(text);
+    const words = ph.map((p) => p.split(" ").length);
+    const total = words.reduce((a, b) => a + b, 0) || 1;
+    const span = to - from;
+    let t = from;
+    return ph.map((p, i) => { const d = (words[i] / total) * span; const seg = { from: t, to: t + d, text: p }; t += d; return seg; });
+  };
+  const segs = Array.isArray(clip.segments) ? clip.segments.filter((g) => Number(g.to) > Number(g.from)) : [];
+  const parts = String(caps.text).split(/\s+…\s+/).map((x) => x.trim()).filter(Boolean);
+  if (segs.length > 1 && parts.length === segs.length) {
+    const out = [];
+    let off = 0;
+    segs.forEach((g, i) => { const l = Number(g.to) - Number(g.from); out.push(...spread(parts[i], off, off + l)); off += l; });
+    return out;
+  }
+  return spread(caps.text, 0, len);
+}
+
+function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.medium, maxLines = 4) {
   if (!text || alpha <= 0) return;
   ctx.save();
   ctx.globalAlpha = Math.min(1, alpha);
-  const fontPx = Math.round(H * 0.042);
+  const fontPx = Math.round(H * size);
   ctx.font = `600 ${fontPx}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  const lines = wrapLines(ctx, text, W * 0.8).slice(0, 4);
+  const lines = wrapLines(ctx, text, W * 0.84).slice(0, maxLines);
   const lineH = fontPx * 1.3;
   const blockH = lines.length * lineH + fontPx * 0.9;
   const y0 = H - blockH - H * 0.06;
@@ -212,7 +260,7 @@ export function drawViewport(ctx, el, W, H, rect) {
 export function lyricAt(seg, t, mode = "one") {
   // A scene split into several shots shares one lyric span across them.
   const s = seg.lyricSpan ? { ...seg, start: seg.lyricSpan.start, end: seg.lyricSpan.end } : seg;
-  const lines = String(s.lyrics || "").split(/\n/).map((x) => x.trim()).filter(Boolean);
+  const lines = lyricPieces(s.lyrics);
   if (!lines.length) return { text: "", alpha: 0 };
 
   // Tapped-in line times (absolute seconds, one per line) win over equal splits:
@@ -385,7 +433,8 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       node.connect(dest);
       const inAt = Math.max(0, Number(clip.in) || 0);
       const outAt = Number(clip.out) > inAt ? Number(clip.out) : (Number.isFinite(el.duration) ? el.duration : inAt);
-      return { el, inAt, outAt, len: Math.max(0, outAt - inAt) };
+      const len = Math.max(0, outAt - inAt);
+      return { el, inAt, outAt, len, fade: clip.fade, captions: captionSchedule(clip, len) };
     };
     let pre = null, post = null;
     try { pre = await prepClip(bookends.pre); } catch { pre = null; }
@@ -412,6 +461,15 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
         drawCover(ctx, el, W, H);
         const a = Math.min(1, (t - inAt) / fade, (outAt - t) / fade);
+        if (clip.captions && clip.captions.length) {
+          const lt = t - inAt;
+          const cap = clip.captions.find((c) => lt >= c.from && lt < c.to);
+          if (cap) {
+            const f = Math.min(0.3, (cap.to - cap.from) / 4);
+            const ca = Math.max(0, Math.min(1, (lt - cap.from) / f, (cap.to - lt) / f));
+            drawLyrics(ctx, cap.text, W, H, ca, lyricScale(plan.captionsSize || plan.lyricsSize) * 0.85, 3);
+          }
+        }
         if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, a)})`; ctx.fillRect(0, 0, W, H); }
         const done = offset + (t - inAt);
         if (done - lastProgressAt >= 0.25) { lastProgressAt = done; onProgress?.(done / grand, `${label} · ${stamp(done)} of ${stamp(grand)}`); }
@@ -529,7 +587,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
             const l = lyricAt(s, t, plan.lyricsMode || "one");
-            drawLyrics(ctx, l.text, W, H, l.alpha);
+            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), plan.lyricsSize === "xl" ? 3 : 4);
           }
         }
         // Pause any clip that isn't on screen so it doesn't burn CPU.
