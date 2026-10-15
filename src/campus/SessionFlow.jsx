@@ -141,7 +141,8 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
           ? await generateLyrics({ talkText: text, currentLyrics: lyricsText, revisionRequest: "Write a completely fresh take with different images and a different hook" + (styleBits ? `; ${styleBits}` : ""), styleReference: styleBits })
           : await generateLyrics({ talkText: text, styleReference: styleBits });
         setLyricsText(r.lyrics || "");
-        const title = guessTitle(r.lyrics || "", s.talk.title);
+        // Campus songs are named after the talk (editable on the song step).
+        const title = (s.talk && s.talk.title) || guessTitle(r.lyrics || "");
         setSongTitle(title);
         await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "", reference: opts.reference || "" } });
       })}
