@@ -75,7 +75,7 @@ export default async (req) => {
       if (p.talk) s.talk = { uri: String(p.talk.uri || ""), title: String(p.talk.title || ""), speaker: String(p.talk.speaker || ""), session: String(p.talk.session || ""), year: String(p.talk.year || ""), month: String(p.talk.month || ""), sourceUrl: String(p.talk.sourceUrl || "") };
       if (p.songified) s.songified = { existing: Boolean(p.songified.existing), libraryId: p.songified.libraryId || null, libraryTitle: p.songified.libraryTitle || null, audioUrl: p.songified.audioUrl || null, newInterpretation: Boolean(p.songified.newInterpretation), playedExisting: Boolean(p.songified.playedExisting) };
       if (p.step && STEPS.includes(p.step)) s.step = p.step;
-      if (p.lyrics) s.lyrics = { ...s.lyrics, ...pick(p.lyrics, ["generated", "regenerated", "accepted", "edited", "mood", "genre", "message"]) };
+      if (p.lyrics) s.lyrics = { ...s.lyrics, ...pick(p.lyrics, ["generated", "regenerated", "accepted", "edited", "mood", "genre", "message", "title"]) };
       if (p.song) s.song = { ...s.song, ...pick(p.song, ["opened", "generated", "played"]) };
       if (p.reaction !== undefined) s.reaction = ["positive", "neutral", "negative", "not_captured"].includes(p.reaction) ? p.reaction : null;
       if (p.recordingCaptured !== undefined) s.recordingCaptured = p.recordingCaptured === null ? null : Boolean(p.recordingCaptured);

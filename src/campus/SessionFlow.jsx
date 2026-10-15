@@ -12,6 +12,7 @@ import { generateLyrics } from "../lib/api.js";
 import TalkSearch, { CONFERENCE } from "./TalkSearch.jsx";
 import SignaturePad from "./SignaturePad.jsx";
 import { firstName } from "./CampusApp.jsx";
+import { guessTitle } from "./title.js";
 
 const MOODS = ["Hopeful", "Peaceful", "Joyful", "Reflective", "Energetic", "Reverent"];
 const GENRES = ["Pop", "Acoustic", "Worship", "Hip-hop", "Country", "Cinematic", "Folk"];
@@ -22,6 +23,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [lyricsText, setLyricsText] = useState("");
+  const [songTitle, setSongTitle] = useState("");
   const [talkText, setTalkText] = useState("");
   const [firstNameOf, setFirstNameOf] = useState("");
 
@@ -119,7 +121,9 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
           ? await generateLyrics({ talkText: text, currentLyrics: lyricsText, revisionRequest: "Write a completely fresh take with different images and a different hook" + (styleBits ? `; ${styleBits}` : ""), styleReference: styleBits })
           : await generateLyrics({ talkText: text, styleReference: styleBits });
         setLyricsText(r.lyrics || "");
-        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "" } });
+        const title = guessTitle(r.lyrics || "", s.talk.title);
+        setSongTitle(title);
+        await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title } });
       })}
       onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited) }, step: "song" }))}
       onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited) }, step: "outcome" }))}
@@ -133,7 +137,14 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
       <div>
         {progress("song")}
         <h1>Let's Hear Your Song! 🎵</h1>
-        <p className="lead">Copy the lyrics, then open MelodyCraft AI and paste them in to make the song.</p>
+        <p className="lead">Copy the title and the lyrics, then open MelodyCraft AI and paste them in to make the song.</p>
+        <label className="c-field">
+          <span className="lbl">Song title</span>
+          <span className="c-row" style={{ gap: 8, flexWrap: "nowrap" }}>
+            <input value={songTitle} onChange={(e) => setSongTitle(e.target.value)} onBlur={() => patch({ lyrics: { title: songTitle } }).catch(() => {})} placeholder="Give the song a name" style={{ flex: 1 }} />
+            <button type="button" className="btn btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={async () => { try { await navigator.clipboard.writeText(songTitle); setErr(""); } catch { setErr("Couldn't copy the title — select it and copy by hand."); } }}>📋 Copy title</button>
+          </span>
+        </label>
         <div className="c-row">
           <button className="c-btn" onClick={async () => { try { await navigator.clipboard.writeText(lyricsText); setErr(""); } catch { setErr("Couldn't copy — long-press the lyrics below to copy them."); } }}>📋 Copy lyrics</button>
           <button className="c-btn primary" onClick={() => { window.open(url, "_blank", "noopener"); patch({ song: { opened: true } }).catch(() => {}); }}>🎶 Open MelodyCraft AI</button>
