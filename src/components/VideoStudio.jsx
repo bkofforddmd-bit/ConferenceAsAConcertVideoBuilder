@@ -485,6 +485,12 @@ export default function VideoStudio({
     }
     return out;
   }, [ordered, tl.phrases]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ---- closing card lines (shared by every project in this browser) ----
+  const [endCard, setEndCard] = useState(() => {
+    try { return { site: "conferenceconcert.netlify.app", youtube: "", ...JSON.parse(localStorage.getItem("cac-end-card") || "{}") }; } catch { return { site: "conferenceconcert.netlify.app", youtube: "" }; }
+  });
+  function saveEndCard(next) { setEndCard(next); try { localStorage.setItem("cac-end-card", JSON.stringify(next)); } catch {} }
+
   // ---- lyric size preview ----
   const [sizePreview, setSizePreview] = useState(false);
   const previewRef = useRef(null);
@@ -667,7 +673,7 @@ export default function VideoStudio({
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.png", seconds: tl.endLogoSec || 4, fade: 0.8 } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.png", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -1061,6 +1067,19 @@ export default function VideoStudio({
           )}
           <img src="/end-logo.png" alt="Conference As A Concert" style={{ height: 36, opacity: tl.endLogo !== false ? 1 : 0.35 }} />
         </div>
+        {tl.endLogo !== false && (
+          <div className="row" style={{ gap: 10, alignItems: "flex-end", flexWrap: "wrap", margin: "0 0 10px" }}>
+            <label className="field" style={{ margin: 0, flex: "1 1 220px" }}>
+              <span className="lbl">Website line</span>
+              <input type="text" value={endCard.site} onChange={(e) => saveEndCard({ ...endCard, site: e.target.value })} placeholder="conferenceconcert.netlify.app" />
+            </label>
+            <label className="field" style={{ margin: 0, flex: "1 1 260px" }}>
+              <span className="lbl">YouTube line</span>
+              <input type="text" value={endCard.youtube} onChange={(e) => saveEndCard({ ...endCard, youtube: e.target.value })} placeholder="youtube.com/@YourChannel" />
+            </label>
+            <span className="note" style={{ margin: "0 0 10px" }}>Shown under the logo on every render from this browser.</span>
+          </div>
+        )}
         <p className="note" style={{ marginTop: 0 }}>
           Rendering happens in your browser in real time — a 3-minute song takes about 3 minutes. Keep this
           tab open and visible (Chrome or Edge). Nothing is uploaded.
