@@ -667,7 +667,7 @@ export default function VideoStudio({
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0 },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.png", seconds: tl.endLogoSec || 4, fade: 0.8 } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -1046,6 +1046,21 @@ export default function VideoStudio({
             <div className="note" style={{ margin: 0 }}><strong>Can't render yet:</strong> {renderBlocker}</div>
           </div>
         )}
+        <div className="row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap", margin: "0 0 8px" }}>
+          <label className="row" style={{ gap: 6 }} title="After the closing clip (or the outro card), fade to black and then up to the Conference As A Concert logo on navy">
+            <input type="checkbox" checked={tl.endLogo !== false} onChange={(e) => setTimeline({ ...tl, endLogo: e.target.checked })} />
+            <span className="note" style={{ margin: 0 }}>End on the Conference As A Concert logo</span>
+          </label>
+          {tl.endLogo !== false && (
+            <label className="row" style={{ gap: 6 }}>
+              <span className="note" style={{ margin: 0 }}>for</span>
+              <select value={tl.endLogoSec || 4} onChange={(e) => setTimeline({ ...tl, endLogoSec: Number(e.target.value) })}>
+                {[3, 4, 5, 6, 8].map((v) => <option key={v} value={v}>{v} s</option>)}
+              </select>
+            </label>
+          )}
+          <img src="/end-logo.png" alt="Conference As A Concert" style={{ height: 36, opacity: tl.endLogo !== false ? 1 : 0.35 }} />
+        </div>
         <p className="note" style={{ marginTop: 0 }}>
           Rendering happens in your browser in real time — a 3-minute song takes about 3 minutes. Keep this
           tab open and visible (Chrome or Edge). Nothing is uploaded.

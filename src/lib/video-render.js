@@ -481,7 +481,10 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     try { pre = await prepClip(bookends.pre); } catch { pre = null; }
     try { post = await prepClip(bookends.post); } catch { post = null; }
     const lead = Math.max(0, Math.min(30, Number(plan.introLead) || 0)); // intro card held in silence before the music
-    const grand = (pre ? pre.len : 0) + lead + total + (post ? post.len : 0);
+    const endLogo = plan.endLogo && plan.endLogo.src ? { seconds: Math.max(2, Math.min(12, Number(plan.endLogo.seconds) || 4)), fade: Math.max(0.2, Math.min(3, Number(plan.endLogo.fade) || 0.8)), src: plan.endLogo.src } : null;
+    let endLogoImage = null;
+    if (endLogo) { try { endLogoImage = await loadImage(endLogo.src); } catch { endLogoImage = null; } }
+    const grand = (pre ? pre.len : 0) + lead + total + (post ? post.len : 0) + (endLogoImage ? endLogo.seconds : 0);
     const stamp = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
     const canvas = previewCanvas || document.createElement("canvas");
@@ -658,6 +661,37 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       await playClipPhase(post, songOffset + total, "Closing clip");
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
       await new Promise((r) => setTimeout(r, 300));
+    }
+    // Closing logo card: the Conference As A Concert mark fades up from black
+    // on navy, holds, and fades back to black. Silent. Timer-driven so it
+    // completes even when the tab is not in front.
+    if (endLogoImage) {
+      const offset = songOffset + total + (post ? post.len : 0);
+      const { seconds, fade } = endLogo;
+      const im = endLogoImage;
+      const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+      const scale = Math.min((W * 0.42) / iw, (H * 0.62) / ih);
+      const dw = Math.round(iw * scale), dh = Math.round(ih * scale), dx = Math.round((W - dw) / 2), dy = Math.round((H - dh) / 2);
+      let logoTimer = 0;
+      cleanups.push(() => clearTimeout(logoTimer));
+      await new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const draw = () => {
+          if (cancelled) { reject(new Error("Cancelled.")); return; }
+          const t = (performance.now() - t0) / 1000;
+          if (t >= seconds) { resolve(); return; }
+          const a = Math.max(0, Math.min(1, t / fade, (seconds - t) / fade));
+          const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#0b1b3f"); g.addColorStop(1, "#1d3466");
+          ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+          ctx.save(); ctx.globalAlpha = a; ctx.drawImage(im, dx, dy, dw, dh); ctx.restore();
+          if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
+          if (offset + t - lastProgressAt >= 0.25) { lastProgressAt = offset + t; onProgress?.((offset + t) / grand, `Closing logo · ${stamp(offset + t)} of ${stamp(grand)}`); }
+          logoTimer = setTimeout(draw, 33);
+        };
+        draw();
+      });
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      await new Promise((r) => setTimeout(r, 200));
     }
     rec.stop();
     await done;
