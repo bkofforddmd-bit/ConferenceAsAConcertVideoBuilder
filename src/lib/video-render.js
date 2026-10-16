@@ -85,7 +85,7 @@ function wrapLines(ctx, text, maxWidth) {
 }
 
 // On-screen lyric size as a share of the frame height (chosen on the Video step).
-export const LYRIC_SIZES = { small: 0.034, medium: 0.042, large: 0.054, xl: 0.068 };
+export const LYRIC_SIZES = { small: 0.034, medium: 0.042, large: 0.062, xl: 0.085, huge: 0.11 };
 export const lyricScale = (size) => LYRIC_SIZES[size] || LYRIC_SIZES.medium;
 
 // Split a lyric block into the pieces shown one at a time: new lines, or
@@ -97,9 +97,36 @@ export const lyricPieces = (text) => String(text || "").split(/\n|\s+\/\s+|\s+\|
 // timing for the recording). Returns [{ from, to, text }] in clip-local
 // seconds. With several spliced sections and a matching number of " … "
 // separated texts, each section gets its own words.
+// The caption phrases for a text: one per line when the text has line
+// breaks (the editor's "one caption per line"), else auto-chunked at
+// punctuation into ≤ 10-word pieces.
+export function captionPhrases(text) {
+  const t = String(text || "").replace(/\r/g, "");
+  if (/\n/.test(t.trim())) return t.split(/\n/).map((x) => x.trim()).filter(Boolean);
+  return autoPhrases(t);
+}
+function autoPhrases(text) {
+  const out = [];
+  const raw = String(text).replace(/\s+/g, " ").split(/(?<=[.!?;:…])\s+|(?<=,)\s+|\s+[—–]\s+/).map((x) => x.trim()).filter(Boolean);
+  for (let r of raw) {
+    const w = r.split(" ");
+    while (w.length > 10) { out.push(w.splice(0, 8).join(" ")); }
+    if (w.length) out.push(w.join(" "));
+  }
+  const merged = [];
+  for (const p of out) { if (merged.length && p.split(" ").length <= 2 && merged[merged.length - 1].split(" ").length <= 8) merged[merged.length - 1] += " " + p; else merged.push(p); }
+  return merged;
+}
+
 export function captionSchedule(clip, len) {
   const caps = clip && clip.captions;
   if (!caps || !caps.on || !String(caps.text || "").trim() || !(len > 0)) return [];
+  // Tapped-in times (seconds from the clip's start, one per phrase) win.
+  const phrasesAll = captionPhrases(caps.text);
+  const marks = Array.isArray(caps.marks) ? caps.marks : null;
+  if (marks && marks.length === phrasesAll.length && marks.every((m) => typeof m === "number")) {
+    return phrasesAll.map((text, i) => ({ from: marks[i], to: i + 1 < marks.length ? marks[i + 1] : len, text })).filter((c) => c.to > c.from);
+  }
   const phrasesOf = (text) => {
     const out = [];
     const raw = String(text).replace(/\s+/g, " ").split(/(?<=[.!?;:…])\s+|(?<=,)\s+|\s+[—–]\s+/).map((x) => x.trim()).filter(Boolean);
@@ -114,7 +141,7 @@ export function captionSchedule(clip, len) {
     return merged;
   };
   const spread = (text, from, to) => {
-    const ph = phrasesOf(text);
+    const ph = /\n/.test(String(text).trim()) ? captionPhrases(text) : phrasesOf(text);
     const words = ph.map((p) => p.split(" ").length);
     const total = words.reduce((a, b) => a + b, 0) || 1;
     const span = to - from;
@@ -130,6 +157,20 @@ export function captionSchedule(clip, len) {
     return out;
   }
   return spread(caps.text, 0, len);
+}
+
+// Draw one sample frame (a scene image or a navy field, plus a lyric at the
+// chosen size) into a canvas — the on-screen preview for the size setting.
+export async function drawLyricPreview(canvas, { imageSrc = "", text = "", size = "medium" } = {}) {
+  const W = canvas.width || 960, H = canvas.height || 540;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H);
+  if (imageSrc) {
+    try { const im = await loadImage(imageSrc); drawCover(ctx, im, W, H); } catch {}
+  } else {
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#0b1b3f"); g.addColorStop(1, "#2b3f6b"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  drawLyrics(ctx, text || "Go, declare glad tidings, in the Savior's name", W, H, 1, lyricScale(size), size === "huge" ? 2 : size === "xl" ? 3 : 4);
 }
 
 function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.medium, maxLines = 4) {
@@ -587,7 +628,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
             const l = lyricAt(s, t, plan.lyricsMode || "one");
-            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), plan.lyricsSize === "xl" ? 3 : 4);
+            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), plan.lyricsSize === "huge" ? 2 : plan.lyricsSize === "xl" ? 3 : 4);
           }
         }
         // Pause any clip that isn't on screen so it doesn't burn CPU.

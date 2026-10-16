@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from "../lib/api.js";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
-import { renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
+import { drawLyricPreview, renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import Bookends from "./Bookends.jsx";
 import AttachFile from "./AttachFile.jsx";
@@ -477,6 +477,16 @@ export default function VideoStudio({
     }
     return out;
   }, [ordered, tl.phrases]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ---- lyric size preview ----
+  const [sizePreview, setSizePreview] = useState(false);
+  const previewRef = useRef(null);
+  useEffect(() => {
+    if (!sizePreview || !previewRef.current) return;
+    const first = ordered[0];
+    const text = first ? (sceneLineList(((tl.phrases || {})[first.sceneNumber]) || first.lyrics)[0] || "") : "";
+    drawLyricPreview(previewRef.current, { imageSrc: first ? images[first.sceneNumber] || "" : "", text, size: tl.lyricsSize || "medium" }).catch(() => {});
+  }, [sizePreview, tl.lyricsSize, tl.phrases, ordered, images]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- phrase splitting: shorter pieces so each fits bigger on screen ----
   const [phrasesOpen, setPhrasesOpen] = useState(false);
   const [phraseDraft, setPhraseDraft] = useState({});
@@ -932,9 +942,11 @@ export default function VideoStudio({
                     <option value="medium">medium</option>
                     <option value="large">large</option>
                     <option value="xl">extra large</option>
+                    <option value="huge">huge</option>
                   </select>
                 </label>
               )}
+              {overlayOn && <button className="btn btn-ghost btn-sm" onClick={() => setSizePreview((v) => !v)}>{sizePreview ? "Hide preview" : "👁 Preview a frame"}</button>}
               {overlayOn && <button className="btn btn-ghost btn-sm" onClick={() => (phrasesOpen ? setPhrasesOpen(false) : openPhrases())} title="Break long lines into shorter phrases so each shows bigger on screen, e.g. 'Go' / 'declare glad tidings' / 'in the Savior's name'">✂ Split lines into phrases{Object.keys(tl.phrases || {}).length ? ` (${Object.keys(tl.phrases || {}).length} scene${Object.keys(tl.phrases || {}).length === 1 ? "" : "s"})` : ""}</button>}
               {overlayOn && tappedLineCount > 0 && (
                 <span className="note" style={{ margin: 0 }}>
@@ -953,6 +965,13 @@ export default function VideoStudio({
                 </label>
               )}
             </div>
+            {overlayOn && sizePreview && (
+              <div className="music-card" style={{ marginTop: 10 }}>
+                <h3>How the lyrics will look <span className="chip">{tl.lyricsSize || "medium"}</span></h3>
+                <canvas ref={previewRef} width={960} height={540} style={{ width: "100%", maxWidth: 720, borderRadius: 10, display: "block", background: "#00205B" }} />
+                <p className="note" style={{ margin: "6px 0 0" }}>A sample frame from the first scene with its first line — the finished video draws lyrics at exactly this proportion. Change the size or split lines into phrases and this updates.</p>
+              </div>
+            )}
             {phrasesOpen && (
               <div className="music-card" style={{ marginTop: 10 }}>
                 <h3>Phrases on screen</h3>

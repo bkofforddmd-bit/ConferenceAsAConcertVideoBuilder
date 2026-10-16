@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
-import { captureClip, captureSegments, captureConcat } from "../lib/video-render.js";
+import { captureClip, captureSegments, captureConcat, captionPhrases } from "../lib/video-render.js";
 import { mediaApi } from "../campus/campus-api.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
 import { loadTalksIndex, byConferenceDesc } from "../lib/talks-index.js";
@@ -117,6 +117,37 @@ function ClipCard({ clip, title, onChange, onRemove }) {
     v.addEventListener("timeupdate", stop);
   }
   const trimmable = clip.kind === "upload" || clip.kind === "campus";
+  // ---- caption timing: play the clip and tap when each caption starts ----
+  const capPhrases = clip.captions && clip.captions.on ? captionPhrases(clip.captions.text) : [];
+  const [capTap, setCapTap] = useState(-1); // index of the next phrase to mark, -1 = not tapping
+  const capMarksRef = useRef([]);
+  function startCapTap() {
+    const v = ref.current; if (!v || !capPhrases.length) return;
+    capMarksRef.current = [];
+    v.currentTime = inAt; v.muted = false; v.play();
+    setCapTap(0);
+  }
+  function finishCapTap() {
+    const v = ref.current; if (v) v.pause();
+    const marks = capMarksRef.current.slice(0, capPhrases.length);
+    while (marks.length < capPhrases.length) marks.push(marks.length ? marks[marks.length - 1] + 0.5 : 0);
+    onChange({ ...clip, captions: { ...clip.captions, marks } });
+    setCapTap(-1);
+  }
+  function tapCap() {
+    const v = ref.current; if (!v || capTap < 0) return;
+    capMarksRef.current[capTap] = Math.max(0, Math.round((v.currentTime - inAt) * 100) / 100);
+    if (capTap + 1 >= capPhrases.length) finishCapTap(); else setCapTap(capTap + 1);
+  }
+  useEffect(() => {
+    if (capTap < 0) return;
+    const v = ref.current;
+    const onEnd = () => { if (v && v.currentTime >= outAt - 0.05) finishCapTap(); };
+    const onKey = (e) => { if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); tapCap(); } if (e.code === "Escape") { if (v) v.pause(); setCapTap(-1); } };
+    v && v.addEventListener("timeupdate", onEnd);
+    window.addEventListener("keydown", onKey);
+    return () => { v && v.removeEventListener("timeupdate", onEnd); window.removeEventListener("keydown", onKey); };
+  }, [capTap]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="bookend-card">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
@@ -138,11 +169,23 @@ function ClipCard({ clip, title, onChange, onRemove }) {
           </label>
           {clip.captions && clip.captions.on && (
             <>
-              <textarea value={clip.captions.text || ""} onChange={(e) => onChange({ ...clip, captions: { ...clip.captions, text: e.target.value } })} style={{ width: "100%", minHeight: 90, fontSize: 13, marginTop: 6, boxSizing: "border-box" }} placeholder="Exactly what is said in this clip" />
+              <textarea value={clip.captions.text || ""} onChange={(e) => onChange({ ...clip, captions: { ...clip.captions, text: e.target.value, marks: null } })} style={{ width: "100%", minHeight: 110, fontSize: 13, marginTop: 6, boxSizing: "border-box" }} placeholder="What is said in this clip — one caption per line" />
               <p className="note" style={{ margin: "4px 0 0" }}>
-                Timing spreads the words across the clip by length, so trim this to exactly what's said in the clip for the best fit.
-                {clip.segments && clip.segments.length > 1 ? " With several spliced sections, keep one " + "“ … ”" + " between each section's words and every section gets its own captions." : ""}
+                Put each caption on its own line (press Enter), then tap along to time them: the clip plays and you press the button (or Space) the moment each caption is spoken.
+                Without taps, the words are spread across the clip by length, which is only a rough guess.
               </p>
+              <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {capTap < 0 ? (
+                  <button className="btn btn-primary btn-sm" onClick={startCapTap} disabled={!capPhrases.length || !url}>▶ Tap captions along{clip.captions.marks && clip.captions.marks.length === capPhrases.length ? " (re-time)" : ""}</button>
+                ) : (
+                  <>
+                    <button className="btn btn-primary" onClick={tapCap}>Now: “{capPhrases[capTap]}” ({capTap + 1} of {capPhrases.length})</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { const v = ref.current; if (v) v.pause(); setCapTap(-1); }}>Stop</button>
+                  </>
+                )}
+                {capTap < 0 && clip.captions.marks && clip.captions.marks.length === capPhrases.length && <span className="chip ok">timed from your taps ({capPhrases.length})</span>}
+                {capTap < 0 && (!clip.captions.marks || clip.captions.marks.length !== capPhrases.length) && capPhrases.length > 0 && <span className="note" style={{ margin: 0 }}>{capPhrases.length} caption{capPhrases.length === 1 ? "" : "s"} · not yet timed</span>}
+              </div>
             </>
           )}
         </div>
