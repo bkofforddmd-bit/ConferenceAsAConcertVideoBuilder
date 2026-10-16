@@ -671,9 +671,10 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       const im = endLogoImage;
       const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
       const lines = endLogo.lines || [];
-      const linePx = Math.round(H * 0.034);
+      const linePx = Math.round(H * 0.032);
       const textBlock = lines.length ? lines.length * linePx * 1.5 + linePx * 0.6 : 0;
-      const scale = Math.min((W * 0.42) / iw, (H * (lines.length ? 0.52 : 0.62)) / ih);
+      // The mark fills most of the frame: up to 78% of the height (68% when text lines sit under it) and 90% of the width.
+      const scale = Math.min((W * 0.9) / iw, (H * (lines.length ? 0.68 : 0.78)) / ih);
       const dw = Math.round(iw * scale), dh = Math.round(ih * scale), dx = Math.round((W - dw) / 2), dy = Math.round((H - dh - textBlock) / 2);
       let logoTimer = 0;
       cleanups.push(() => clearTimeout(logoTimer));
