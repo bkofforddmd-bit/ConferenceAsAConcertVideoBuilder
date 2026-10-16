@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
-import { captureClip, captureSegments, captureConcat, captionPhrases } from "../lib/video-render.js";
+import { captureClip, captureSegments, captureConcat, captionPhrases, captionSchedule } from "../lib/video-render.js";
 import { autoCaptionClip } from "../lib/clip-audio.js";
 import { mediaApi } from "../campus/campus-api.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
@@ -120,6 +120,9 @@ function ClipCard({ clip, title, onChange, onRemove }) {
   const trimmable = clip.kind === "upload" || clip.kind === "campus";
   // ---- caption timing: play the clip and tap when each caption starts ----
   const capPhrases = clip.captions && clip.captions.on ? captionPhrases(clip.captions.text) : [];
+  // Live caption preview over the player, from the same schedule the render uses.
+  const capSched = useMemo(() => (clip.captions && clip.captions.on ? captionSchedule(clip, len) : []), [clip.captions, clip.segments, len]); // eslint-disable-line react-hooks/exhaustive-deps
+  const capNow = useMemo(() => { if (!capSched.length) return ""; const lt = t - inAt; const c = capSched.find((x) => lt >= x.from && lt < x.to); return c ? c.text : ""; }, [capSched, t, inAt]);
   const [autoMsg, setAutoMsg] = useState("");
   const [autoBusy, setAutoBusy] = useState(false);
   async function autoCaption() {
@@ -168,7 +171,12 @@ function ClipCard({ clip, title, onChange, onRemove }) {
         <strong>{title}</strong>
         <span className="note" style={{ margin: 0 }}>{clip.name || (clip.kind === "talk" ? "from the talk's video" : clip.kind === "campus" ? "from the campus session" : "clip")} · {fmt(len)} used</span>
       </div>
-      {url && <video ref={ref} src={url} controls playsInline className="bookend-video" onTimeUpdate={(e) => setT(e.target.currentTime)} />}
+      {url && (
+        <div className="bookend-stage">
+          <video ref={ref} src={url} controls playsInline className="bookend-video" onTimeUpdate={(e) => setT(e.target.currentTime)} />
+          {capNow && <div className="bookend-cap"><span>{capNow}</span></div>}
+        </div>
+      )}
       {sound && (
         sound.ok && sound.rms >= SILENT
           ? <div className="note" style={{ margin: "4px 0 0", color: "var(--success)" }}>Sound check ✓ — this clip carries audio{sound.seconds ? ` (${fmt(sound.seconds)} recorded)` : ""}.</div>

@@ -754,3 +754,8 @@ select {
   padding: 6px 8px;
   font-family: "Inter", system-ui, sans-serif;
 }
+
+/* caption preview over a bookend clip's player */
+.bookend-stage { position: relative; }
+.bookend-cap { position: absolute; left: 0; right: 0; bottom: 14%; padding: 0 6%; text-align: center; pointer-events: none; }
+.bookend-cap span { display: inline-block; max-width: 100%; background: rgba(0,20,60,0.68); color: #F5F7FA; font-weight: 600; font-size: clamp(14px, 2.4vw, 22px); line-height: 1.3; padding: 6px 14px; border-radius: 8px; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
