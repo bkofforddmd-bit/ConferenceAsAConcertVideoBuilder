@@ -14,7 +14,7 @@ import { jobSet, blobGetText, blobSetText } from "../lib/jobs.js";
 
 export const config = { background: true };
 
-const MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+const MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-pro"]; // newest first; older ones only if it is refused
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 

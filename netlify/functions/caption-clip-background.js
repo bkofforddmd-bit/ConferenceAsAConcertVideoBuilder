@@ -11,7 +11,7 @@ import { keyFor, googleFetch, json } from "../lib/keys.js";
 import { jobSet, blobGetText, blobDelete } from "../lib/jobs.js";
 
 export const config = { background: true };
-const MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
+const MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-pro"]; // newest first; older ones only if it is refused
 
 export default async (req) => {
   let body;
