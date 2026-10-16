@@ -124,7 +124,7 @@ export async function generateImage(payload) {
 
 // Run `fn` up to `times`, backing off between attempts. Network-level
 // failures ("Failed to fetch") are what we're guarding against here.
-async function withRetry(fn, label, times = 3) {
+export async function withRetry(fn, label, times = 3) {
   let last;
   for (let i = 0; i < times; i++) {
     try {

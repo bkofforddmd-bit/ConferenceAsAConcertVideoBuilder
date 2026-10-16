@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { resolveTalkMedia, proxiedMediaUrl, talkTimesStart, jobStatus, pollJob, traceLyricSources } from "../lib/api.js";
 import { captureClip, captureSegments, captureConcat, captionPhrases } from "../lib/video-render.js";
+import { autoCaptionClip } from "../lib/clip-audio.js";
 import { mediaApi } from "../campus/campus-api.js";
 import { lyricLines, singableIndices } from "../lib/lyric-sync.js";
 import { loadTalksIndex, byConferenceDesc } from "../lib/talks-index.js";
@@ -119,6 +120,19 @@ function ClipCard({ clip, title, onChange, onRemove }) {
   const trimmable = clip.kind === "upload" || clip.kind === "campus";
   // ---- caption timing: play the clip and tap when each caption starts ----
   const capPhrases = clip.captions && clip.captions.on ? captionPhrases(clip.captions.text) : [];
+  const [autoMsg, setAutoMsg] = useState("");
+  const [autoBusy, setAutoBusy] = useState(false);
+  async function autoCaption() {
+    setAutoBusy(true); setAutoMsg("Loading the clip…");
+    try {
+      const rec = await getMedia(clip.mediaKey);
+      if (!rec || !rec.blob) throw new Error("The clip's file isn't in this browser's storage.");
+      const phrases = await autoCaptionClip(rec.blob, { hint: clip.quote || (clip.captions && clip.captions.text) || "", onStep: setAutoMsg });
+      onChange({ ...clip, captions: { on: true, text: phrases.map((p) => p.text).join("\n"), marks: phrases.map((p) => p.start), auto: true } });
+      setAutoMsg(`✓ ${phrases.length} captions, timed to the clip. Check the words, nudge with Tap captions if needed.`);
+    } catch (e) { setAutoMsg(`Couldn't auto-caption: ${e.message || e}`); }
+    setAutoBusy(false);
+  }
   const [capTap, setCapTap] = useState(-1); // index of the next phrase to mark, -1 = not tapping
   const capMarksRef = useRef([]);
   function startCapTap() {
@@ -167,6 +181,12 @@ function ClipCard({ clip, title, onChange, onRemove }) {
             <input type="checkbox" checked={Boolean(clip.captions && clip.captions.on)} onChange={(e) => onChange({ ...clip, captions: { on: e.target.checked, text: (clip.captions && clip.captions.text) || clip.quote || "" } })} />
             Caption the speaker's words
           </label>
+          {!(clip.captions && clip.captions.on) && (
+            <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : "✨ Auto-caption this clip"}</button>
+              {autoMsg && <span className="note" style={{ margin: 0 }}>{autoMsg}</span>}
+            </div>
+          )}
           {clip.captions && clip.captions.on && (
             <>
               <textarea value={clip.captions.text || ""} onChange={(e) => onChange({ ...clip, captions: { ...clip.captions, text: e.target.value, marks: null } })} style={{ width: "100%", minHeight: 110, fontSize: 13, marginTop: 6, boxSizing: "border-box" }} placeholder="What is said in this clip — one caption per line" />
@@ -175,15 +195,17 @@ function ClipCard({ clip, title, onChange, onRemove }) {
                 Without taps, the words are spread across the clip by length, which is only a rough guess.
               </p>
               <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {capTap < 0 && <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : "✨ Auto-caption this clip"}</button>}
                 {capTap < 0 ? (
-                  <button className="btn btn-primary btn-sm" onClick={startCapTap} disabled={!capPhrases.length || !url}>▶ Tap captions along{clip.captions.marks && clip.captions.marks.length === capPhrases.length ? " (re-time)" : ""}</button>
+                  <button className="btn btn-ghost btn-sm" onClick={startCapTap} disabled={!capPhrases.length || !url || autoBusy}>▶ Tap captions along{clip.captions.marks && clip.captions.marks.length === capPhrases.length ? " (re-time)" : ""}</button>
                 ) : (
                   <>
                     <button className="btn btn-primary" onClick={tapCap}>Now: “{capPhrases[capTap]}” ({capTap + 1} of {capPhrases.length})</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => { const v = ref.current; if (v) v.pause(); setCapTap(-1); }}>Stop</button>
                   </>
                 )}
-                {capTap < 0 && clip.captions.marks && clip.captions.marks.length === capPhrases.length && <span className="chip ok">timed from your taps ({capPhrases.length})</span>}
+                {capTap < 0 && clip.captions.marks && clip.captions.marks.length === capPhrases.length && <span className="chip ok">{clip.captions.auto ? `timed by AI (${capPhrases.length})` : `timed from your taps (${capPhrases.length})`}</span>}
+                {autoMsg && <span className="note" style={{ margin: 0 }}>{autoMsg}</span>}
                 {capTap < 0 && (!clip.captions.marks || clip.captions.marks.length !== capPhrases.length) && capPhrases.length > 0 && <span className="note" style={{ margin: 0 }}>{capPhrases.length} caption{capPhrases.length === 1 ? "" : "s"} · not yet timed</span>}
               </div>
             </>
