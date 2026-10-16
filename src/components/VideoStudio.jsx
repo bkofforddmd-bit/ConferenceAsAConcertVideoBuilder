@@ -662,8 +662,9 @@ export default function VideoStudio({
     const q = QUALITIES.find((x) => x.id === quality) || QUALITIES[0];
     const be = tl.bookends || {};
     const bookends = {
-      pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out, fade: be.pre.fade } : null,
-      post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade } : null,
+      // Captions and the spliced-section list ride along so the renderer can draw them.
+      pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out, fade: be.pre.fade, captions: be.pre.captions || null, segments: be.pre.segments || null } : null,
+      post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
     const job = renderMusicVideo(
       { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0 },
