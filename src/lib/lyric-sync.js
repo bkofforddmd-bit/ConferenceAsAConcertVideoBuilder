@@ -173,3 +173,77 @@ export function deriveSceneTiming(scenes, fullLyrics, sync, totalSec = 0) {
   }
   return { starts, lineStarts, matched, total };
 }
+
+// Split one sung line into phrases at commas, semicolons, colons and dashes
+// (the natural breath points). A line without those stays whole.
+export function splitPhrases(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t) return [];
+  const parts = t.split(/(?<=[,;:])\s+|\s+[—–]\s+|\s+-\s+/).map((x) => x.trim()).filter(Boolean);
+  return parts.length ? parts : [t];
+}
+
+// Scene timing from a PHRASE sync (Music step, "tap per phrase"): every scene
+// line that matches a full-lyric line is expanded into that line's phrases,
+// each with its tapped time; lines without a phrase mark fall back to the
+// line sync, and gaps interpolate. Returns { starts, lineStarts, phrases,
+// matched, total } where phrases[scene] is the scene's lyric text rewritten
+// one phrase per line (for the Video step's tl.phrases).
+export function deriveScenePhraseTiming(scenes, fullLyrics, phraseSync, lineSync, totalSec = 0) {
+  const lines = lyricLines(fullLyrics);
+  const phraseLines = (phraseSync && phraseSync.lines) || {};
+  const markAt = new Map(); // "i:k" -> t
+  for (const m of (phraseSync && phraseSync.marks) || []) if (Array.isArray(m) && m.length >= 3) markAt.set(`${m[0]}:${m[1]}`, m[2]);
+  const lineAt = new Map();
+  for (const [i, t] of lineSync || []) lineAt.set(i, t);
+  const ordered = (scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber);
+  const starts = {}, lineStarts = {}, phrases = {};
+  let cursor = 0, matched = 0, total = 0;
+  for (const sc of ordered) {
+    const sceneLines = sceneLineList(sc.lyrics);
+    const texts = [], times = [];
+    let sceneCursor = cursor;
+    for (const text of sceneLines) {
+      total++;
+      const key = norm(text);
+      let idx = -1;
+      for (let j = sceneCursor; j < lines.length && idx < 0; j++) if (norm(lines[j]) === key) idx = j;
+      if (idx < 0 && key.length >= 8) for (let j = sceneCursor; j < lines.length && idx < 0; j++) { const lj = norm(lines[j]); if (lj && (lj.startsWith(key) || key.startsWith(lj) || lj.includes(key))) idx = j; }
+      if (idx >= 0) {
+        sceneCursor = idx + 1;
+        const ph = Array.isArray(phraseLines[idx]) && phraseLines[idx].length ? phraseLines[idx] : [lines[idx].trim()];
+        ph.forEach((p, k) => {
+          texts.push(p);
+          const t = markAt.has(`${idx}:${k}`) ? markAt.get(`${idx}:${k}`) : k === 0 && lineAt.has(idx) ? lineAt.get(idx) : null;
+          times.push(typeof t === "number" ? t : null);
+          if (typeof t === "number") matched++;
+        });
+      } else { texts.push(text); times.push(null); }
+    }
+    if (sceneCursor > cursor) cursor = sceneCursor;
+    const filled = times.slice();
+    for (let k = 0; k < filled.length; k++) {
+      if (filled[k] != null) continue;
+      let a = k - 1; while (a >= 0 && filled[a] == null) a--;
+      let b = k + 1; while (b < filled.length && filled[b] == null) b++;
+      if (a >= 0 && b < filled.length) filled[k] = filled[a] + ((filled[b] - filled[a]) * (k - a)) / (b - a);
+      else if (a >= 0) filled[k] = filled[a] + 1.5 * (k - a);
+      else if (b < filled.length) filled[k] = Math.max(0, filled[b] - 1.5 * (b - k));
+    }
+    if (filled.length && filled.every((x) => typeof x === "number")) {
+      lineStarts[sc.sceneNumber] = filled.map((x) => Math.round(x * 100) / 100);
+      starts[sc.sceneNumber] = Math.round(filled[0] * 10) / 10;
+      phrases[sc.sceneNumber] = texts.join("\n");
+    }
+  }
+  const nums = ordered.map((s) => s.sceneNumber);
+  for (let k = 0; k < nums.length; k++) {
+    if (starts[nums[k]] != null) continue;
+    let a = k - 1; while (a >= 0 && starts[nums[a]] == null) a--;
+    let b = k + 1; while (b < nums.length && starts[nums[b]] == null) b++;
+    if (a >= 0 && b < nums.length) starts[nums[k]] = Math.round(((starts[nums[a]] + starts[nums[b]]) / 2) * 10) / 10;
+    else if (a >= 0) starts[nums[k]] = Math.round((starts[nums[a]] + 4) * 10) / 10;
+    else if (b < nums.length) starts[nums[k]] = Math.max(0, Math.round((starts[nums[b]] - 4) * 10) / 10);
+  }
+  return { starts, lineStarts, phrases, matched, total };
+}

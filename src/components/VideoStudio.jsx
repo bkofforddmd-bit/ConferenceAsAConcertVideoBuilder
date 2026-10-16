@@ -14,7 +14,7 @@ import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from ".
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
 import { drawLyricPreview, renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
-import { parseSync, deriveSceneTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
+import { parseSync, deriveSceneTiming, deriveScenePhraseTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import Bookends from "./Bookends.jsx";
 import AttachFile from "./AttachFile.jsx";
 import PathEditor from "./PathEditor.jsx";
@@ -315,9 +315,17 @@ export default function VideoStudio({
 
   // ---- timing from the song's lyric sync (set on the Music step) ----
   const songSync = songVersion ? parseSync(lyrics, songVersion.sync) : null;
-  const syncKey = songVersion && songSync ? `${songVersion.id}/${songSync.length}/${songVersion.syncedAt || 0}` : "";
+  const phraseSync = songVersion && songVersion.phraseSync && Array.isArray(songVersion.phraseSync.marks) && songVersion.phraseSync.marks.length ? songVersion.phraseSync : null;
+  const syncKey = songVersion && songSync ? `${songVersion.id}/${songSync.length}/${phraseSync ? phraseSync.marks.length : 0}/${songVersion.syncedAt || 0}` : "";
   function applySync() {
     if (!songSync) return;
+    if (phraseSync) {
+      // Tapped per phrase on the Music step: the on-screen lyrics follow the
+      // same phrases, so the scene lyrics are rewritten one phrase per line.
+      const d = deriveScenePhraseTiming(ordered, lyrics, phraseSync, songSync, totalSec);
+      setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, phrases: d.phrases, lyricsMode: "one", syncFor: syncKey });
+      return;
+    }
     const d = deriveSceneTiming(ordered, lyrics, songSync, totalSec);
     setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, lyricsMode: "one", syncFor: syncKey });
   }

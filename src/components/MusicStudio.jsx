@@ -51,10 +51,10 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
   // Lyric sync lives on the song take: [[lineIndex, seconds], ...] over the
   // full finalized lyrics (see lib/lyric-sync.js). The Video step times every
   // scene and line from it.
-  function saveSync(arr) {
+  function saveSync(arr, phraseSync) {
     setSong((prev) => ({
       ...prev,
-      versions: (prev.versions || []).map((v) => (v.id === prev.activeId ? { ...v, sync: arr, syncedAt: Date.now() } : v)),
+      versions: (prev.versions || []).map((v) => (v.id === prev.activeId ? { ...v, sync: arr, phraseSync: phraseSync || null, syncedAt: Date.now() } : v)),
     }));
     setSyncOpen(false);
   }
@@ -198,6 +198,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
           lyrics={lyrics}
           audioUrl={audioUrl}
           initialSync={active.sync}
+          initialPhraseSync={active.phraseSync || null}
           onSave={saveSync}
           onClose={() => setSyncOpen(false)}
         />
@@ -314,7 +315,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
               <div className="row">
                 <button className="btn btn-ghost btn-sm" onClick={download}>Download audio</button>
                 <button className={`btn ${activeSync ? "btn-ghost" : "btn-primary"} btn-sm`} onClick={() => { if (audioRef.current) audioRef.current.pause(); setSyncOpen(true); }} title="Tap along while the song plays to mark when each lyric line starts — the video is timed from this">
-                  {activeSync ? `⏱ Re-sync lyrics (${activeSync.length} lines)` : "⏱ Sync lyrics"}
+                  {activeSync ? (active.phraseSync && active.phraseSync.marks ? `⏱ Re-sync lyrics (${active.phraseSync.marks.length} phrases)` : `⏱ Re-sync lyrics (${activeSync.length} lines)`) : "⏱ Sync lyrics"}
                 </button>
                 {activeSync && <span className="chip ok">synced</span>}
               </div>
