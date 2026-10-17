@@ -1,10 +1,11 @@
 // src/campus/AdminPanel.jsx — Phase 1 administrator panel: workers and
 // invitations, the release text (versioned, legal-review flag), settings
 // (MelodyCraft address, default campus), consent lookup by session id, and a
-// plain list of sessions. Analytics, payroll and time approval arrive in
-// Phases 2–3.
+// plain list of sessions, and (Phase 2) hours & payroll. Analytics arrive in
+// Phase 3.
 import React, { useEffect, useState } from "react";
 import { adminApi } from "./campus-api.js";
+import HoursAdmin from "./HoursAdmin.jsx";
 
 export default function AdminPanel({ user }) {
   const [tab, setTab] = useState("workers");
@@ -12,14 +13,15 @@ export default function AdminPanel({ user }) {
     <div>
       <h1>Administrator</h1>
       <div className="c-tabs">
-        {[["workers", "Workers"], ["consent", "Release text"], ["settings", "Settings"], ["lookup", "Consent lookup"], ["sessions", "Sessions"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
+        {[["workers", "Workers"], ["consent", "Release text"], ["settings", "Settings"], ["lookup", "Consent lookup"], ["sessions", "Sessions"], ["hours", "Hours & payroll"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {tab === "workers" && <Workers me={user} />}
       {tab === "consent" && <ConsentText />}
       {tab === "settings" && <Settings />}
       {tab === "lookup" && <Lookup />}
       {tab === "sessions" && <Sessions />}
-      <p className="c-note" style={{ marginTop: 24 }}>Coming next: Phase 2 timekeeping (clock in/out, corrections, monthly payroll approval) and Phase 3 analytics (funnel, by worker and date, exports).</p>
+      {tab === "hours" && <HoursAdmin />}
+      <p className="c-note" style={{ marginTop: 24 }}>Coming next: Phase 3 analytics (funnel, by worker and date, exports) and Phase 4 (QR sharing, follow-ups).</p>
     </div>
   );
 }

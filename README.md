@@ -120,7 +120,7 @@ an interrupted session resumes from the home screen.
 Code: `netlify/functions/campus-*.js`, `netlify/lib/campus-*.js`,
 `src/campus/`. Data lives in the Netlify Blobs store `campus` (documents:
 `user:`, `email:`, `invite:`, `session:`, `consent:`, `settings:`,
-`consent-version:`). No database or migration is involved. Participant names,
+`consent-version:`, `shift:`, `correction:`, `rate:`, `payroll:`). No database or migration is involved. Participant names,
 emails and signatures exist only in `consent:` records, which only an
 administrator can read, by session id.
 
@@ -138,6 +138,23 @@ administrator can read, by session id.
    recording. Tick "reviewed by legal counsel" when that's done.
 4. Admin panel → **Settings**: confirm the MelodyCraft AI address.
 5. Admin panel → **Workers**: invite each worker; send them the one-time link.
+
+### Hours & payroll (Phase 2 timekeeping)
+
+Workers tap **⏱ Clock in / my hours** on the campus home screen. Clock-in and
+clock-out use the server's clock, one shift can be open at a time, nothing
+clocks out automatically (a worker who forgot can enter the real end time,
+and the record says so), and several shifts a day are fine. The worker sees
+hours today / this week / this month / all time, each month's shifts, and can
+request a correction (original and proposed times are both kept, with who
+decided and when) or email a month's summary. Pay periods are calendar months
+(America/Denver). Approved shifts can't be changed by the worker.
+
+Administrators: **Hours & payroll** tab → decide correction requests, set
+hourly rates with effective dates (only visible there), approve a worker's
+month or single shifts, see gross pay (approved minutes × the rate in force on
+each shift's date, whole cents), mark a month paid, download the CSV, or print
+the page. Documents: `shift:`, `correction:`, `rate:`, `payroll:`.
 
 ### Video clips (in-app recording → private Cloudflare R2)
 

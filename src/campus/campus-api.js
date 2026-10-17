@@ -63,6 +63,25 @@ export const adminApi = {
   sessions: (from, to) => call("campus-admin", { action: "sessions", from, to }),
 };
 
+export const timeApi = {
+  status: () => call("campus-time", { action: "status" }),
+  clockIn: (note) => call("campus-time", { action: "clock-in", note }),
+  clockOut: (p) => call("campus-time", { action: "clock-out", ...p }),
+  shifts: (month) => call("campus-time", { action: "shifts", month }),
+  requestCorrection: (p) => call("campus-time", { action: "request-correction", ...p }),
+  summary: (month) => call("campus-time", { action: "summary", month }),
+  // administrator
+  allShifts: (month, workerId) => call("campus-time", { action: "all-shifts", month, workerId }),
+  corrections: () => call("campus-time", { action: "corrections" }),
+  decideCorrection: (id, approve, note) => call("campus-time", { action: "decide-correction", id, approve, note }),
+  approveShift: (shiftId, approved) => call("campus-time", { action: "approve-shift", shiftId, approved }),
+  approveMonth: (workerId, month, approved) => call("campus-time", { action: "approve-month", workerId, month, approved }),
+  rates: () => call("campus-time", { action: "rates" }),
+  setRate: (workerId, cents, effective) => call("campus-time", { action: "set-rate", workerId, cents, effective }),
+  payroll: (month) => call("campus-time", { action: "payroll", month }),
+  markPaid: (month, workerId, paid, note) => call("campus-time", { action: "mark-paid", month, workerId, paid, note }),
+};
+
 export const mediaApi = {
   status: () => call("campus-media", { action: "status" }),
   signUpload: (sessionId, stage, mime, bytes) => call("campus-media", { action: "sign-upload", sessionId, stage, mime, bytes }),

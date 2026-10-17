@@ -4,9 +4,10 @@
 // linked from the normal pages, and every call is checked on the server.
 import React, { useEffect, useState } from "react";
 import Logo from "../components/Logo.jsx";
-import { authApi, sessionApi, getToken, setToken } from "./campus-api.js";
+import { authApi, sessionApi, timeApi, getToken, setToken } from "./campus-api.js";
 import SessionFlow from "./SessionFlow.jsx";
 import AdminPanel from "./AdminPanel.jsx";
+import TimePanel from "./TimePanel.jsx";
 import "./campus.css";
 
 const ACTIVE_KEY = "campus-active-session";
@@ -17,7 +18,8 @@ export default function CampusApp() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
   const [config, setConfig] = useState(null);
-  const [view, setView] = useState("home"); // home | session | admin
+  const [view, setView] = useState("home"); // home | session | admin | time
+  const [clock, setClock] = useState(null); // { open, today } from the time service
   const [sessionId, setSessionId] = useState(null);
   const [mine, setMine] = useState(null);
   const [err, setErr] = useState("");
@@ -37,9 +39,10 @@ export default function CampusApp() {
 
   async function refresh() {
     try {
-      const [cfg, m] = await Promise.all([sessionApi.config(), sessionApi.mine()]);
+      const [cfg, m, t] = await Promise.all([sessionApi.config(), sessionApi.mine(), timeApi.status().catch(() => null)]);
       setConfig(cfg);
       setMine(m);
+      setClock(t);
       setErr("");
     } catch (e) { setErr(e.message); }
   }
@@ -67,6 +70,10 @@ export default function CampusApp() {
     return <Shell user={user} onSignOut={signOut} onHome={() => { if (isAdminPath()) window.location.href = "/campus"; else setView("home"); }}><AdminPanel user={user} /></Shell>;
   }
 
+  if (view === "time") {
+    return <Shell user={user} onSignOut={signOut} onHome={() => { setView("home"); refresh(); }}><TimePanel user={user} onBack={() => { setView("home"); refresh(); }} /></Shell>;
+  }
+
   if (view === "session" && sessionId) {
     return <Shell user={user} onSignOut={signOut} compact><SessionFlow id={sessionId} config={config} onLeave={leaveSession} onConfigRefresh={refresh} /></Shell>;
   }
@@ -76,6 +83,9 @@ export default function CampusApp() {
       <h1>Hi, {firstName(user.name)} 👋</h1>
       <p className="lead">Ready to ask someone about their favorite talk?</p>
       {err && <div className="c-err">{err}</div>}
+      <button className={`c-btn ${clock && clock.open ? "" : "ghost"}`} onClick={() => setView("time")} style={clock && clock.open ? { borderColor: "var(--success)" } : undefined}>
+        {clock && clock.open ? <>⏱ Clocked in since {new Date(clock.open.in).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}<small>{Math.floor(clock.today / 60)}h {clock.today % 60}m today · tap to clock out or see your hours</small></> : <>⏱ Clock in / my hours<small>{clock ? `${Math.floor(clock.month / 60)}h ${clock.month % 60}m this month` : "Clock in before you start approaching people"}</small></>}
+      </button>
       {mine && mine.active && (
         <div className="c-card warn">
           <div className="c-worker-tag">Unfinished session</div>
@@ -116,7 +126,6 @@ export default function CampusApp() {
         </div>
       )}
       {user.role === "admin" && <button className="c-btn ghost" onClick={() => setView("admin")}>⚙ Administrator panel</button>}
-      <p className="c-note" style={{ marginTop: 20 }}>Clock in / clock out and your hours arrive in the next phase (timekeeping).</p>
     </Shell>
   );
 }
