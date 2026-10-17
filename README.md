@@ -120,7 +120,7 @@ an interrupted session resumes from the home screen.
 Code: `netlify/functions/campus-*.js`, `netlify/lib/campus-*.js`,
 `src/campus/`. Data lives in the Netlify Blobs store `campus` (documents:
 `user:`, `email:`, `invite:`, `session:`, `consent:`, `settings:`,
-`consent-version:`, `shift:`, `correction:`, `rate:`, `payroll:`). No database or migration is involved. Participant names,
+`consent-version:`, `shift:`, `correction:`, `rate:`, `payroll:`, `settings:retention`, `purge:`). No database or migration is involved. Participant names,
 emails and signatures exist only in `consent:` records, which only an
 administrator can read, by session id.
 
@@ -155,6 +155,28 @@ hourly rates with effective dates (only visible there), approve a worker's
 month or single shifts, see gross pay (approved minutes × the rate in force on
 each shift's date, whole cents), mark a month paid, download the CSV, or print
 the page. Documents: `shift:`, `correction:`, `rate:`, `payroll:`.
+
+### Analytics & retention (Phase 3)
+
+Admin panel → **Analytics** (the panel's first tab): date presets or a custom
+range (campus-local dates) and a worker filter; totals (approached, declined,
+participated, recorded / without recording, lyrics, songs, average time);
+the Approached → Participated → Lyrics → Song funnel; worker comparisons with
+hours from timekeeping and per-hour rates; results by date; student
+reactions; most-chosen talks; talks students chose that still have no song
+(re-checked against the live Concert library); and five CSV exports. Only
+completed sessions count as experiences — unfinished ones count as an approach
+only. Nothing in analytics or its exports identifies a participant.
+
+Admin panel → **Retention**: the policy for video clips (keep N days, 0 = keep
+until deleted by hand; delete once consent is withdrawn; optional daily
+automatic run, OFF by default), a preview of exactly which clips are due, a
+two-tap delete, and a deletion log (counts only). Only the R2 video files are
+deleted; consent, session and lyric records are always kept, and each clip
+entry stays on its session marked deleted with the date and reason. New
+recordings are refused once a session's consent is withdrawn. The daily run is
+`netlify/functions/campus-retention-daily.js` (Netlify scheduled function).
+Documents: `settings:retention`, `purge:`.
 
 ### Video clips (in-app recording → private Cloudflare R2)
 

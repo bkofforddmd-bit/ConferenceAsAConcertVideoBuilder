@@ -47,6 +47,8 @@ export default async (req) => {
       if (r.error) return json({ error: r.error }, r.status);
       const s = r.s;
       if (s.participation !== "recorded") return json({ error: "Recording wasn't authorized for this session." }, 403);
+      const consentRec = await docGet(`consent:${s.id}`);
+      if (consentRec && consentRec.withdrawn) return json({ error: "The student withdrew consent for this session, so no more recording." }, 403);
       const stage = STAGES.includes(body.stage) ? body.stage : "other";
       const mime = /^video\/(mp4|webm|quicktime)/.test(String(body.mime || "")) ? String(body.mime).split(";")[0] : "video/mp4";
       const bytes = Number(body.bytes) || 0;

@@ -82,6 +82,13 @@ export const timeApi = {
   markPaid: (month, workerId, paid, note) => call("campus-time", { action: "mark-paid", month, workerId, paid, note }),
 };
 
+export const analyticsApi = {
+  overview: (p) => call("campus-analytics", { action: "overview", ...p }),
+  retention: () => call("campus-analytics", { action: "retention" }),
+  setRetention: (p) => call("campus-analytics", { action: "set-retention", ...p }),
+  purge: (clipIds) => call("campus-analytics", { action: "purge", clipIds }),
+};
+
 export const mediaApi = {
   status: () => call("campus-media", { action: "status" }),
   signUpload: (sessionId, stage, mime, bytes) => call("campus-media", { action: "sign-upload", sessionId, stage, mime, bytes }),
