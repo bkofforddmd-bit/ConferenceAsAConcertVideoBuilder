@@ -17,6 +17,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { lyricLines, isSectionLine, singableIndices, parseSync, fmtStamp, splitPhrases } from "../lib/lyric-sync.js";
+import { aiSyncLyrics } from "../lib/song-sync.js";
 
 export default function LyricSyncEditor({ title, lyrics, audioUrl, initialSync, initialPhraseSync, onSave, onClose }) {
   const lines = useMemo(() => lyricLines(lyrics), [lyrics]);
@@ -56,6 +57,25 @@ export default function LyricSyncEditor({ title, lyrics, audioUrl, initialSync, 
   const [rate, setRate] = useState(1);
   const [msg, setMsg] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
+  const [aiDone, setAiDone] = useState(false);
+  // ✨ Gemini listens to the song and pins where every unit begins (~1¢ a song).
+  async function syncWithAI() {
+    if (!audioUrl || !units.length) return;
+    setAiBusy(true); setAiMsg("Loading the song…"); setMsg("");
+    const a = audioRef.current; if (a) a.pause();
+    try {
+      const blob = await (await fetch(audioUrl)).blob();
+      const { times: got, model } = await aiSyncLyrics(blob, units.map((u) => ({ key: u.key, text: u.text })), { onStep: setAiMsg });
+      const m = new Map();
+      for (const u of units) if (typeof got[u.key] === "number") m.set(u.key, got[u.key]);
+      if (m.size < 2) throw new Error("Too few lines came back timed.");
+      setTimes(m); setHistory([]); setAiDone(true);
+      setAiMsg(`✓ ${m.size} of ${units.length} ${unitWord}s timed by AI${model ? ` (${model})` : ""} — play it through to check, nudge or re-tap anything that lands off, then Save.`);
+    } catch (e) { setAiMsg(`Couldn't sync with AI: ${e.message || e}`); }
+    setAiBusy(false);
+  }
   const [editing, setEditing] = useState(null); // line index whose split is being edited
   const [editText, setEditText] = useState("");
   const audioRef = useRef(null);
@@ -169,6 +189,11 @@ export default function LyricSyncEditor({ title, lyrics, audioUrl, initialSync, 
           <button className={`picker-chip${mode === "line" ? " active" : ""}`} onClick={() => switchMode("line")} style={{ padding: "4px 12px", fontSize: 12 }}>line</button>
           <button className={`picker-chip${mode === "phrase" ? " active" : ""}`} onClick={() => switchMode("phrase")} style={{ padding: "4px 12px", fontSize: 12 }} title="Split each line at commas and dashes so the on-screen lyrics change phrase by phrase">phrase</button>
           <span className="note" style={{ margin: "0 0 0 auto" }}>{times.size} of {units.length} {unitWord}s marked</span>
+        </div>
+        <div className="row" style={{ gap: 8, margin: "0 0 6px", alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-primary btn-sm" onClick={syncWithAI} disabled={aiBusy || !audioUrl || !units.length} title="Gemini listens to the whole song and pins when each line or phrase begins — about a cent a song, under a minute">{aiBusy ? "Listening…" : `✨ Sync ${unitWord}s with AI`}</button>
+          {aiDone && !aiBusy && <span className="chip ok">timed by AI</span>}
+          {aiMsg && <span className="note" style={{ margin: 0 }}>{aiMsg}</span>}
         </div>
         {mode === "phrase" && (
           <div className="row" style={{ gap: 6, margin: "0 0 6px", alignItems: "center", flexWrap: "wrap" }}>
