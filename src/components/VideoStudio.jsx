@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { videoStart, videoStatus, pollJob, fetchMediaBlob, shrinkImage } from "../lib/api.js";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
 import { hasKey } from "../lib/keys.js";
-import { drawLyricPreview, renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
+import { DEFAULT_PATH, drawLyricPreview, renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming, deriveScenePhraseTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import Bookends from "./Bookends.jsx";
 import AttachFile from "./AttachFile.jsx";
@@ -300,7 +300,7 @@ export default function VideoStudio({
     id: key,
     extrasList: extras[key] || [],
     extraUrls,
-    motion: (tl.motion || {})[key] || (key === "intro" || key === "outro" ? "down" : "auto"),
+    motion: (tl.motion || {})[key] || (key === "intro" || key === "outro" ? "down" : "custom"),
     weight: (tl.weight || {})[key] || 1,
     busy: Boolean(extraBusy[key]),
     onMotion: (mo) => setSceneMotion(key, mo),
@@ -429,7 +429,8 @@ export default function VideoStudio({
       .filter((x) => x.src);
     // Primary picture + added images, each holding in proportion to its weight.
     const pushShots = (primary, key, start, end, common, label) => {
-      const shots = [{ ...primary, path: paths[key] || null, weight: weights[key] || 1 }, ...extraShots(key)].filter((x) => x.src);
+      // A scene on "custom" with no drawn path moves along the default path (a gentle push-in).
+      const shots = [{ ...primary, path: paths[key] || (primary.motion === "custom" ? DEFAULT_PATH : null), weight: weights[key] || 1 }, ...extraShots(key)].filter((x) => x.src);
       splitByWeight(shots, start, end).forEach((seg, k) => {
         segs.push({ ...seg, ...common, label: shots.length > 1 ? `${label} · ${k + 1}/${shots.length}` : label });
       });
@@ -452,7 +453,7 @@ export default function VideoStudio({
       const n = s.sceneNumber;
       const clip = clips && clips[n];
       const primarySrc = clip && clip.mediaKey && clipUrls[n] ? clipUrls[n] : (images[n] || "");
-      const primary = { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "auto" };
+      const primary = { kind: clip && clipUrls[n] ? "video" : "image", src: primarySrc, motion: (tl.motion || {})[n] || "custom" };
       const common = { lyrics: ((tl.phrases || {})[n]) || s.lyrics || "", lineStarts: lineStarts[n] || null, lyricSpan: { start, end }, isCard: false };
       pushShots(primary, n, start, end, common, `Scene ${n}`);
     }

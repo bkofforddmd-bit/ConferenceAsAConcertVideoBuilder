@@ -151,6 +151,10 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
   // Bring in a song made elsewhere (Suno, a studio recording, anything) as a
   // take of this project — it then works exactly like a generated one.
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [copied, setCopied] = useState("");
+  async function copyText(text, key) {
+    try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(""), 1800); } catch { setError("Couldn't copy — select the text and copy by hand."); }
+  }
   async function uploadSong(file) {
     if (!file) return;
     setError("");
@@ -289,9 +293,15 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
         <div className="music-card">
           <h3>MelodyCraft AI settings <span className="chip">for songs made in MelodyCraft</span></h3>
           <p className="note" style={{ marginTop: 0 }}>
-            Making the song in the MelodyCraft AI app instead? Tell it what to sound like and get the genre + mood combination
-            to select there — drawn only from MelodyCraft's own list. Then upload the finished MP3 above.
+            Making the song in the MelodyCraft AI app instead? Copy the title and lyrics, tell it what to sound like and get the
+            genre + mood combination to select there — drawn only from MelodyCraft's own list. Then upload the finished MP3 above.
           </p>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "0 0 10px", alignItems: "center" }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => copyText(title || "", "title")} disabled={!title}>{copied === "title" ? "Copied ✓" : "📋 Copy title"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => copyText(lyrics || "", "lyrics")} disabled={!lyrics}>{copied === "lyrics" ? "Copied ✓" : "📋 Copy lyrics"}</button>
+            <button className="btn btn-primary btn-sm" onClick={() => copyText(`${title || ""}\n\n${lyrics || ""}`.trim(), "both")} disabled={!lyrics} title="One paste: the title on the first line, then the lyrics — for apps with a single text box">{copied === "both" ? "Copied ✓" : "📋 Copy title + lyrics"}</button>
+            <span className="note" style={{ margin: 0 }}>{title ? `Title: ${title}` : "No song title yet — set one on the Storyboard step or it falls back to the talk's title."}</span>
+          </div>
           <MelodyCraftPicker
             reference={(song && song.melodyCraft && song.melodyCraft.reference) || styleReference || ""}
             onReference={(r) => setSong((p) => ({ ...p, melodyCraft: { ...((p && p.melodyCraft) || {}), reference: r } }))}

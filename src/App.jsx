@@ -734,6 +734,9 @@ export default function App() {
               exportResult={exportResult}
             />
           )}
+
+          {/* Work down the page, then move on: the next step waits at the bottom. */}
+          <StepNav step={step} enabled={enabled} done={done} onGo={goStep} />
         </>
       )}
 
@@ -757,6 +760,28 @@ export default function App() {
         Conference As A Concert Studio is an independent creative tool. It is not an official production of,
         and is not endorsed by, The Church of Jesus Christ of Latter-day Saints. Talks © Intellectual Reserve, Inc.
       </footer>
+    </div>
+  );
+}
+
+// ---------------- bottom step navigation ----------------
+function StepNav({ step, enabled, done, onGo }) {
+  const i = STEPS.findIndex((s) => s.id === step);
+  if (i < 0) return null;
+  const prev = i > 0 ? STEPS[i - 1] : null;
+  const next = i + 1 < STEPS.length ? STEPS[i + 1] : null;
+  const nextOk = next ? Boolean(enabled[next.id]) : false;
+  const hint = next && !nextOk ? (step === "lyrics" ? "Finalize the lyrics first" : "Finish this step first") : "";
+  const reminder = next && nextOk && !done[step] ? { music: "No song yet — you can still go on.", scenes: "No scene images yet — you can still go on.", video: "Not rendered yet — you can still go on.", lyrics: "" }[step] || "" : "";
+  return (
+    <div className="step-nav">
+      {prev ? <button className="btn btn-ghost" onClick={() => onGo(prev.id)}>← {prev.name}</button> : <span />}
+      <span className="note" style={{ margin: 0, textAlign: "center" }}>{hint || reminder}</span>
+      {next ? (
+        <button className="btn btn-primary step-nav-next" onClick={() => onGo(next.id)} disabled={!nextOk} title={hint || next.sub}>Next: {next.name} →</button>
+      ) : (
+        <span className="note" style={{ margin: 0 }}>That's the last step — publish or save above.</span>
+      )}
     </div>
   );
 }
