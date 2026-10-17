@@ -2,6 +2,7 @@
 // Returns ONLY the scene outline (list of beats), using the lyrics and the
 // already-generated style bible for context. Kept small/fast.
 import { keyFor } from "../lib/keys.js";
+import { IMAGE_RULES } from "../lib/image-rules.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -51,6 +52,8 @@ export default async (req) => {
     "- The TALK drives each scene's CONTENT (its teaching, story, example,",
     "  scripture) — NOT a literal reading of the lyric. The lyric sets placement.",
     "- Move through the talk's points in order so the video faithfully retells it.",
+    IMAGE_RULES,
+    "A 'beat' must never call for a scene that breaks those rules.",
     "",
     "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     "{",

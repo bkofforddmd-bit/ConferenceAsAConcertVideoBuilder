@@ -86,7 +86,7 @@ function wrapLines(ctx, text, maxWidth) {
 
 // On-screen lyric size as a share of the frame height (chosen on the Video step).
 export const LYRIC_SIZES = { small: 0.034, medium: 0.042, large: 0.062, xl: 0.085, huge: 0.11 };
-export const lyricScale = (size) => LYRIC_SIZES[size] || LYRIC_SIZES.medium;
+export const lyricScale = (size) => LYRIC_SIZES[size] || LYRIC_SIZES.huge;
 
 // Split a lyric block into the pieces shown one at a time: new lines, or
 // " / " and " | " typed inside a line to break it into phrases.
@@ -173,7 +173,7 @@ export async function drawLyricPreview(canvas, { imageSrc = "", text = "", size 
   drawLyrics(ctx, text || "Go, declare glad tidings, in the Savior's name", W, H, 1, lyricScale(size), size === "huge" ? 2 : size === "xl" ? 3 : 4);
 }
 
-function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.medium, maxLines = 4) {
+function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.huge, maxLines = 2) {
   if (!text || alpha <= 0) return;
   ctx.save();
   ctx.globalAlpha = Math.min(1, alpha);
@@ -631,7 +631,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           ctx.restore();
           if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
             const l = lyricAt(s, t, plan.lyricsMode || "one");
-            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), plan.lyricsSize === "huge" ? 2 : plan.lyricsSize === "xl" ? 3 : 4);
+            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), (plan.lyricsSize || "huge") === "huge" ? 2 : plan.lyricsSize === "xl" ? 3 : 4);
           }
         }
         // Pause any clip that isn't on screen so it doesn't burn CPU.

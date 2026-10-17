@@ -1,5 +1,6 @@
 // netlify/functions/generate-scene-detail.js
 import { keyFor } from "../lib/keys.js";
+import { IMAGE_RULES } from "../lib/image-rules.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -42,6 +43,8 @@ export default async (req) => {
     "copyrighted characters. Tasteful, reverent depictions of Jesus Christ",
     "the Savior are welcome and encouraged where fitting. Do NOT depict",
     "God the Father; suggest His presence only indirectly (light, etc.).",
+    IMAGE_RULES,
+    "The imagePrompt you write must itself obey these rules in its wording.",
     revisionNotes
       ? "You are REVISING this scene per the director's notes. Honor the notes, " +
         "keep the same lyric section, and make sure this scene is distinct from " +

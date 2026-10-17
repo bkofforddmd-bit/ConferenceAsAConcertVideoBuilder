@@ -300,7 +300,7 @@ export default function VideoStudio({
     id: key,
     extrasList: extras[key] || [],
     extraUrls,
-    motion: (tl.motion || {})[key] || "auto",
+    motion: (tl.motion || {})[key] || (key === "intro" || key === "outro" ? "down" : "auto"),
     weight: (tl.weight || {})[key] || 1,
     busy: Boolean(extraBusy[key]),
     onMotion: (mo) => setSceneMotion(key, mo),
@@ -438,8 +438,8 @@ export default function VideoStudio({
     const introEnd = list.length ? list[0].start : Math.min(totalSec, tl.introSec);
     if (includeIntro && introEnd > 0.2) {
       const primary = hasIntro
-        ? { kind: "image", src: endcards.intro.image, motion: (tl.motion || {}).intro || "auto" }
-        : { kind: "textcard", src: "text", card: introCard, motion: (tl.motion || {}).intro || "auto" };
+        ? { kind: "image", src: endcards.intro.image, motion: (tl.motion || {}).intro || "down" }
+        : { kind: "textcard", src: "text", card: introCard, motion: (tl.motion || {}).intro || "down" };
       pushShots(primary, "intro", 0, introEnd, { lyrics: "", isCard: true }, "Intro");
     }
     const outroStart = includeOutro
@@ -458,8 +458,8 @@ export default function VideoStudio({
     }
     if (includeOutro && totalSec - outroStart > 0.2) {
       const primary = hasOutro
-        ? { kind: "image", src: endcards.outro.image, motion: (tl.motion || {}).outro || "auto" }
-        : { kind: "textcard", src: "text", card: outroCard, motion: (tl.motion || {}).outro || "auto" };
+        ? { kind: "image", src: endcards.outro.image, motion: (tl.motion || {}).outro || "down" }
+        : { kind: "textcard", src: "text", card: outroCard, motion: (tl.motion || {}).outro || "down" };
       pushShots(primary, "outro", outroStart, totalSec, { lyrics: "", isCard: true }, "Outro");
     }
     return segs.filter((x) => x.src);
@@ -498,7 +498,7 @@ export default function VideoStudio({
     if (!sizePreview || !previewRef.current) return;
     const first = ordered[0];
     const text = first ? (sceneLineList(((tl.phrases || {})[first.sceneNumber]) || first.lyrics)[0] || "") : "";
-    drawLyricPreview(previewRef.current, { imageSrc: first ? images[first.sceneNumber] || "" : "", text, size: tl.lyricsSize || "medium" }).catch(() => {});
+    drawLyricPreview(previewRef.current, { imageSrc: first ? images[first.sceneNumber] || "" : "", text, size: tl.lyricsSize || "huge" }).catch(() => {});
   }, [sizePreview, tl.lyricsSize, tl.phrases, ordered, images]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- phrase splitting: shorter pieces so each fits bigger on screen ----
@@ -673,7 +673,7 @@ export default function VideoStudio({
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "huge", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -952,7 +952,7 @@ export default function VideoStudio({
               {overlayOn && (
                 <label className="row" style={{ gap: 6 }} title="How big the lyrics are drawn in the finished video">
                   <span className="note" style={{ margin: 0 }}>Size</span>
-                  <select value={tl.lyricsSize || "medium"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
+                  <select value={tl.lyricsSize || "huge"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
                     <option value="small">small</option>
                     <option value="medium">medium</option>
                     <option value="large">large</option>
@@ -982,7 +982,7 @@ export default function VideoStudio({
             </div>
             {overlayOn && sizePreview && (
               <div className="music-card" style={{ marginTop: 10 }}>
-                <h3>How the lyrics will look <span className="chip">{tl.lyricsSize || "medium"}</span></h3>
+                <h3>How the lyrics will look <span className="chip">{tl.lyricsSize || "huge"}</span></h3>
                 <canvas ref={previewRef} width={960} height={540} style={{ width: "100%", maxWidth: 720, borderRadius: 10, display: "block", background: "#00205B" }} />
                 <p className="note" style={{ margin: "6px 0 0" }}>A sample frame from the first scene with its first line — the finished video draws lyrics at exactly this proportion. Change the size or split lines into phrases and this updates.</p>
               </div>

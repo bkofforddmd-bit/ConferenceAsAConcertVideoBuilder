@@ -10,6 +10,7 @@
 // Returns a base64 data URL the frontend can display, save, and download.
 
 import { keyFor } from "../lib/keys.js";
+import { applyImageRules } from "../lib/image-rules.js";
 
 const GEN_URL = "https://api.openai.com/v1/images/generations";
 const EDIT_URL = "https://api.openai.com/v1/images/edits";
@@ -28,13 +29,14 @@ export default async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const {
+  let {
     prompt = "",
     size = "1536x1024", // landscape, good for video frames
     referenceImageB64 = "", // optional: data URL or raw base64 of prior scene
   } = body;
 
   if (!prompt.trim()) return json({ error: "Provide a prompt." }, 400);
+  prompt = applyImageRules(prompt); // house rules ride on every image, even hand-edited prompts
 
   try {
     let resp;

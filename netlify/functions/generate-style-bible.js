@@ -1,6 +1,7 @@
 // netlify/functions/generate-style-bible.js
 // Returns ONLY the style bible (no scene outline) so the call stays small/fast.
 import { keyFor } from "../lib/keys.js";
+import { IMAGE_RULES } from "../lib/image-rules.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -26,6 +27,7 @@ export default async (req) => {
     "wholesome, no copyrighted characters. Tasteful, reverent depictions of",
     "Jesus Christ the Savior are welcome where fitting. Do NOT depict God the",
     "Father; suggest His presence only indirectly (light, etc.).",
+    IMAGE_RULES,
     "",
     "Output ONLY raw JSON. No code fences, no commentary. Schema:",
     "{",
