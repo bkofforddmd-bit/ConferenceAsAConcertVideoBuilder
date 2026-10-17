@@ -300,7 +300,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
             <button className="btn btn-ghost btn-sm" onClick={() => copyText(title || "", "title")} disabled={!title}>{copied === "title" ? "Copied ✓" : "📋 Copy title"}</button>
             <button className="btn btn-ghost btn-sm" onClick={() => copyText(lyrics || "", "lyrics")} disabled={!lyrics}>{copied === "lyrics" ? "Copied ✓" : "📋 Copy lyrics"}</button>
             <button className="btn btn-primary btn-sm" onClick={() => copyText(`${title || ""}\n\n${lyrics || ""}`.trim(), "both")} disabled={!lyrics} title="One paste: the title on the first line, then the lyrics — for apps with a single text box">{copied === "both" ? "Copied ✓" : "📋 Copy title + lyrics"}</button>
-            <span className="note" style={{ margin: 0 }}>{title ? `Title: ${title}` : "No song title yet — set one on the Storyboard step or it falls back to the talk's title."}</span>
+            <span className="note" style={{ margin: 0 }}>{title ? `Title: ${title}` : "No song title yet — set one on the Storyboard step or it falls back to the talk's title."}{lyrics ? ` · lyrics ${lyrics.length.toLocaleString()} of MelodyCraft's 4,000 characters${lyrics.length > 4000 ? " — too long, trim before pasting" : ""}` : ""}</span>
           </div>
           <MelodyCraftPicker
             reference={(song && song.melodyCraft && song.melodyCraft.reference) || styleReference || ""}
