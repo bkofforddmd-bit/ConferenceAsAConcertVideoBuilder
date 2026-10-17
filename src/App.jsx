@@ -479,6 +479,9 @@ export default function App() {
     export: Boolean(finalLyrics),
   };
 
+  // Every step or view change starts at the top of the new page (the Next bar
+  // lives at the bottom of the previous one).
+  useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [step, view]);
   function goStep(id) {
     if (id === "talk") { setView("library"); return; }
     setView("create");
