@@ -673,7 +673,7 @@ export default function VideoStudio({
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.png", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "medium", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -1065,7 +1065,7 @@ export default function VideoStudio({
               </select>
             </label>
           )}
-          <img src="/end-logo.png" alt="Conference As A Concert" style={{ height: 36, opacity: tl.endLogo !== false ? 1 : 0.35 }} />
+          <img src="/end-logo.webp" alt="Conference As A Concert" style={{ height: 36, opacity: tl.endLogo !== false ? 1 : 0.35 }} />
         </div>
         {tl.endLogo !== false && (
           <div className="row" style={{ gap: 10, alignItems: "flex-end", flexWrap: "wrap", margin: "0 0 10px" }}>

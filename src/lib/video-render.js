@@ -673,9 +673,12 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       const lines = endLogo.lines || [];
       const linePx = Math.round(H * 0.032);
       const textBlock = lines.length ? lines.length * linePx * 1.5 + linePx * 0.6 : 0;
-      // The mark fills most of the frame: up to 78% of the height (68% when text lines sit under it) and 90% of the width.
-      const scale = Math.min((W * 0.9) / iw, (H * (lines.length ? 0.68 : 0.78)) / ih);
+      // The logo fills the frame: contained edge to edge (nothing cropped), over a
+      // blurred, darkened copy of the same art that covers whatever is left.
+      const scale = Math.min(W / iw, (H - textBlock) / ih);
       const dw = Math.round(iw * scale), dh = Math.round(ih * scale), dx = Math.round((W - dw) / 2), dy = Math.round((H - dh - textBlock) / 2);
+      const cs = Math.max(W / iw, H / ih);
+      const cw = Math.round(iw * cs), ch = Math.round(ih * cs), cx = Math.round((W - cw) / 2), cy = Math.round((H - ch) / 2);
       let logoTimer = 0;
       cleanups.push(() => clearTimeout(logoTimer));
       await new Promise((resolve, reject) => {
@@ -685,9 +688,14 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           const t = (performance.now() - t0) / 1000;
           if (t >= seconds) { resolve(); return; }
           const a = Math.max(0, Math.min(1, t / fade, (seconds - t) / fade));
-          const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#0b1b3f"); g.addColorStop(1, "#1d3466");
-          ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-          ctx.save(); ctx.globalAlpha = a; ctx.drawImage(im, dx, dy, dw, dh);
+          ctx.fillStyle = "#0b1b3f"; ctx.fillRect(0, 0, W, H);
+          ctx.save(); ctx.globalAlpha = a;
+          if (dw < W - 2 || dh < H - textBlock - 2) {
+            // background: the art stretched to cover, blurred and dimmed
+            ctx.save(); ctx.filter = `blur(${Math.round(H * 0.03)}px)`; ctx.drawImage(im, cx, cy, cw, ch); ctx.restore();
+            ctx.fillStyle = "rgba(5,14,38,0.55)"; ctx.fillRect(0, 0, W, H);
+          }
+          ctx.drawImage(im, dx, dy, dw, dh);
           if (lines.length) {
             ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
             ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = linePx * 0.4;
