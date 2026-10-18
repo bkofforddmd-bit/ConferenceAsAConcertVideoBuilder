@@ -53,7 +53,7 @@ export default function LyricCreator({
       return;
     }
     if (!styleReference.trim()) {
-      setError("Please provide a style/artist reference before creating the song.");
+      setError(simple ? "Pick an artist above (or search for any artist or song and choose “Use …”) before creating the song." : "Please provide a style/artist reference before creating the song.");
       return;
     }
     setBusy(true);
@@ -135,15 +135,18 @@ export default function LyricCreator({
 
       <ArtistInspirationSelector value={styleReference} onChange={setStyleReference} />
 
-      <label className="field">
-        <span className="lbl">{simple ? "Or type any artist or song" : "Style / artist reference"}</span>
-        <input
-          type="text"
-          placeholder={simple ? 'e.g. "Forrest Frank", "Oceans" by Hillsong, Coldplay, Lauren Daigle' : "e.g. contemplative piano ballad, or 'in the style of a worship anthem'"}
-          value={styleReference}
-          onChange={(e) => setStyleReference(e.target.value)}
-        />
-      </label>
+      {/* Simple mode: the picker IS the style choice (its search takes any artist or song). */}
+      {!simple && (
+        <label className="field">
+          <span className="lbl">Style / artist reference</span>
+          <input
+            type="text"
+            placeholder="e.g. contemplative piano ballad, or 'in the style of a worship anthem'"
+            value={styleReference}
+            onChange={(e) => setStyleReference(e.target.value)}
+          />
+        </label>
+      )}
 
       <div className="row">
         <button className="btn btn-primary" onClick={handleCreate} disabled={busy}>
