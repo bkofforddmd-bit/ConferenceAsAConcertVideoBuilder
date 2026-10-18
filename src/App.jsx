@@ -98,6 +98,13 @@ export default function App() {
   const [timeline, setTimeline] = useState(EMPTY_TIMELINE);
   const [render, setRender] = useState(null);
 
+  // The artist chosen on the Lyrics step is the Music step's MelodyCraft "sound like" too.
+  useEffect(() => {
+    const ref = String(styleReference || "").trim();
+    if (!ref) return;
+    setSong((p) => (p && p.melodyCraft && p.melodyCraft.reference === ref ? p : { ...(p || {}), melodyCraft: { ...((p && p.melodyCraft) || {}), reference: ref } }));
+  }, [styleReference]);
+
   const sceneStateRef = useRef(EMPTY_SCENE);
   // The storyboard build running on the server (survives leaving the page):
   // { id, startedAt, forLyrics, status, progress, applied: { images, cards }, finished }

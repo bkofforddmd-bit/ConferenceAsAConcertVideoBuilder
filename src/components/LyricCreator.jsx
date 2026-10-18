@@ -1,6 +1,7 @@
 // src/components/LyricCreator.jsx
 import React, { useState } from "react";
 import { generateLyrics } from "../lib/api.js";
+import ArtistInspirationSelector, { artistFor } from "./ArtistInspirationSelector.jsx";
 
 export default function LyricCreator({
   onSources,
@@ -57,7 +58,7 @@ export default function LyricCreator({
     }
     setBusy(true);
     try {
-      const { lyrics: out, sources } = await generateLyrics({ talkText, styleReference });
+      const { lyrics: out, sources } = await generateLyrics({ talkText, styleReference, styleProfile: (artistFor(styleReference) || {}).lyricProfile || "" });
       setLyrics(out);
       if (onSources) onSources(sources || null);
     } catch (e) {
@@ -79,6 +80,7 @@ export default function LyricCreator({
         currentLyrics: lyrics,
         revisionRequest,
         styleReference,
+        styleProfile: (artistFor(styleReference) || {}).lyricProfile || "",
         talkText,
       });
       setLyrics(out);
@@ -131,8 +133,10 @@ export default function LyricCreator({
       </div>
       </>)}
 
+      <ArtistInspirationSelector value={styleReference} onChange={setStyleReference} />
+
       <label className="field">
-        <span className="lbl">{simple ? "Sound like this modern artist or song" : "Style / artist reference"}</span>
+        <span className="lbl">{simple ? "Or type any artist or song" : "Style / artist reference"}</span>
         <input
           type="text"
           placeholder={simple ? 'e.g. "Forrest Frank", "Oceans" by Hillsong, Coldplay, Lauren Daigle' : "e.g. contemplative piano ballad, or 'in the style of a worship anthem'"}

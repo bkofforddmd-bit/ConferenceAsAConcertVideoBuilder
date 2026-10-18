@@ -791,3 +791,17 @@ select {
 .reaction-question { font-family: Cinzel, Georgia, serif; font-size: 20px; color: #f3d9a4; margin: 10px 0; line-height: 1.35; }
 .reaction-video { width: 100%; max-width: 640px; border-radius: 10px; background: #000; display: block; }
 .reaction-rec-dot { position: absolute; top: 18px; right: 18px; background: rgba(200,30,40,0.85); color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+
+/* Artist inspiration selector */
+.artist-picker { border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin: 0 0 14px; background: rgba(255,255,255,0.03); }
+.artist-picker-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.artist-picked { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; padding: 8px 12px; border-radius: 10px; background: rgba(143,180,230,0.10); }
+.artist-search { width: 100%; box-sizing: border-box; padding: 12px 16px; border-radius: 999px; border: 1px solid var(--line); background: rgba(0,0,0,0.25); color: var(--cloud); font-size: 15px; }
+.artist-groups { max-height: 340px; overflow-y: auto; margin-top: 10px; padding-right: 4px; }
+.artist-group { margin-bottom: 12px; }
+.artist-group-name { font-size: 13px; color: var(--silver, #C0C5CE); margin: 0 0 6px; }
+.artist-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.artist-chip { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--cloud); font-size: 14px; cursor: pointer; }
+.artist-chip:hover { border-color: var(--sky); }
+.artist-chip.on { background: var(--sky); color: #0b1a33; border-color: var(--sky); font-weight: 600; }
+.artist-dot { margin-left: 5px; color: #f3c969; }

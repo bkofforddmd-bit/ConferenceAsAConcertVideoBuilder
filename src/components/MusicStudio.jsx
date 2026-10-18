@@ -10,6 +10,7 @@
 //                   durationSec, createdAt } ], activeId }
 
 import MelodyCraftPicker from "./MelodyCraftPicker.jsx";
+import { artistFor } from "./ArtistInspirationSelector.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { musicStart, musicStatus, pollJob, fetchMediaBlob } from "../lib/api.js";
 import { putMedia, getMedia } from "../lib/project-store.js";
@@ -305,6 +306,11 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
 
         <div className="music-card">
           <h3>MelodyCraft AI settings <span className="chip">for songs made in MelodyCraft</span></h3>
+          {styleReference && (
+            <p className="note" style={{ marginTop: 0 }}>
+              Inspired by <strong>{styleReference}</strong> (chosen on the Lyrics step){(artistFor(styleReference) || {}).lyricProfile ? ` — ${artistFor(styleReference).lyricProfile}` : ""}. Press ✨ Suggest settings for the matching MelodyCraft genres and moods.
+            </p>
+          )}
           <p className="note" style={{ marginTop: 0 }}>
             Making the song in the MelodyCraft AI app instead? Copy the title and lyrics, tell it what to sound like and get the
             genre + mood combination to select there — drawn only from MelodyCraft's own list. Then import the finished MP3 under "Your song".

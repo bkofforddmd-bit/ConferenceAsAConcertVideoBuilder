@@ -29,6 +29,7 @@ export default async (req) => {
   const {
     talkText = "",
     styleReference = "",
+    styleProfile = "",
     currentLyrics = "",
     revisionRequest = "",
   } = body;
@@ -38,6 +39,11 @@ export default async (req) => {
   }
 
   const isRevision = Boolean(currentLyrics.trim() && revisionRequest.trim());
+  // The artist catalog's general songwriting traits (never their actual lyrics).
+  const profile = String(styleProfile || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  const profileLine = profile
+    ? `Songwriting traits to borrow from that style: ${profile}. These describe general craft only — write wholly original lyrics, keep the talk's doctrine, and do not echo any existing song.`
+    : "";
 
   const system = [
     "You are a hymn and Christian-music lyricist who writes original song lyrics",
@@ -79,6 +85,7 @@ export default async (req) => {
       (paras.length ? `TALK (numbered paragraphs):\n${numberedTalk}\n\n` : "") +
       `Here are the current lyrics:\n\n${currentLyrics}\n\n` +
       (styleReference ? `Style direction: ${styleReference}\n\n` : "") +
+      (profileLine ? `${profileLine}\n\n` : "") +
       `Please revise them per this request:\n${revisionRequest}\n\n` +
       `Keep the result under 1,500 characters of lyric (labels not counted) unless the request above asks for a different length.\n\n` +
       (paras.length
@@ -92,6 +99,7 @@ export default async (req) => {
         ? `Match the genre/style/mood of: ${styleReference} ` +
           `(stylistic direction only — original words).\n\n`
         : "") +
+      (profileLine ? `${profileLine}\n\n` : "") +
       `TALK (numbered paragraphs):\n${numberedTalk || talkText}\n\n` +
       `Length: under 1,500 characters of lyric (labels not counted) unless the style direction above says otherwise.\n` +
       `Return the lyrics with clear section labels, then the ===SOURCES=== block, nothing else.`;
