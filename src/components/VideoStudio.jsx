@@ -338,23 +338,44 @@ export default function VideoStudio({
   const songSync = songVersion ? parseSync(lyrics, songVersion.sync) : null;
   const phraseSync = songVersion && songVersion.phraseSync && Array.isArray(songVersion.phraseSync.marks) && songVersion.phraseSync.marks.length ? songVersion.phraseSync : null;
   const syncKey = songVersion && songSync ? `${songVersion.id}/${songSync.length}/${phraseSync ? phraseSync.marks.length : 0}/${songVersion.syncedAt || 0}` : "";
+  // The scenes' lyric split is part of the key: re-dividing lines re-times the scenes.
+  const sceneLyricsKey = ordered.map((s) => sceneLineList(s.lyrics).length).join(",");
+  const syncFullKey = syncKey ? `${syncKey}|${sceneLyricsKey}` : "";
+  // DEFAULT: the video follows the lyric sync tapped on the Music step. Timing
+  // changed by hand switches this off (tick the box to follow the sync again).
+  const followSync = tl.followSync !== false;
+  const syncedNow = Boolean(syncFullKey) && tl.syncFor === syncFullKey;
   function applySync() {
     if (!songSync) return;
     if (phraseSync) {
       // Tapped per phrase on the Music step: the on-screen lyrics follow the
       // same phrases, so the scene lyrics are rewritten one phrase per line.
       const d = deriveScenePhraseTiming(ordered, lyrics, phraseSync, songSync, totalSec);
-      setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, phrases: d.phrases, lyricsMode: "one", syncFor: syncKey });
+      setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, phrases: d.phrases, lyricsMode: "one", syncFor: syncFullKey, followSync: true });
       return;
     }
     const d = deriveSceneTiming(ordered, lyrics, songSync, totalSec);
-    setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, lyricsMode: "one", syncFor: syncKey });
+    setTimeline({ ...tl, starts: { ...(tl.starts || {}), ...d.starts }, lineStarts: d.lineStarts, lyricsMode: "one", syncFor: syncFullKey, followSync: true });
   }
-  // A new or changed sync times the video automatically (once per sync).
-  const sceneLyricsKey = ordered.map((s) => sceneLineList(s.lyrics).length).join(",");
+  // One place decides the automatic timing, so two effects can't race:
+  //   a lyric sync exists and we're following it → time from the sync
+  //     (again whenever the sync or the scenes' lyric split changes);
+  //   no sync yet → space the scenes by lyric count, once, if nothing is timed.
   useEffect(() => {
-    if (songSync && totalSec && ordered.length && tl.syncFor !== syncKey) applySync();
-  }, [syncKey, totalSec, ordered.length, sceneLyricsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!totalSec || !ordered.length) return;
+    if (songSync) {
+      if (followSync && tl.syncFor !== syncFullKey) {
+        // A project already timed from this same sync by an older version keeps its timing.
+        if (tl.syncFor === syncKey) { setTimeline({ ...tl, syncFor: syncFullKey }); return; }
+        applySync();
+      }
+      return;
+    }
+    if (!tl.starts || Object.keys(tl.starts).length === 0) {
+      const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro: tl.includeIntro !== false, hasOutro: tl.includeOutro !== false });
+      setTimeline({ ...tl, starts, lineStarts: {} });
+    }
+  }, [syncFullKey, totalSec, ordered.length, followSync]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- lyric balance: does each scene carry a fair share of the sung lines? ----
   const balance = useMemo(() => lyricBalance(ordered, lyrics), [ordered, lyrics]);
@@ -365,26 +386,23 @@ export default function VideoStudio({
     ordered.forEach((sc, i) => { map[sc.sceneNumber] = parts[i] || ""; });
     onSetSceneLyrics(map);
     // Timing is rebuilt from the new split: from the sync when there is one, else evenly.
-    if (songSync && totalSec) setTimeline({ ...tl, lineStarts: {}, syncFor: "" });
+    if (songSync && totalSec) setTimeline({ ...tl, lineStarts: {}, syncFor: "", followSync: true });
     else if (totalSec) {
       const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro: tl.includeIntro !== false, hasOutro: tl.includeOutro !== false });
       setTimeline({ ...tl, starts, lineStarts: {} });
     }
   }
 
+  // Estimate (ignores the sync): scenes spaced by how many lyric lines each has.
   function autoTime() {
     if (!totalSec) return;
     const starts = autoTimeline(ordered, totalSec, { introSec: tl.introSec, outroSec: tl.outroSec, hasIntro: tl.includeIntro !== false, hasOutro: tl.includeOutro !== false });
-    setTimeline({ ...tl, starts, lineStarts: {} });
+    setTimeline({ ...tl, starts, lineStarts: {}, followSync: false, syncFor: "" });
   }
-  // Auto-time once when a song exists and nothing is timed yet.
-  useEffect(() => {
-    if (totalSec && ordered.length && (!tl.starts || Object.keys(tl.starts).length === 0)) autoTime();
-  }, [totalSec, ordered.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setStart(n, v) {
     const num = Math.max(0, Math.min(totalSec || 1e9, Number(v) || 0));
-    setTimeline({ ...tl, starts: { ...(tl.starts || {}), [n]: num } });
+    setTimeline({ ...tl, starts: { ...(tl.starts || {}), [n]: num }, followSync: false });
   }
 
   // tap-along
@@ -564,7 +582,7 @@ export default function VideoStudio({
     // Scene starts follow the first tapped line of each scene (the intro keeps the gap before it).
     const starts = { ...(tl.starts || {}) };
     for (const [scene, arr] of Object.entries(taps)) if (arr && arr.length && typeof arr[0] === "number") starts[scene] = Math.round(arr[0] * 10) / 10;
-    setTimeline({ ...tl, starts, lineStarts: taps, lyricsMode: "one" });
+    setTimeline({ ...tl, starts, lineStarts: taps, lyricsMode: "one", followSync: false, syncFor: "" });
     setLineTapIdx(-1);
   }
   function tapNextLine() {
@@ -851,11 +869,15 @@ export default function VideoStudio({
           <h3>2 · Timeline {totalSec ? <span className="chip">{fmt(totalSec)} song</span> : <span className="chip warn">needs the song</span>}</h3>
           <div className="row" style={{ gap: 8 }}>
             {songSync && (
-              <button className="btn btn-primary btn-sm" onClick={applySync} disabled={!totalSec} title="Set every scene start and lyric line from the sync you tapped on the Music step">
-                ⏱ Time from lyric sync{tl.syncFor === syncKey ? " ✓" : ""}
-              </button>
+              <label className="row" style={{ gap: 6, fontSize: 13 }} title="On (the default): every scene start and lyric line follows the sync you tapped on the Music step, and re-times itself when that sync or the scenes' lyrics change">
+                <input type="checkbox" checked={followSync} onChange={(e) => (e.target.checked ? applySync() : setTimeline({ ...tl, followSync: false }))} disabled={!totalSec} />
+                Follow the lyric sync{followSync && syncedNow ? " ✓" : ""}
+              </label>
             )}
-            <button className="btn btn-ghost btn-sm" onClick={autoTime} disabled={!totalSec}>Auto-time by lyrics</button>
+            {songSync && !followSync && (
+              <button className="btn btn-primary btn-sm" onClick={applySync} disabled={!totalSec} title="Set every scene start and lyric line from the sync you tapped on the Music step">⏱ Re-time from the lyric sync</button>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={autoTime} disabled={!totalSec} title={songSync ? "Ignore the sync and space the scenes by how many lyric lines each has" : "Space the scenes by how many lyric lines each has"}>{songSync ? "Estimate instead" : "Auto-time by lyrics"}</button>
             {onSetSceneLyrics && !balance.lopsided && !balance.sparse && (
               <button className="btn btn-ghost btn-sm" onClick={spreadLyrics} disabled={!ordered.length} title="Re-divide the song's lyric lines evenly across the scenes, in order (images stay)">Spread lyrics evenly</button>
             )}
