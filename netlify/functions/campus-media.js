@@ -10,6 +10,8 @@
 //   confirm     { sessionId, clipId, bytes, durationSec } -> { clip }
 //   list        { sessionId }                -> { clips: [{ …, url }] }    (worker: own sessions; admin: any)
 //   delete      { sessionId, clipId }        -> { ok }
+//   sign-song   { sessionId, mime, bytes }   -> { uploadUrl, songFile }   (the finished song for the student's song page)
+//   confirm-song { sessionId, bytes }        -> { songFile }
 //
 // Stages: "lyrics-reaction" | "song-reaction" | "testimony" | "other".
 
@@ -77,6 +79,38 @@ export default async (req) => {
       s.updatedAt = now();
       await docSet(`session:${s.id}`, s);
       return json({ clip: { ...clip, url: presign({ method: "GET", key: clip.key, expiresSec: 3600 }) } });
+    }
+
+    if (action === "sign-song") {
+      const r = await own(body.sessionId);
+      if (r.error) return json({ error: r.error }, r.status);
+      const s = r.s;
+      if (!s.participation || s.participation === "declined") return json({ error: "There's no song to attach for this session." }, 400);
+      const mime = /^audio\/(mpeg|mp3|mp4|x-m4a|m4a|aac|wav|x-wav)/.test(String(body.mime || "")) ? String(body.mime).split(";")[0] : "";
+      if (!mime) return json({ error: "Choose an audio file (MP3, M4A or WAV)." }, 400);
+      const bytes = Number(body.bytes) || 0;
+      if (bytes > 60 * 1048576) return json({ error: "That song file is over 60 MB." }, 400);
+      const ext = /mpeg|mp3/.test(mime) ? "mp3" : /wav/.test(mime) ? "wav" : "m4a";
+      const old = s.songFile && s.songFile.key;
+      const songFile = { key: `campus/${s.id}/song-${newId("")}.${ext}`, mime, bytes, status: "uploading", at: now(), by: user.id, replaces: old || null };
+      s.songFile = songFile;
+      s.updatedAt = now();
+      await docSet(`session:${s.id}`, s);
+      return json({ songFile, uploadUrl: presign({ method: "PUT", key: songFile.key, expiresSec: 1800, contentType: mime }) });
+    }
+
+    if (action === "confirm-song") {
+      const r = await own(body.sessionId);
+      if (r.error) return json({ error: r.error }, r.status);
+      const s = r.s;
+      if (!s.songFile) return json({ error: "No song upload was started." }, 400);
+      const replaced = s.songFile.replaces;
+      s.songFile = { ...s.songFile, status: "ready", bytes: Number(body.bytes) || s.songFile.bytes, readyAt: now(), replaces: null };
+      s.song = { ...(s.song || {}), generated: true };
+      s.updatedAt = now();
+      await docSet(`session:${s.id}`, s);
+      if (replaced && replaced !== s.songFile.key) { try { await deleteObject(replaced); } catch {} }
+      return json({ songFile: s.songFile });
     }
 
     if (action === "list") {

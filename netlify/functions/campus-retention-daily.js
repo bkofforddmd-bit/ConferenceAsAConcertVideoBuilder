@@ -13,9 +13,8 @@ export default async () => {
   try {
     const policy = await getPolicy();
     if (!policy.autoPurge) return new Response("auto-purge is off", { status: 200 });
-    if (!r2Configured()) return new Response("no video storage configured", { status: 200 });
-    const { log, failed } = await runPurge({ by: null, trigger: "daily", deleter: deleteObject });
-    return new Response(`deleted ${log.deleted}, failed ${failed.length}`, { status: 200 });
+    const { log, failed } = await runPurge({ by: null, trigger: "daily", deleter: r2Configured() ? deleteObject : null });
+    return new Response(`deleted ${log.deleted} clips, erased ${log.followupsErased} follow-up emails, failed ${failed.length}`, { status: 200 });
   } catch (e) {
     return new Response(`retention run failed: ${e.message || e}`, { status: 500 });
   }

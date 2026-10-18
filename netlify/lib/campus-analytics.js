@@ -52,7 +52,9 @@ export function funnel(m) {
 }
 
 // sessions: raw session docs. users: [{id,name,role}]. shifts: closed shift docs.
-export function analyze(sessions, { from = "", to = "", workerId = "", users = [], shifts = [] } = {}) {
+// views: { [sessionId]: number } song-page opens; pageFeedback: { [sessionId]: [{rating, comment, at}] };
+// followups: { [sessionId]: status } — statuses only, never contact details.
+export function analyze(sessions, { from = "", to = "", workerId = "", users = [], shifts = [], views = {}, pageFeedback = {}, followups = {} } = {}) {
   const inRange = (iso) => { const d = localDate(iso); return (!from || d >= from) && (!to || d <= to); };
   let list = sessions.filter((s) => s.startedAt && inRange(s.startedAt));
   if (workerId) list = list.filter((s) => s.workerId === workerId);
@@ -100,6 +102,43 @@ export function analyze(sessions, { from = "", to = "", workerId = "", users = [
   for (const s of list) { const d = localDate(s.startedAt); if (!dates.has(d)) dates.set(d, []); dates.get(d).push(s); }
   const byDate = [...dates.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, l]) => ({ date, ...metrics(l) }));
 
+  // ---- Phase 4: student feedback, song pages, follow-ups ----
+  const fb = list.filter((s) => participated(s) && s.feedback);
+  const rated = fb.filter((s) => Number.isInteger(s.feedback.rating));
+  const tally = (key, opts) => Object.fromEntries(opts.map((o) => [o, fb.filter((s) => s.feedback[key] === o).length]));
+  const pageItems = list.flatMap((s) => (pageFeedback[s.id] || []).map((x) => ({ ...x, s })));
+  const withPage = list.filter((s) => s.share && s.share.code);
+  const fuStatuses = list.map((s) => followups[s.id]).filter(Boolean);
+  const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
+  const engagement = {
+    feedback: {
+      answered: fb.length,
+      avgRating: avg(rated.map((s) => s.feedback.rating)),
+      ratings: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, rated.filter((s) => s.feedback.rating === n).length])),
+      helped: tally("helped", ["yes", "somewhat", "no"]),
+      more: tally("more", ["yes", "maybe", "no"]),
+      share: tally("share", ["yes", "maybe", "no"]),
+    },
+    songPages: {
+      created: withPage.length,
+      opened: withPage.filter((s) => (views[s.id] || 0) > 0).length,
+      views: withPage.reduce((t, s) => t + (views[s.id] || 0), 0),
+      ratings: pageItems.length,
+      avgRating: avg(pageItems.map((x) => x.rating)),
+    },
+    followUps: {
+      optedIn: fuStatuses.length,
+      waiting: fuStatuses.filter((x) => x === "waiting").length,
+      sent: fuStatuses.filter((x) => x === "sent").length,
+      optedOut: fuStatuses.filter((x) => x === "opted-out").length,
+    },
+  };
+  // Comments (anonymous; the students wrote them, so names may appear — admin-only)
+  const comments = [
+    ...fb.filter((s) => s.feedback.comment).map((s) => ({ at: s.feedback.at, date: localDate(s.feedback.at || s.startedAt), talk: s.talk ? s.talk.title : "", rating: s.feedback.rating, comment: s.feedback.comment, where: "thank-you screen", ref: s.ref || "" })),
+    ...pageItems.filter((x) => x.comment).map((x) => ({ at: x.at, date: localDate(x.at), talk: x.s.talk ? x.s.talk.title : "", rating: x.rating, comment: x.comment, where: "song page", ref: x.s.ref || "" })),
+  ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
   // session-level rows for the CSV — no participant details, no lyric text
   const rows = list.slice().sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1)).map((s) => ({
     id: s.id, date: localDate(s.startedAt), startedAt: s.startedAt, endedAt: s.endedAt || "", durationSec: s.durationSec || "",
@@ -107,7 +146,11 @@ export function analyze(sessions, { from = "", to = "", workerId = "", users = [
     talk: s.talk ? s.talk.title || "" : "", speaker: s.talk ? s.talk.speaker || "" : "", existingSong: Boolean(s.songified && s.songified.existing),
     lyrics: Boolean(s.lyrics && s.lyrics.generated), song: Boolean(s.song && s.song.generated), played: Boolean(s.song && s.song.played),
     reaction: s.reaction || "", clips: (s.clips || []).filter((c) => c.status === "ready").length,
+    ref: s.ref || "", recordings: (s.recordings || []).length,
+    rating: s.feedback && s.feedback.rating ? s.feedback.rating : "", helped: (s.feedback && s.feedback.helped) || "", more: (s.feedback && s.feedback.more) || "", wouldShare: (s.feedback && s.feedback.share) || "",
+    songPage: Boolean(s.share && s.share.code), songPageViews: views[s.id] || 0, songPageRatings: (pageFeedback[s.id] || []).length,
+    followUp: followups[s.id] || "",
   }));
 
-  return { from, to, workerId, totals: m, funnel: funnel(m), reactions, talks: talkList.slice(0, 25), unsongified, byWorker, byDate, rows };
+  return { from, to, workerId, totals: m, funnel: funnel(m), reactions, talks: talkList.slice(0, 25), unsongified, byWorker, byDate, rows, engagement, comments: comments.slice(0, 200) };
 }

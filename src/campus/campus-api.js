@@ -45,7 +45,36 @@ export const sessionApi = {
   complete: (id, outcome) => call("campus-sessions", { action: "complete", id, outcome }),
   abandon: (id, reason) => call("campus-sessions", { action: "abandon", id, reason }),
   mine: () => call("campus-sessions", { action: "mine" }),
+  // Phase 4 (also work for a week after the session is completed)
+  share: (id) => call("campus-sessions", { action: "share", id }),
+  feedback: (id, f) => call("campus-sessions", { action: "feedback", id, ...f }),
+  followup: (id, p) => call("campus-sessions", { action: "followup", id, ...p }),
+  recordingAdd: (id, p) => call("campus-sessions", { action: "recording-add", id, ...p }),
+  recordingRemove: (id, recId) => call("campus-sessions", { action: "recording-remove", id, recId }),
+  songLink: (id, url) => call("campus-sessions", { action: "song-link", id, url }),
 };
+
+// The student's public song page (no sign-in).
+export const shareApi = {
+  get: (code) => call("campus-share", { action: "get", code }),
+  feedback: (code, rating, comment) => call("campus-share", { action: "feedback", code, rating, comment }),
+};
+export const songPageUrl = (code) => `${window.location.origin}/song/${code}`;
+
+// Upload the finished song (MP3 etc.) for a session's song page.
+export async function uploadSong(sessionId, file, onPct = () => {}) {
+  const { uploadUrl } = await mediaApi.signSong(sessionId, file.type || "audio/mpeg", file.size);
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl, true);
+    xhr.setRequestHeader("content-type", file.type || "audio/mpeg");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onPct(e.loaded / e.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`storage answered ${xhr.status}`)));
+    xhr.onerror = () => reject(new Error("the upload was blocked — check the connection (and the bucket's CORS rule)"));
+    xhr.send(file);
+  });
+  return mediaApi.confirmSong(sessionId, file.size);
+}
 
 export const adminApi = {
   workers: () => call("campus-admin", { action: "workers" }),
@@ -61,6 +90,10 @@ export const adminApi = {
   consentLookup: (sessionId) => call("campus-admin", { action: "consent-lookup", sessionId }),
   consentWithdraw: (sessionId, note) => call("campus-admin", { action: "consent-withdraw", sessionId, note }),
   sessions: (from, to) => call("campus-admin", { action: "sessions", from, to }),
+  followups: () => call("campus-admin", { action: "followups" }),
+  followupUpdate: (sessionId, status, purpose) => call("campus-admin", { action: "followup-update", sessionId, status, purpose }),
+  followupDelete: (sessionId) => call("campus-admin", { action: "followup-delete", sessionId }),
+  shareToggle: (sessionId, disabled) => call("campus-admin", { action: "share-toggle", sessionId, disabled }),
 };
 
 export const timeApi = {
@@ -95,6 +128,8 @@ export const mediaApi = {
   confirm: (sessionId, clipId, bytes, durationSec) => call("campus-media", { action: "confirm", sessionId, clipId, bytes, durationSec }),
   list: (sessionId) => call("campus-media", { action: "list", sessionId }),
   remove: (sessionId, clipId) => call("campus-media", { action: "delete", sessionId, clipId }),
+  signSong: (sessionId, mime, bytes) => call("campus-media", { action: "sign-song", sessionId, mime, bytes }),
+  confirmSong: (sessionId, bytes) => call("campus-media", { action: "confirm-song", sessionId, bytes }),
 };
 
 // ---- talks (reuses the Studio's own data) ----

@@ -13,6 +13,11 @@
 //   consent-lookup     { sessionId }                   -> consent record + session summary
 //   consent-withdraw   { sessionId, note }
 //   sessions           { from, to }                    -> session summaries (no participant details)
+//   (consent-lookup and consent-withdraw accept a session id OR its reference code, e.g. "K7Q-4MX")
+//   followups                                          -> opted-in follow-up contacts (admin-only; the only place emails are listed)
+//   followup-update    { sessionId, status, purpose }  -> status "sent" (logs the send) | "waiting" | "opted-out" (erases the email now)
+//   followup-delete    { sessionId }                   -> erases the contact details
+//   share-toggle       { sessionId, disabled }         -> switch a student's song page off/on
 //
 // Consent records hold participant names/emails/signatures and are only ever
 // returned by consent-lookup, by session id, to an administrator.
@@ -22,6 +27,18 @@ import { docGet, docSet, docList, newId, now } from "../lib/campus-store.js";
 import { authFrom, normEmail, publicUser, listUsers } from "../lib/campus-auth.js";
 import { CONSENT_TEXT, CONSENT_VERSION } from "../lib/campus-consent-default.js";
 import { r2Configured, presign } from "../lib/r2.js";
+import { normRef, resolveSong } from "../lib/campus-share.js";
+
+// A session id ("cs_…") or a reference code ("K7Q-4MX") → the session id.
+async function resolveSid(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("cs_")) return raw;
+  const want = normRef(raw);
+  if (want.length !== 6) return raw;
+  const hit = (await docList("session:")).find((s) => normRef(s.ref) === want);
+  return hit ? hit.id : raw;
+}
 
 export async function currentConsent() {
   const cur = await docGet("settings:consent");
@@ -103,17 +120,77 @@ export default async (req) => {
     }
 
     if (action === "consent-lookup") {
-      const sid = String(body.sessionId || "").trim();
+      const sid = await resolveSid(body.sessionId);
       const consent = await docGet(`consent:${sid}`);
       const session = await docGet(`session:${sid}`);
       if (!consent && !session) return json({ error: "No session with that id." }, 404);
       let clips = [];
       try { if (session && r2Configured()) clips = (session.clips || []).filter((c) => c.status === "ready").map((c) => ({ id: c.id, stage: c.stage, durationSec: c.durationSec, bytes: c.bytes, at: c.at, url: presign({ method: "GET", key: c.key, expiresSec: 3600 }) })); } catch {}
-      return json({ consent, session: session && summary(session), clips });
+      const followup = await docGet(`followup:${sid}`);
+      const shareIdx = session && session.share ? await docGet(`share:${session.share.code}`) : null;
+      const pageFb = await docGet(`sharefb:${sid}`);
+      return json({
+        sessionId: sid, consent, session: session && summary(session), clips,
+        recordings: (session && session.recordings) || [],
+        feedback: (session && session.feedback) || null,
+        followup,
+        share: session && session.share ? { code: session.share.code, disabled: Boolean(session.share.disabled), views: (shareIdx && shareIdx.views) || 0, ratings: (pageFb && pageFb.items) || [] } : null,
+        songLink: (session && session.songLink) || null,
+        songFile: session && session.songFile ? { status: session.songFile.status, bytes: session.songFile.bytes, at: session.songFile.at } : null,
+      });
+    }
+
+    if (action === "followups") {
+      const list = await docList("followup:");
+      const out = [];
+      for (const f of list) {
+        const s = await docGet(`session:${f.sessionId}`);
+        let song = null;
+        try { song = s ? await resolveSong(s, { signedSongUrl: s.songFile ? () => "uploaded" : null }) : null; } catch {}
+        out.push({
+          ...f, ref: s && s.ref, talk: s && s.talk ? s.talk.title : "", songTitle: s && s.lyrics ? s.lyrics.title || "" : "",
+          shareCode: s && s.share && !s.share.disabled ? s.share.code : null, songReady: Boolean(song), songFrom: song ? (song.fromLibrary ? "library" : song.kind === "link" ? "link" : "upload") : null,
+        });
+      }
+      out.sort((a, b) => (a.status === "waiting" ? 0 : 1) - (b.status === "waiting" ? 0 : 1) || String(b.at).localeCompare(String(a.at)));
+      return json({ followups: out });
+    }
+
+    if (action === "followup-update" || action === "followup-delete") {
+      const sid = await resolveSid(body.sessionId);
+      const f = await docGet(`followup:${sid}`);
+      if (!f) return json({ error: "No follow-up for that session." }, 404);
+      const erase = (why) => { f.email = ""; f.firstName = ""; f.erasedAt = now(); f.history = [...(f.history || []), { at: now(), by: admin.id, what: why }]; };
+      if (action === "followup-delete") { erase("contact details erased by an administrator"); f.status = "deleted"; }
+      else {
+        const st = String(body.status || "");
+        if (!["sent", "waiting", "opted-out"].includes(st)) return json({ error: "Unknown status." }, 400);
+        if (st === "sent") {
+          if (!f.email) return json({ error: "This contact's email has already been erased." }, 400);
+          f.sent = [...(f.sent || []), { at: now(), by: admin.id, purpose: ["song", "video"].includes(body.purpose) ? body.purpose : "song" }];
+          f.sentAt = now();
+          f.history = [...(f.history || []), { at: now(), by: admin.id, what: `email sent (${body.purpose || "song"})` }];
+          // Both promised emails sent (or only one was asked for) → done.
+          f.status = f.sent.length >= (f.purposes || ["song"]).length ? "sent" : "waiting";
+        } else if (st === "opted-out") { erase("student opted out"); f.status = "opted-out"; }
+        else { f.status = "waiting"; f.history = [...(f.history || []), { at: now(), by: admin.id, what: "reopened" }]; }
+      }
+      await docSet(`followup:${sid}`, f);
+      return json({ followup: f });
+    }
+
+    if (action === "share-toggle") {
+      const sid = await resolveSid(body.sessionId);
+      const s = await docGet(`session:${sid}`);
+      if (!s || !s.share) return json({ error: "That session has no song page." }, 404);
+      s.share = { ...s.share, disabled: Boolean(body.disabled) };
+      s.updatedAt = now();
+      await docSet(`session:${sid}`, s);
+      return json({ share: s.share });
     }
 
     if (action === "consent-withdraw") {
-      const sid = String(body.sessionId || "").trim();
+      const sid = await resolveSid(body.sessionId);
       const consent = await docGet(`consent:${sid}`);
       if (!consent) return json({ error: "No consent record for that session." }, 404);
       const next = { ...consent, withdrawn: { at: now(), by: admin.id, note: String(body.note || "").slice(0, 500) } };
@@ -143,5 +220,9 @@ export function summary(s) {
     participation: s.participation || null, consentVersion: s.consentVersion || null, lyrics: s.lyrics ? { ...s.lyrics, text: undefined, hasText: Boolean(s.lyrics.text) } : null, song: s.song || null,
     reaction: s.reaction || null, recordingCaptured: s.recordingCaptured ?? null, hasVideoRef: Boolean(s.videoRef), notes: s.notes || "",
     clipCount: (s.clips || []).filter((c) => c.status === "ready").length,
+    ref: s.ref || null, shareCode: s.share && !s.share.disabled ? s.share.code : null,
+    feedback: s.feedback ? { rating: s.feedback.rating, helped: s.feedback.helped, more: s.feedback.more, share: s.feedback.share, hasComment: Boolean(s.feedback.comment) } : null,
+    followUp: Boolean(s.followUp && s.followUp.optedIn), recordingCount: (s.recordings || []).length,
+    songReady: Boolean(s.songLink || (s.songFile && s.songFile.status === "ready") || (s.songified && s.songified.existing && !s.songified.newInterpretation)),
   };
 }

@@ -11,6 +11,15 @@
 //   abandon  { id, reason }        -> { session }
 //   mine    {}                     -> { active, recent, today: { sessions, lyrics, songs } }
 //
+// Phase 4 — these also work for up to 7 days after a session is completed
+// (the thank-you screen comes after completion):
+//   share     { id }                       -> { share }   (creates the public song-page code if missing)
+//   feedback  { id, rating, helped, more, share, comment } -> { session }   (the student's own answers)
+//   followup  { id, email, firstName, purposes, agree } -> { session }   (explicit opt-in; email kept ONLY in followup:<id>)
+//   recording-add    { id, kind, file, note } -> { session }   (camera/phone footage references; mirrored to the consent record)
+//   recording-remove { id, recId }            -> { session }
+//   song-link { id, url }                  -> { session }   (e.g. MelodyCraft's share link for the finished song)
+//
 // Sessions never store the participant's name or email — those live only in
 // the consent record (consent:<sessionId>), which workers write but can't
 // read back; administrators look it up by session id.
@@ -19,6 +28,10 @@ import { json, readJson } from "../lib/keys.js";
 import { docGet, docSet, docList, newId, now } from "../lib/campus-store.js";
 import { authFrom, publicUser } from "../lib/campus-auth.js";
 import { currentConsent, currentSettings, summary } from "./campus-admin.js";
+import { refCode, ensureRef, ensureShare, FOLLOWUP_TEXT, FOLLOWUP_VERSION, FOLLOWUP_PURPOSES, validEmail } from "../lib/campus-share.js";
+
+const AFTER_WINDOW_MS = 7 * 86400000;
+const REC_KINDS = ["phone", "camera", "other"];
 
 const STEPS = ["talk", "consent", "existing", "lyrics", "song", "outcome", "done"];
 const PARTICIPATION = ["recorded", "unrecorded", "declined"];
@@ -42,7 +55,7 @@ export default async (req) => {
   try {
     if (action === "config") {
       const consent = await currentConsent();
-      return json({ consent: { version: consent.version, text: consent.text, reviewed: Boolean(consent.reviewed) }, settings: await currentSettings(), user: publicUser(user) });
+      return json({ consent: { version: consent.version, text: consent.text, reviewed: Boolean(consent.reviewed) }, settings: await currentSettings(), user: publicUser(user), followUp: { text: FOLLOWUP_TEXT, version: FOLLOWUP_VERSION } });
     }
 
     if (action === "start") {
@@ -56,6 +69,7 @@ export default async (req) => {
         talk: null, songified: null, participation: null, consentVersion: null,
         lyrics: { generated: false, regenerated: 0, accepted: false, edited: false }, song: { opened: false, generated: false, played: false },
         reaction: null, recordingCaptured: null, videoRef: "", notes: "",
+        ref: refCode(), recordings: [],
       };
       return json({ session: await save(s) });
     }
@@ -63,7 +77,86 @@ export default async (req) => {
     if (action === "get") {
       const r = await own(body.id);
       if (r.error) return json({ error: r.error }, r.status);
+      if (ensureRef(r.s)) await save(r.s); // sessions from before reference codes existed
       return json({ session: r.s });
+    }
+
+    // ---- Phase 4: actions that also work just after completion ----
+    if (["share", "feedback", "followup", "recording-add", "recording-remove", "song-link"].includes(action)) {
+      const r = await own(body.id);
+      if (r.error) return json({ error: r.error }, r.status);
+      const s = r.s;
+      const recentlyDone = s.status === "completed" && Date.now() - Date.parse(s.endedAt || s.updatedAt) < AFTER_WINDOW_MS;
+      if (s.status !== "active" && !recentlyDone && user.role !== "admin") return json({ error: "This session is closed." }, 400);
+      ensureRef(s);
+      const consent = await docGet(`consent:${s.id}`);
+
+      if (action === "share") {
+        if (!s.participation || s.participation === "declined") return json({ error: "There's no song to share for this session." }, 400);
+        if (consent && consent.withdrawn) return json({ error: "Consent for this session was withdrawn, so its song page is off." }, 403);
+        await ensureShare(s);
+        await save(s);
+        return json({ share: s.share, ref: s.ref });
+      }
+
+      if (action === "feedback") {
+        const pickOne = (v, list) => (list.includes(v) ? v : null);
+        const rating = Number(body.rating);
+        s.feedback = {
+          rating: Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null,
+          helped: pickOne(body.helped, ["yes", "somewhat", "no"]),
+          more: pickOne(body.more, ["yes", "maybe", "no"]),
+          share: pickOne(body.share, ["yes", "maybe", "no"]),
+          comment: String(body.comment || "").trim().slice(0, 600),
+          at: now(),
+        };
+        return json({ session: await save(s) });
+      }
+
+      if (action === "followup") {
+        if (!s.participation || s.participation === "declined") return json({ error: "Follow-ups are only for students who took part." }, 400);
+        if (!body.agree) return json({ error: "Tick the box to agree to the follow-up email." }, 400);
+        const email = String(body.email || "").trim().toLowerCase();
+        if (!validEmail(email)) return json({ error: "That email address doesn't look right." }, 400);
+        const purposes = (Array.isArray(body.purposes) ? body.purposes : ["song"]).filter((p) => FOLLOWUP_PURPOSES.includes(p));
+        await ensureShare(s);
+        const rec = {
+          sessionId: s.id, email, firstName: String(body.firstName || "").trim().split(/\s+/)[0].slice(0, 40),
+          purposes: purposes.length ? purposes : ["song"], optInText: FOLLOWUP_TEXT, optInVersion: FOLLOWUP_VERSION,
+          at: now(), recordedBy: user.id, status: "waiting", sent: [], history: [{ at: now(), what: "opted in" }],
+        };
+        await docSet(`followup:${s.id}`, rec);
+        s.followUp = { optedIn: true, at: rec.at, purposes: rec.purposes };
+        return json({ session: await save(s) });
+      }
+
+      if (action === "recording-add") {
+        const file = String(body.file || "").trim().slice(0, 200);
+        if (!file) return json({ error: "Give the file name or clip number." }, 400);
+        if (s.participation !== "recorded") return json({ error: "Recording wasn't authorized for this session." }, 403);
+        const rec = { id: newId("rec_"), kind: REC_KINDS.includes(body.kind) ? body.kind : "phone", file, note: String(body.note || "").trim().slice(0, 300), at: now(), by: user.id };
+        s.recordings = [...(s.recordings || []), rec].slice(-20);
+        s.recordingCaptured = true;
+        s.videoRef = s.videoRef || file;
+        if (consent) await docSet(`consent:${s.id}`, { ...consent, videoRef: s.videoRef, recordings: s.recordings });
+        return json({ session: await save(s) });
+      }
+
+      if (action === "recording-remove") {
+        s.recordings = (s.recordings || []).filter((x) => x.id !== body.recId);
+        if (!s.recordings.length) s.videoRef = "";
+        else if (!s.recordings.some((x) => x.file === s.videoRef)) s.videoRef = s.recordings[0].file;
+        if (consent) await docSet(`consent:${s.id}`, { ...consent, videoRef: s.videoRef, recordings: s.recordings });
+        return json({ session: await save(s) });
+      }
+
+      if (action === "song-link") {
+        const url = String(body.url || "").trim();
+        if (url && !/^https:\/\/\S+$/i.test(url)) return json({ error: "Paste a link that starts with https://" }, 400);
+        s.songLink = url.slice(0, 500) || null;
+        if (url) s.song = { ...s.song, generated: true };
+        return json({ session: await save(s) });
+      }
     }
 
     if (action === "update") {
@@ -129,6 +222,8 @@ export default async (req) => {
       if (o.notes !== undefined) s.notes = String(o.notes || "").slice(0, 2000);
       if (!s.participation) s.participation = "declined";
       s.status = "completed"; s.step = "done"; s.endedAt = now(); s.durationSec = secs(s.startedAt, s.endedAt);
+      ensureRef(s);
+      await ensureShare(s); // participating students get a song page + QR code on the thank-you screen
       return json({ session: await save(s) });
     }
 

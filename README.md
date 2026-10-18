@@ -120,7 +120,7 @@ an interrupted session resumes from the home screen.
 Code: `netlify/functions/campus-*.js`, `netlify/lib/campus-*.js`,
 `src/campus/`. Data lives in the Netlify Blobs store `campus` (documents:
 `user:`, `email:`, `invite:`, `session:`, `consent:`, `settings:`,
-`consent-version:`, `shift:`, `correction:`, `rate:`, `payroll:`, `settings:retention`, `purge:`). No database or migration is involved. Participant names,
+`consent-version:`, `shift:`, `correction:`, `rate:`, `payroll:`, `settings:retention`, `purge:`, `share:`, `sharefb:`, `followup:`). No database or migration is involved. Participant names,
 emails and signatures exist only in `consent:` records, which only an
 administrator can read, by session id.
 
@@ -177,6 +177,41 @@ entry stays on its session marked deleted with the date and reason. New
 recordings are refused once a session's consent is withdrawn. The daily run is
 `netlify/functions/campus-retention-daily.js` (Netlify scheduled function).
 Documents: `settings:retention`, `purge:`.
+
+### Song pages, feedback, recording references & follow-ups (Phase 4)
+
+- **QR song page.** Completing a session where the student took part creates
+  a public page at `/song/<code>` (random 10-letter code, nothing about the
+  student in it) and the thank-you screen shows its QR code. The page plays,
+  in order: a song link the worker pasted (e.g. MelodyCraft's share link), an
+  MP3 the worker uploaded (private R2, short-lived signed link), the library
+  song the student heard, or a Concert-library song published since for the
+  same talk; otherwise it says the song is on its way. It also shows the lyrics
+  and takes a star rating + comment. It switches off if consent is withdrawn
+  or an administrator turns it off (Consent lookup). Workers can reopen any
+  finished session's QR / song tools with 📱 on their recent sessions.
+- **Student feedback.** On the thank-you screen: stars, "did the song help the
+  message sink in", "listen to more", "share with a friend", and an
+  anonymous comment. Shown in Analytics with comments and CSVs.
+- **Recording references.** Every session has a short reference code
+  (e.g. `K7Q-4MX`). A 🎬 Slate button (recorded sessions only) shows it full
+  screen with the date/time, talk and authorization status, to film at the
+  start of each recording. Workers log camera/phone file names against the
+  session; they're copied onto the consent record, and Consent lookup accepts
+  the reference code.
+- **Follow-ups (opt-in only).** The student may type their own email and tick
+  the exact opt-in wording (stored with the record) to be told when the song
+  (and video) is ready — at most two emails. The address lives only in
+  `followup:<sessionId>` (admin-only). Admin → **Follow-ups**: ✉ opens a
+  ready-made email in your own email app with the song-page link, then "Mark
+  sent". "Student said stop" erases the address at once; the retention
+  policy erases the rest N days after the last email (default 60).
+
+Documents: `share:<code>` (index + visit count), `sharefb:<sessionId>` (page
+ratings), `followup:<sessionId>`. Functions: `campus-share` (public),
+`campus-sessions` (share / feedback / followup / recording-add /
+recording-remove / song-link), `campus-media` (sign-song / confirm-song),
+`campus-admin` (followups / followup-update / followup-delete / share-toggle).
 
 ### Video clips (in-app recording → private Cloudflare R2)
 

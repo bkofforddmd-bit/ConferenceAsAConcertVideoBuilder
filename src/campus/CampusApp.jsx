@@ -8,6 +8,8 @@ import { authApi, sessionApi, timeApi, getToken, setToken } from "./campus-api.j
 import SessionFlow from "./SessionFlow.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import TimePanel from "./TimePanel.jsx";
+import { SongShare, SongAttach, RecordingRefs } from "./Phase4Parts.jsx";
+import { mediaApi } from "./campus-api.js";
 import "./campus.css";
 
 const ACTIVE_KEY = "campus-active-session";
@@ -20,6 +22,7 @@ export default function CampusApp() {
   const [config, setConfig] = useState(null);
   const [view, setView] = useState("home"); // home | session | admin | time
   const [clock, setClock] = useState(null); // { open, today } from the time service
+  const [tools, setTools] = useState(null); // session id whose QR / song tools are open
   const [sessionId, setSessionId] = useState(null);
   const [mine, setMine] = useState(null);
   const [err, setErr] = useState("");
@@ -115,10 +118,13 @@ export default function CampusApp() {
             <tbody>
               {mine.recent.slice(0, 8).map((s) => (
                 <tr key={s.id}>
-                  <td>{new Date(s.startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</td>
+                  <td>{new Date(s.startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{s.ref && <><br /><span className="c-ref" style={{ fontSize: 12 }}>{s.ref}</span></>}</td>
                   <td>{s.talk ? s.talk.title : "—"}</td>
                   <td>{s.status === "completed" ? (s.participation === "declined" ? "declined" : s.song && s.song.generated ? "song" : s.lyrics && s.lyrics.generated ? "lyrics" : "done") : "unfinished"}</td>
-                  <td>{s.lyrics && s.lyrics.generated && s.lyrics.hasText && <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer" title="Open this session's talk and lyrics in the Studio to make the music video">🎬 Studio</a>}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {s.status === "completed" && s.participation && s.participation !== "declined" && <button className="btn btn-ghost btn-sm" title="The student's song page: QR code, song link or upload" onClick={() => setTools(s.id)}>📱</button>}{" "}
+                    {s.lyrics && s.lyrics.generated && s.lyrics.hasText && <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer" title="Open this session's talk and lyrics in the Studio to make the music video">🎬 Studio</a>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -126,7 +132,38 @@ export default function CampusApp() {
         </div>
       )}
       {user.role === "admin" && <button className="c-btn ghost" onClick={() => setView("admin")}>⚙ Administrator panel</button>}
+      {tools && <SessionTools id={tools} onClose={() => { setTools(null); refresh(); }} />}
     </Shell>
+  );
+}
+
+// QR code, song attachment and recording references for a finished session.
+function SessionTools({ id, onClose }) {
+  const [s, setS] = useState(null);
+  const [err, setErr] = useState("");
+  const [mediaOk, setMediaOk] = useState(false);
+  useEffect(() => {
+    sessionApi.get(id).then((r) => setS(r.session)).catch((e) => setErr(e.message));
+    mediaApi.status().then((r) => setMediaOk(Boolean(r.configured))).catch(() => {});
+  }, [id]);
+  return (
+    <div className="c-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="c-modal-box">
+        <div className="c-row" style={{ justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0 }}>{s && s.talk ? s.talk.title : "Session"}</h2>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Close</button>
+        </div>
+        {err && <div className="c-err">{err}</div>}
+        {!s && !err && <p className="c-note"><span className="c-spinner" />Loading…</p>}
+        {s && (
+          <>
+            <SongShare sessionId={s.id} code={s.share && s.share.code} compact />
+            <div className="c-card worker"><div className="c-worker-tag">Song for the page</div><SongAttach session={s} onSession={setS} mediaOk={mediaOk} /></div>
+            {s.participation === "recorded" && <div className="c-card worker"><div className="c-worker-tag">Recording references</div><RecordingRefs session={s} onSession={setS} /></div>}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

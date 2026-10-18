@@ -151,7 +151,10 @@ test("retention: policy saves; purge deletes files, marks clips, keeps consent, 
   assert.deepEqual(pv.data.candidates.map((c) => c.clipId), ["clip_old"]);
   assert.equal(pv.data.storage.clips, 2);
   assert.equal(pv.data.storageConfigured, false);
-  assert.equal((await call(analytics, { action: "purge" }, adminTok)).status, 503, "no storage, no purge");
+  const noStore = await call(analytics, { action: "purge" }, adminTok);
+  assert.equal(noStore.status, 200);
+  assert.equal(noStore.data.log.deleted, 0, "no video storage: nothing is deleted");
+  assert.equal(noStore.data.failed.length, 1, "...and the clip is reported, not marked deleted");
 
   // run the purge with a stand-in for the R2 delete
   const deleted = [];

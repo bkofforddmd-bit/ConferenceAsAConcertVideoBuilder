@@ -146,3 +146,28 @@ code.c-code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px;
 @media print { .campus-top, .c-tabs, .c-btn { display: none !important; } }
 .c-check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; font-size: 15px; line-height: 1.4; }
 .c-check input { flex: 0 0 auto; width: 20px; height: 20px; margin: 1px 0 0; }
+
+/* Phase 4: QR song pages, feedback, slate */
+.c-qr { display: block; margin: 8px auto; border-radius: 14px; background: #fff; padding: 10px; box-sizing: content-box; }
+.c-share { width: 100%; box-sizing: border-box; margin: 14px 0; padding: 14px; border-radius: 16px; background: rgba(8,18,40,0.55); border: 1px solid rgba(243,217,164,0.35); text-align: center; color: #f5f7fa; }
+.c-share.compact { background: rgba(255,255,255,0.04); border-color: var(--line); }
+.c-share-title { font-weight: 700; font-size: 18px; margin-bottom: 6px; }
+.c-share-url { font-size: 13px; color: #c9d6ea; word-break: break-all; margin: 4px 0 8px; }
+.c-fb-q { font-size: 15px; margin-top: 8px; color: #e6edf7; }
+.c-stars { display: flex; justify-content: center; gap: 4px; }
+.c-stars button { background: transparent; border: 0; cursor: pointer; color: rgba(255,255,255,0.28); line-height: 1; padding: 2px 4px; }
+.c-stars button.on { color: #f3c969; text-shadow: 0 0 12px rgba(243,201,105,0.45); }
+.c-ref { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.08em; color: var(--warning); }
+.c-slate-btn { position: fixed; left: 12px; bottom: 12px; z-index: 40; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--warning); background: rgba(10,20,40,0.9); color: var(--warning); font-weight: 700; cursor: pointer; }
+.c-slate { position: fixed; inset: 0; z-index: 100; background: #fff; color: #0b1a33; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 20px; cursor: pointer; }
+.c-slate-ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 800; font-size: clamp(64px, 20vw, 160px); letter-spacing: 0.06em; line-height: 1; }
+.c-slate-time { font-size: clamp(18px, 5vw, 30px); font-weight: 600; }
+.c-slate-talk { font-size: clamp(16px, 4.4vw, 24px); max-width: 900px; }
+.c-slate-auth { font-size: clamp(16px, 4.4vw, 24px); font-weight: 700; padding: 8px 16px; border-radius: 10px; }
+.c-slate-auth.ok { background: #d8f5df; color: #145c2b; } .c-slate-auth.no { background: #fde0e0; color: #8a1414; }
+.c-slate-small { font-size: 12px; letter-spacing: 0.14em; color: #5b6b85; }
+.c-song-hero { margin: 0; min-height: 100vh; justify-content: flex-start; padding-top: 36px; }
+.c-song-kicker { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: #f3d9a4; margin-bottom: 10px; }
+.c-song-player { margin: 8px auto 0; max-width: 520px; }
+.c-modal { position: fixed; inset: 0; z-index: 60; background: rgba(4,10,24,0.82); display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 24px 12px; }
+.c-modal-box { width: 100%; max-width: 520px; background: var(--navy, #0f1f3d); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }

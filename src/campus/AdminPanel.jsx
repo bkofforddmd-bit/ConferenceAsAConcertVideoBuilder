@@ -8,6 +8,8 @@ import { adminApi } from "./campus-api.js";
 import HoursAdmin from "./HoursAdmin.jsx";
 import Analytics from "./Analytics.jsx";
 import Retention from "./Retention.jsx";
+import FollowUps from "./FollowUps.jsx";
+import { songPageUrl } from "./campus-api.js";
 
 export default function AdminPanel({ user }) {
   const [tab, setTab] = useState("analytics");
@@ -15,7 +17,7 @@ export default function AdminPanel({ user }) {
     <div>
       <h1>Administrator</h1>
       <div className="c-tabs">
-        {[["analytics", "Analytics"], ["workers", "Workers"], ["hours", "Hours & payroll"], ["sessions", "Sessions"], ["lookup", "Consent lookup"], ["retention", "Retention"], ["consent", "Release text"], ["settings", "Settings"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
+        {[["analytics", "Analytics"], ["workers", "Workers"], ["hours", "Hours & payroll"], ["sessions", "Sessions"], ["followups", "Follow-ups"], ["lookup", "Consent lookup"], ["retention", "Retention"], ["consent", "Release text"], ["settings", "Settings"]].map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
       </div>
       {tab === "workers" && <Workers me={user} />}
       {tab === "consent" && <ConsentText />}
@@ -25,7 +27,7 @@ export default function AdminPanel({ user }) {
       {tab === "hours" && <HoursAdmin />}
       {tab === "analytics" && <Analytics />}
       {tab === "retention" && <Retention />}
-      <p className="c-note" style={{ marginTop: 24 }}>Coming next: Phase 4 (QR code sharing, extra student feedback, better recording references, follow-ups where the student opted in).</p>
+      {tab === "followups" && <FollowUps />}
     </div>
   );
 }
@@ -145,11 +147,12 @@ function Lookup() {
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   async function find(e) { e && e.preventDefault(); setErr(""); try { setRes(await adminApi.consentLookup(id.trim())); } catch (e2) { setRes(null); setErr(e2.message); } }
+  const sid = (res && res.sessionId) || id.trim();
   const c = res && res.consent;
   return (
     <div>
       <form onSubmit={find} className="c-card">
-        <label className="c-field"><span className="lbl">Session id</span><input value={id} onChange={(e) => setId(e.target.value)} placeholder="cs_…" /></label>
+        <label className="c-field"><span className="lbl">Session id or reference code</span><input value={id} onChange={(e) => setId(e.target.value)} placeholder="cs_… or K7Q-4MX (from the slate)" /></label>
         <button className="c-btn primary" type="submit">Find the consent record</button>
         {err && <div className="c-err">{err}</div>}
       </form>
@@ -165,7 +168,8 @@ function Lookup() {
                 <tr><td>Adult</td><td>{c.adult ? "yes" : "no"}</td></tr>
                 <tr><td>Accepted</td><td>{new Date(c.acceptedAt).toLocaleString()}</td></tr>
                 <tr><td>Release version</td><td>{c.textVersion}{c.textReviewed ? " (reviewed)" : " (draft)"}</td></tr>
-                <tr><td>Video reference</td><td>{c.videoRef || "—"}</td></tr>
+                <tr><td>Session</td><td><code className="c-code">{res.sessionId}</code>{res.session && res.session.ref ? <> · ref <span className="c-ref">{res.session.ref}</span></> : null}</td></tr>
+                <tr><td>Recordings</td><td>{res.recordings && res.recordings.length ? res.recordings.map((r) => <div key={r.id}><b>{r.file}</b> <span className="c-note">({r.kind}{r.note ? ` · ${r.note}` : ""})</span></div>) : c.videoRef || "—"}</td></tr>
                 <tr><td>Withdrawn</td><td>{c.withdrawn ? `${new Date(c.withdrawn.at).toLocaleString()} — ${c.withdrawn.note || ""}` : "no"}</td></tr>
               </tbody></table>
               {res.clips && res.clips.length > 0 && (
@@ -184,12 +188,21 @@ function Lookup() {
               {!c.withdrawn && (
                 <div style={{ marginTop: 10 }}>
                   <label className="c-field"><span className="lbl">Withdrawal note (how the request came in)</span><input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-                  <button className="c-btn danger" onClick={() => adminApi.consentWithdraw(id.trim(), note).then(find).catch((e2) => setErr(e2.message))}>Record a consent withdrawal</button>
+                  <button className="c-btn danger" onClick={() => adminApi.consentWithdraw(sid, note).then(find).catch((e2) => setErr(e2.message))}>Record a consent withdrawal</button>
                 </div>
               )}
             </>
           )}
           {res.session && <p className="c-note">Session: {res.session.status} · {res.session.talk ? res.session.talk.title : "no talk"} · started {new Date(res.session.startedAt).toLocaleString()}</p>}
+          {res.feedback && <p className="c-note">Student feedback: {res.feedback.rating ? `${"★".repeat(res.feedback.rating)} ` : ""}{[res.feedback.helped && `helped: ${res.feedback.helped}`, res.feedback.more && `more songs: ${res.feedback.more}`, res.feedback.share && `would share: ${res.feedback.share}`].filter(Boolean).join(" · ")}{res.feedback.comment ? <><br />“{res.feedback.comment}”</> : null}</p>}
+          {res.share && (
+            <div className="c-card" style={{ padding: 10 }}>
+              <p className="c-note" style={{ margin: 0 }}>Song page: <a href={songPageUrl(res.share.code)} target="_blank" rel="noopener noreferrer" style={{ color: "var(--sky)" }}>{songPageUrl(res.share.code).replace(/^https?:\/\//, "")}</a> · {res.share.views} view{res.share.views === 1 ? "" : "s"} · {res.share.disabled ? "switched OFF" : c && c.withdrawn ? "off (consent withdrawn)" : "on"}{res.songLink ? " · song link set" : res.songFile && res.songFile.status === "ready" ? " · song uploaded" : ""}</p>
+              {res.share.ratings.length > 0 && res.share.ratings.map((r, i) => <div key={i} className="c-note">{"★".repeat(r.rating)} {r.comment ? `“${r.comment}”` : ""}</div>)}
+              <button className="btn btn-ghost btn-sm" onClick={() => adminApi.shareToggle(sid, !res.share.disabled).then(find).catch((e2) => setErr(e2.message))}>{res.share.disabled ? "Switch the song page back on" : "Switch the song page off"}</button>
+            </div>
+          )}
+          {res.followup && <p className="c-note">Follow-up email: {res.followup.status}{res.followup.email ? ` · ${res.followup.email}` : " · contact erased"} (see the Follow-ups tab)</p>}
         </div>
       )}
     </div>
@@ -216,7 +229,7 @@ function Sessions() {
       <table className="c-table">
         <thead><tr><th>When</th><th>Talk</th><th>Result</th><th>Id</th></tr></thead>
         <tbody>
-          {list.map((s) => <tr key={s.id}><td>{new Date(s.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>{s.talk ? s.talk.title : "—"}</td><td>{s.status === "abandoned" ? "unfinished" : s.participation === "declined" ? "declined" : s.participation === "recorded" ? "recorded" : s.participation || "—"}{s.song && s.song.generated ? " · song" : s.lyrics && s.lyrics.generated ? " · lyrics" : ""}{s.clipCount ? ` · 🎥 ${s.clipCount}` : ""}</td><td><code className="c-code">{s.id}</code>{s.lyrics && s.lyrics.hasText && <> <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Studio</a></>}</td></tr>)}
+          {list.map((s) => <tr key={s.id}><td>{new Date(s.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>{s.talk ? s.talk.title : "—"}</td><td>{s.status === "abandoned" ? "unfinished" : s.participation === "declined" ? "declined" : s.participation === "recorded" ? "recorded" : s.participation || "—"}{s.song && s.song.generated ? " · song" : s.lyrics && s.lyrics.generated ? " · lyrics" : ""}{s.clipCount ? ` · 🎥 ${s.clipCount}` : ""}{s.feedback && s.feedback.rating ? ` · ${"★".repeat(s.feedback.rating)}` : ""}{s.followUp ? " · ✉️" : ""}</td><td>{s.ref && <><span className="c-ref">{s.ref}</span><br /></>}<code className="c-code" style={{ fontSize: 11 }}>{s.id}</code>{s.shareCode && <> <a className="btn btn-ghost btn-sm" href={songPageUrl(s.shareCode)} target="_blank" rel="noopener noreferrer" title="The student's song page">📱</a></>}{s.lyrics && s.lyrics.hasText && <> <a className="btn btn-ghost btn-sm" href={`/?campus=${s.id}`} target="_blank" rel="noopener noreferrer">🎬 Studio</a></>}</td></tr>)}
         </tbody>
       </table>
       <button className="c-btn ghost" onClick={reload}>Refresh</button>

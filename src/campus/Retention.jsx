@@ -19,7 +19,7 @@ export default function Retention() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    try { const r = await analyticsApi.retention(); setData(r); setF({ clipRetentionDays: r.policy.clipRetentionDays, purgeWithdrawn: r.policy.purgeWithdrawn, autoPurge: r.policy.autoPurge }); setErr(""); } catch (e) { setErr(e.message); }
+    try { const r = await analyticsApi.retention(); setData(r); setF({ clipRetentionDays: r.policy.clipRetentionDays, purgeWithdrawn: r.policy.purgeWithdrawn, autoPurge: r.policy.autoPurge, followupRetentionDays: r.policy.followupRetentionDays }); setErr(""); } catch (e) { setErr(e.message); }
   }
   useEffect(() => { load(); }, []);
   useEffect(() => { if (!armed) return undefined; const t = setTimeout(() => setArmed(false), 8000); return () => clearTimeout(t); }, [armed]);
@@ -27,7 +27,7 @@ export default function Retention() {
   async function save(e) {
     e.preventDefault();
     setBusy(true); setMsg(""); setErr("");
-    try { await analyticsApi.setRetention({ ...f, clipRetentionDays: Number(f.clipRetentionDays) }); setMsg("Policy saved. The list below shows what it would delete."); await load(); } catch (e2) { setErr(e2.message); }
+    try { await analyticsApi.setRetention({ ...f, clipRetentionDays: Number(f.clipRetentionDays), followupRetentionDays: Number(f.followupRetentionDays) }); setMsg("Policy saved. The list below shows what it would delete."); await load(); } catch (e2) { setErr(e2.message); }
     setBusy(false);
   }
   async function purge() {
@@ -35,7 +35,7 @@ export default function Retention() {
     setArmed(false); setBusy(true); setMsg(""); setErr("");
     try {
       const r = await analyticsApi.purge(data.candidates.map((c) => c.clipId));
-      setMsg(`Deleted ${r.log.deleted} clip${r.log.deleted === 1 ? "" : "s"} (${mb(r.log.bytes)}).${r.failed.length ? ` ${r.failed.length} couldn't be deleted and were left as they were: ${r.failed[0].error}` : ""}`);
+      setMsg(`Deleted ${r.log.deleted} clip${r.log.deleted === 1 ? "" : "s"} (${mb(r.log.bytes)})${r.log.followupsErased ? ` and erased ${r.log.followupsErased} follow-up email${r.log.followupsErased === 1 ? "" : "s"}` : ""}.${r.failed.length ? ` ${r.failed.length} couldn't be deleted and were left as they were: ${r.failed[0].error}` : ""}`);
       await load();
     } catch (e) { setErr(e.message); }
     setBusy(false);
@@ -44,6 +44,7 @@ export default function Retention() {
   if (!data || !f) return err ? <div className="c-err">{err}</div> : <p className="c-note"><span className="c-spinner" />Loading…</p>;
   const c = data.candidates;
   const total = c.reduce((t, x) => t + x.bytes, 0);
+  const fc = data.followupCandidates || [];
 
   return (
     <div>
@@ -57,6 +58,8 @@ export default function Retention() {
         <h2>Retention policy for video clips</h2>
         <label className="c-field"><span className="lbl">Keep clips for (days) — 0 keeps them until deleted by hand</span><input type="number" min="0" max="3650" step="1" value={f.clipRetentionDays} onChange={(e) => setF({ ...f, clipRetentionDays: e.target.value })} /></label>
         <label className="c-check"><input type="checkbox" checked={f.purgeWithdrawn} onChange={(e) => setF({ ...f, purgeWithdrawn: e.target.checked })} /> Delete a session's clips once the student withdraws consent</label>
+        <label className="c-field"><span className="lbl">Erase follow-up email addresses this many days after the last email (7–365)</span><input type="number" min="7" max="365" step="1" value={f.followupRetentionDays} onChange={(e) => setF({ ...f, followupRetentionDays: e.target.value })} /></label>
+        <p className="c-note" style={{ marginTop: -6 }}>Students who never get an email are erased the same number of days after they opted in. "Student said stop" erases an address at once.</p>
         <label className="c-check"><input type="checkbox" checked={f.autoPurge} onChange={(e) => setF({ ...f, autoPurge: e.target.checked })} /> Delete automatically once a day (otherwise only when you tap the button below)</label>
         <p className="c-note">Only the video files are deleted. Consent records (with the exact release text and signature), session records and lyrics are always kept. Clips already spliced into a published music video stay in that video.</p>
         {data.policy.updatedAt && <p className="c-note">Last changed {when(data.policy.updatedAt)}.</p>}
@@ -67,7 +70,9 @@ export default function Retention() {
       {msg && <div className="c-ok">{msg}</div>}
 
       <div className={`c-card ${c.length ? "warn" : "ok"}`}>
-        <h2>{c.length ? `${c.length} clip${c.length === 1 ? "" : "s"} due for deletion (${mb(total)})` : "Nothing is due for deletion"}</h2>
+        <h2>{c.length ? `${c.length} clip${c.length === 1 ? "" : "s"} due for deletion (${mb(total)})` : "No video clips are due for deletion"}</h2>
+        <p className="c-note">Follow-up email addresses on file: {data.followupContacts || 0}. Due to be erased: {fc.length}.{fc.length > 0 && c.length === 0 ? " " : ""}</p>
+        {fc.length > 0 && c.length === 0 && <button className={`c-btn ${armed ? "danger" : "ghost"}`} onClick={purge} disabled={busy}>{armed ? `Tap again to erase ${fc.length} email address${fc.length === 1 ? "" : "es"}` : `Erase ${fc.length} follow-up email address${fc.length === 1 ? "" : "es"} now`}</button>}
         {c.length > 0 && (
           <>
             <div className="c-scroll">
@@ -88,7 +93,7 @@ export default function Retention() {
         <h2>Deletion log</h2>
         {data.log.length === 0 ? <p className="c-note">No deletions yet.</p> : (
           <table className="c-table">
-            <tbody>{data.log.map((l) => <tr key={l.id}><td>{when(l.at)}</td><td>{l.trigger === "daily" ? "automatic" : "by an administrator"}</td><td>{l.deleted} deleted ({mb(l.bytes)}){l.failed ? ` · ${l.failed} failed` : ""}<br /><span className="c-note">{Object.entries(l.reasons || {}).map(([k, v]) => `${v} ${k}`).join(" · ") || "nothing due"}</span></td></tr>)}</tbody>
+            <tbody>{data.log.map((l) => <tr key={l.id}><td>{when(l.at)}</td><td>{l.trigger === "daily" ? "automatic" : "by an administrator"}</td><td>{l.deleted} deleted ({mb(l.bytes)}){l.failed ? ` · ${l.failed} failed` : ""}<br /><span className="c-note">{Object.entries(l.reasons || {}).map(([k, v]) => `${v} ${k}`).join(" · ") || "no clips due"}{l.followupsErased ? ` · ${l.followupsErased} follow-up email${l.followupsErased === 1 ? "" : "s"} erased` : ""}</span></td></tr>)}</tbody>
           </table>
         )}
       </div>

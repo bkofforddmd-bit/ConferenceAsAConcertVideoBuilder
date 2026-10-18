@@ -146,6 +146,32 @@ export default function Analytics() {
             {data.byDate.length > 0 && <p className="c-note">Dark bar = participated, light bar = approached.</p>}
           </div>
 
+          {data.engagement && (
+            <div className="c-card">
+              <h2>Student feedback & song pages</h2>
+              <div className="c-stats c-stats-wide">
+                <Stat n={data.engagement.feedback.avgRating == null ? "—" : `${data.engagement.feedback.avgRating} ★`} l={`avg. rating (${data.engagement.feedback.answered} answered)`} />
+                <Stat n={data.engagement.songPages.opened} l={`song pages opened (of ${data.engagement.songPages.created})`} sub={`${data.engagement.songPages.views} total visits`} />
+                <Stat n={data.engagement.songPages.avgRating == null ? "—" : `${data.engagement.songPages.avgRating} ★`} l={`song-page rating (${data.engagement.songPages.ratings})`} />
+                <Stat n={data.engagement.followUps.optedIn} l="asked for an email" sub={`${data.engagement.followUps.waiting} waiting · ${data.engagement.followUps.sent} sent`} />
+              </div>
+              <table className="c-table">
+                <tbody>
+                  <tr><td>Song helped the message sink in</td><td>{fbLine(data.engagement.feedback.helped, { yes: "yes", somewhat: "somewhat", no: "not really" })}</td></tr>
+                  <tr><td>Would listen to more</td><td>{fbLine(data.engagement.feedback.more, { yes: "yes", maybe: "maybe", no: "no" })}</td></tr>
+                  <tr><td>Would share with a friend</td><td>{fbLine(data.engagement.feedback.share, { yes: "yes", maybe: "maybe", no: "no" })}</td></tr>
+                  <tr><td>Ratings</td><td>{[5, 4, 3, 2, 1].map((n) => `${n}★ ${data.engagement.feedback.ratings[n] || 0}`).join(" · ")}</td></tr>
+                </tbody>
+              </table>
+              {data.comments && data.comments.length > 0 && (
+                <details style={{ marginTop: 10 }}>
+                  <summary>Student comments ({data.comments.length})</summary>
+                  {data.comments.map((c, i) => <div key={i} className="c-card" style={{ padding: 10, margin: "6px 0" }}>“{c.comment}”<div className="c-note" style={{ margin: 0 }}>{c.rating ? `${"★".repeat(c.rating)} · ` : ""}{c.talk} · {c.where} · {c.date}{c.ref ? ` · ${c.ref}` : ""}</div></div>)}
+                </details>
+              )}
+            </div>
+          )}
+
           <div className="c-card">
             <h2>Student reactions</h2>
             <div className="c-row">
@@ -177,7 +203,7 @@ export default function Analytics() {
 
           <div className="c-card">
             <h2>Exports (CSV)</h2>
-            <p className="c-note">For the dates and worker selected above. No participant names, emails or signatures are included.</p>
+            <p className="c-note">For the dates and worker selected above. No participant names, emails or signatures are included. (Student comments are anonymous, but they're the students' own words.)</p>
             <div className="c-row">
               <button className="c-btn ghost" onClick={() => downloadCsv(`campus-summary_${tag}.csv`, [
                 ["From", from || "(all)"], ["To", to || "(all)"], ["Worker", workerId ? (data.workers.find((w) => w.id === workerId) || {}).name : "All"], [],
@@ -198,9 +224,13 @@ export default function Analytics() {
                 ...data.talks.map((k) => [k.title, k.speaker, k.n, k.participated, k.lyrics, k.songs, k.existing ? "yes" : "no", unsongified.some((u) => u.uri === k.uri && !u.nowInLibrary) ? "yes" : "no", `https://www.churchofjesuschrist.org${k.uri}`]),
               ])}>⬇ Talks</button>
               <button className="c-btn ghost" onClick={() => downloadCsv(`campus-sessions_${tag}.csv`, [
-                ["Session id", "Date", "Started", "Ended", "Seconds", "Worker", "Campus", "Status", "Participation", "Talk", "Speaker", "Had library song", "Lyrics", "Song", "Song played", "Reaction", "Clips"],
-                ...data.rows.map((r) => [r.id, r.date, r.startedAt, r.endedAt, r.durationSec, r.worker, r.campus, r.status, r.participation, r.talk, r.speaker, r.existingSong ? "yes" : "no", r.lyrics ? "yes" : "no", r.song ? "yes" : "no", r.played ? "yes" : "no", r.reaction, r.clips]),
+                ["Session id", "Reference", "Date", "Started", "Ended", "Seconds", "Worker", "Campus", "Status", "Participation", "Talk", "Speaker", "Had library song", "Lyrics", "Song", "Song played", "Reaction", "Clips", "Recording refs", "Rating", "Helped", "Want more", "Would share", "Song page", "Song page visits", "Song page ratings", "Follow-up"],
+                ...data.rows.map((r) => [r.id, r.ref, r.date, r.startedAt, r.endedAt, r.durationSec, r.worker, r.campus, r.status, r.participation, r.talk, r.speaker, r.existingSong ? "yes" : "no", r.lyrics ? "yes" : "no", r.song ? "yes" : "no", r.played ? "yes" : "no", r.reaction, r.clips, r.recordings, r.rating, r.helped, r.more, r.wouldShare, r.songPage ? "yes" : "no", r.songPageViews, r.songPageRatings, r.followUp]),
               ])}>⬇ Every session</button>
+              <button className="c-btn ghost" disabled={!data.comments || !data.comments.length} onClick={() => downloadCsv(`campus-comments_${tag}.csv`, [
+                ["Date", "Where", "Rating", "Talk", "Reference", "Comment"],
+                ...data.comments.map((c) => [c.date, c.where, c.rating || "", c.talk, c.ref, c.comment]),
+              ])}>⬇ Student comments</button>
             </div>
           </div>
           <button className="c-btn ghost" onClick={load} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
@@ -208,6 +238,12 @@ export default function Analytics() {
       )}
     </div>
   );
+}
+
+function fbLine(t, labels) {
+  const total = Object.values(t).reduce((a, b) => a + b, 0);
+  if (!total) return "—";
+  return Object.keys(labels).map((k) => `${labels[k]} ${t[k] || 0} (${Math.round(((t[k] || 0) / total) * 100)}%)`).join(" · ");
 }
 
 function Stat({ n, l, sub }) {

@@ -17,6 +17,7 @@ import MelodyCraftPicker from "../components/MelodyCraftPicker.jsx";
 import { downloadCampusProject } from "../lib/campus-import.js";
 import VideoRecorder from "./VideoRecorder.jsx";
 import { mediaApi } from "./campus-api.js";
+import { SongShare, StudentFeedback, FollowUpOptIn, SongAttach, RecordingRefs, Slate } from "./Phase4Parts.jsx";
 
 const MOODS = ["Hopeful", "Peaceful", "Joyful", "Reflective", "Energetic", "Reverent"];
 const GENRES = ["Pop", "Acoustic", "Worship", "Hip-hop", "Country", "Cinematic", "Folk"];
@@ -43,6 +44,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   const [mc, setMc] = useState({ genres: [], moods: [] });
   const [talkText, setTalkText] = useState("");
   const [firstNameOf, setFirstNameOf] = useState("");
+  const [slate, setSlate] = useState(false);
 
   useEffect(() => {
     sessionApi.get(id).then((r) => { setS(r.session); if (r.session.lyrics && r.session.lyrics.text) setLyricsText(r.session.lyrics.text); if (r.session.lyrics && r.session.lyrics.title) setSongTitle(r.session.lyrics.title); if (r.session.lyrics && r.session.lyrics.reference) setReference(r.session.lyrics.reference); if (r.session.lyrics && r.session.lyrics.melodyCraft) setMc(r.session.lyrics.melodyCraft); }).catch((e) => setErr(e.message));
@@ -58,6 +60,17 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
 
   if (err && !s) return <div className="c-card warn"><p className="c-err">{err}</p><button className="c-btn ghost" onClick={onLeave}>Back</button></div>;
   if (!s) return <p className="c-note"><span className="c-spinner" />Loading the session…</p>;
+  const screen = renderScreen();
+  const slateOn = s.participation === "recorded" && s.ref;
+  return (
+    <>
+      {screen}
+      {slateOn && !slate && <button type="button" className="c-slate-btn" onClick={() => setSlate(true)} title="Show the slate to film at the start of a recording">🎬 Slate · {s.ref}</button>}
+      {slate && <Slate session={s} onClose={() => setSlate(false)} />}
+    </>
+  );
+
+  function renderScreen() {
   if (s.status !== "active" && s.step !== "done") return <div className="c-card"><p>This session is closed ({s.status}).</p><button className="c-btn primary" onClick={onLeave}>Back to home</button></div>;
 
   const progress = (on) => (
@@ -207,7 +220,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
   // ---------------- outcome (worker only) ----------------
   if (s.step === "outcome") {
     const backTo = s.participation === "declined" ? "" : s.song && (s.song.opened || s.song.generated) ? "song" : s.lyrics && s.lyrics.generated ? "lyrics" : s.songified && s.songified.existing && !s.songified.newInterpretation ? "existing" : "talk";
-    return <OutcomeScreen s={s} busy={busy} err={err} onBack={backTo ? () => patch({ step: backTo }) : null} onComplete={(o) => guard("complete", async () => { const r = await sessionApi.complete(id, o); setS(r.session); })} onAbandon={() => guard("abandon", async () => { await sessionApi.abandon(id, "Marked unfinished by the worker"); onLeave(); })} />;
+    return <OutcomeScreen s={s} onSession={setS} busy={busy} err={err} onBack={backTo ? () => patch({ step: backTo }) : null} onComplete={(o) => guard("complete", async () => { const r = await sessionApi.complete(id, o); setS(r.session); })} onAbandon={() => guard("abandon", async () => { await sessionApi.abandon(id, "Marked unfinished by the worker"); onLeave(); })} />;
   }
 
   // ---------------- done ----------------
@@ -249,11 +262,27 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
           <br />
           Higher ground through holier sound.
         </p>
-        {s.songified && s.songified.existing && !s.songified.newInterpretation && (
-          <p className="c-hero-link"><a href="https://conferenceconcert.netlify.app" target="_blank" rel="noopener noreferrer">Find this song in the Conference Concert library ↗</a></p>
+        {!declined && (
+          <>
+            <SongShare sessionId={s.id} code={s.share && s.share.code} />
+            <StudentFeedback sessionId={s.id} initial={s.feedback} />
+            <FollowUpOptIn sessionId={s.id} text={config && config.followUp && config.followUp.text} already={s.followUp && s.followUp.optedIn} />
+          </>
         )}
-        <button className="c-hero-btn" onClick={onLeave}>Start another session <span aria-hidden="true">›</span></button>
+        <button className="c-hero-btn" onClick={onLeave} style={{ marginTop: 10 }}>Start another session <span aria-hidden="true">›</span></button>
       </div>
+      {!declined && (
+        <details className="c-hero-worker" style={{ marginTop: 22 }}>
+          <summary>Worker: put the finished song on the student's page</summary>
+          <SongAttach session={s} onSession={setS} mediaOk={mediaOk} />
+        </details>
+      )}
+      {s.participation === "recorded" && (
+        <details className="c-hero-worker">
+          <summary>Worker: recording references ({(s.recordings || []).length})</summary>
+          <RecordingRefs session={s} onSession={setS} />
+        </details>
+      )}
       {canRecord && (
         <div className="c-hero-worker" style={{ marginTop: 22 }}>
           <div className="c-note" style={{ marginBottom: 6 }}>One more thing? A short testimony or a closing thought from the student.</div>
@@ -273,6 +302,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
       )}
     </div>
   );
+  } // renderScreen
 }
 
 // ---------------------------------------------------------------------------
@@ -367,10 +397,9 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
   );
 }
 
-function OutcomeScreen({ s, busy, err, onComplete, onAbandon, onBack }) {
+function OutcomeScreen({ s, onSession, busy, err, onComplete, onAbandon, onBack }) {
   const [reaction, setReaction] = useState(s.reaction || "");
-  const [captured, setCaptured] = useState(s.recordingCaptured === true);
-  const [videoRef, setVideoRef] = useState(s.videoRef || "");
+  const [captured, setCaptured] = useState(s.recordingCaptured === true || (s.recordings || []).length > 0);
   const [notes, setNotes] = useState(s.notes || "");
   const minutes = Math.round((Date.now() - Date.parse(s.startedAt)) / 60000);
   return (
@@ -397,13 +426,13 @@ function OutcomeScreen({ s, busy, err, onComplete, onAbandon, onBack }) {
       )}
       {s.participation === "recorded" && (
         <>
-          <label className="c-row" style={{ fontSize: 17, gap: 10 }}><input type="checkbox" checked={captured} onChange={(e) => setCaptured(e.target.checked)} /> I recorded this on my camera</label>
-          {captured && <label className="c-field"><span className="lbl">Video file name or reference</span><input value={videoRef} onChange={(e) => setVideoRef(e.target.value)} placeholder="e.g. IMG_0412 or clip 7" /></label>}
+          <label className="c-row" style={{ fontSize: 17, gap: 10 }}><input type="checkbox" checked={captured} onChange={(e) => setCaptured(e.target.checked)} /> I recorded this on a camera or phone</label>
+          {captured && <RecordingRefs session={s} onSession={onSession} />}
         </>
       )}
       <label className="c-field"><span className="lbl">Notes (optional)</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 70 }} /></label>
       {err && <div className="c-err">{err}</div>}
-      <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onComplete({ reaction: reaction || "not_captured", recordingCaptured: captured, videoRef, notes })}>{busy ? "Saving…" : "Complete session ✓"}</button>
+      <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onComplete({ reaction: reaction || "not_captured", recordingCaptured: captured || (s.recordings || []).length > 0, notes })}>{busy ? "Saving…" : "Complete session ✓"}</button>
       <button className="c-btn ghost" disabled={Boolean(busy)} onClick={onAbandon}>Mark as unfinished (student left)</button>
     </div>
   );

@@ -30,8 +30,11 @@ export default async (req) => {
       const from = DATE.test(String(body.from || "")) ? String(body.from) : "";
       const to = DATE.test(String(body.to || "")) ? String(body.to) : "";
       if (from && to && from > to) return json({ error: "The start date is after the end date." }, 400);
-      const [sessions, users, shifts] = await Promise.all([docList("session:"), listUsers(), docList("shift:")]);
-      const result = analyze(sessions, { from, to, workerId: String(body.workerId || ""), users, shifts });
+      const [sessions, users, shifts, shares, pagefb, fus] = await Promise.all([docList("session:"), listUsers(), docList("shift:"), docList("share:"), docList("sharefb:"), docList("followup:")]);
+      const views = Object.fromEntries(shares.map((x) => [x.sessionId, x.views || 0]));
+      const pageFeedback = Object.fromEntries(pagefb.map((x) => [x.sessionId, x.items || []]));
+      const followups = Object.fromEntries(fus.map((x) => [x.sessionId, x.status])); // statuses only
+      const result = analyze(sessions, { from, to, workerId: String(body.workerId || ""), users, shifts, views, pageFeedback, followups });
       return json({ ...result, workers: users.map((u) => ({ id: u.id, name: u.name, role: u.role, active: u.active })), generatedAt: now() });
     }
 
@@ -49,9 +52,9 @@ export default async (req) => {
     }
 
     if (action === "purge") {
-      if (!r2Configured()) return json({ error: "Video storage isn't set up on this site, so there are no files to delete." }, 503);
-      const only = Array.isArray(body.clipIds) ? body.clipIds.map(String) : null;
-      const r = await runPurge({ by: admin.id, trigger: "manual", deleter: deleteObject, only });
+      // Video files need R2; follow-up emails are erased either way.
+      const only = Array.isArray(body.clipIds) && body.clipIds.length ? body.clipIds.map(String) : null;
+      const r = await runPurge({ by: admin.id, trigger: "manual", deleter: r2Configured() ? deleteObject : null, only });
       return json(r);
     }
 
