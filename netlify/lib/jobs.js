@@ -15,11 +15,15 @@ try {
 }
 const mem = new Map();
 const STORE = "studio-jobs";
+// Strong reads: a status check right after a write must see it (the default,
+// "eventual", can return stale data for a while — that hid freshly started
+// storyboard builds from the phone, and could drop a just-staged reference image).
+const STRONG = { consistency: "strong" };
 
 export async function jobGet(id) {
   if (getStoreFn) {
     try {
-      return await getStoreFn(STORE).get(id, { type: "json" });
+      return await getStoreFn(STORE, STRONG).get(id, { type: "json" });
     } catch (e) {
       if (!process.env.NETLIFY) return mem.get(id) || null;
       throw e;
@@ -32,7 +36,7 @@ export async function jobSet(id, value) {
   const rec = { ...value, updatedAt: Date.now() };
   if (getStoreFn) {
     try {
-      await getStoreFn(STORE).setJSON(id, rec);
+      await getStoreFn(STORE, STRONG).setJSON(id, rec);
       return;
     } catch (e) {
       if (!process.env.NETLIFY) { mem.set(id, rec); return; }
@@ -52,7 +56,7 @@ const memBlobs = new Map();
 export async function blobGetText(key) {
   if (getStoreFn) {
     try {
-      return await getStoreFn(BLOB_STORE).get(key, { type: "text" });
+      return await getStoreFn(BLOB_STORE, STRONG).get(key, { type: "text" });
     } catch (e) {
       if (!process.env.NETLIFY) return memBlobs.get(key) || null;
       throw e;
@@ -64,7 +68,7 @@ export async function blobGetText(key) {
 export async function blobSetText(key, text) {
   if (getStoreFn) {
     try {
-      await getStoreFn(BLOB_STORE).set(key, text);
+      await getStoreFn(BLOB_STORE, STRONG).set(key, text);
       return;
     } catch (e) {
       if (!process.env.NETLIFY) { memBlobs.set(key, text); return; }
@@ -78,13 +82,13 @@ export async function blobSetText(key, text) {
 const memBytes = new Map();
 export async function blobSetBytes(key, bytes) {
   if (getStoreFn) {
-    try { await getStoreFn(BLOB_STORE).set(key, bytes); return; } catch (e) { if (!process.env.NETLIFY) { memBytes.set(key, bytes); return; } throw e; }
+    try { await getStoreFn(BLOB_STORE, STRONG).set(key, bytes); return; } catch (e) { if (!process.env.NETLIFY) { memBytes.set(key, bytes); return; } throw e; }
   }
   memBytes.set(key, bytes);
 }
 export async function blobGetBytes(key) {
   if (getStoreFn) {
-    try { return await getStoreFn(BLOB_STORE).get(key, { type: "arrayBuffer" }); } catch (e) { if (!process.env.NETLIFY) return memBytes.get(key) || null; throw e; }
+    try { return await getStoreFn(BLOB_STORE, STRONG).get(key, { type: "arrayBuffer" }); } catch (e) { if (!process.env.NETLIFY) return memBytes.get(key) || null; throw e; }
   }
   return memBytes.get(key) || null;
 }
@@ -92,7 +96,7 @@ export async function blobGetBytes(key) {
 export async function blobDelete(key) {
   memBytes.delete(key);
   if (getStoreFn) {
-    try { await getStoreFn(BLOB_STORE).delete(key); return; } catch {}
+    try { await getStoreFn(BLOB_STORE, STRONG).delete(key); return; } catch {}
   }
   memBlobs.delete(key);
 }
