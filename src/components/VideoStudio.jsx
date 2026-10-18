@@ -696,7 +696,7 @@ export default function VideoStudio({
     };
     const qaOn = tl.qaIntro && tl.qaIntro.on ? tl.qaIntro : null;
     const qaIntro = qaOn && (qaOn.items || []).some((it) => qaUrls[it.id])
-      ? { cardSec: qaOn.cardSec || 4, fade: qaOn.fade || 0.8, logoSrc: "/logo-mark.png", items: qaOn.items.filter((it) => qaUrls[it.id]).map((it) => ({ src: qaUrls[it.id], in: it.in, out: it.out, fade: it.fade || qaOn.fade, captions: it.captions || null, question: it.question || "" })) }
+      ? { cardSec: qaOn.cardSec || 4, fade: qaOn.fade || 0.8, logoSrc: "/logo-mark.png", bgSrc: qaOn.background === "plain" ? "" : "/question-bg.webp", items: qaOn.items.filter((it) => qaUrls[it.id]).map((it) => ({ src: qaUrls[it.id], in: it.in, out: it.out, fade: it.fade || qaOn.fade, captions: it.captions || null, question: it.question || "" })) }
       : null;
     const job = renderMusicVideo(
       { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "huge", watermark, bookends, qaIntro, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },

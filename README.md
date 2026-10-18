@@ -224,7 +224,7 @@ In the Studio's Video step, **Q&A intro** builds the opening: add answers from
 the campus session (or upload video files), each is transcribed by AI
 automatically (the same auto-caption job as the closing clip; fix words or
 tap-time by hand), edit the question wording, trim, and reorder. In the
-rendered video each answer opens with a Conference As A Concert card (winged
+rendered video each answer opens with a Conference As A Concert card — by default on the temple-at-sunrise artwork (public/question-bg.webp, text set inside its navy panel), or a plain navy card with the winged
 mark + name, gold rule, "Question 1 of 3") on which the question writes
 itself out; the card then crossfades — picture and sound — into the student
 answering, with captions; the answers play back to back, then the opening

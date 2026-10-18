@@ -14,7 +14,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { putMedia, getMedia, deleteMedia } from "../lib/project-store.js";
-import { drawQuestionPreview } from "../lib/video-render.js";
+import { drawQuestionPreview, QUESTION_BG } from "../lib/video-render.js";
 import { autoCaptionClip } from "../lib/clip-audio.js";
 import { mediaApi } from "../campus/campus-api.js";
 import { STAGE_LABEL, DEFAULT_QUESTIONS } from "../campus/questions.js";
@@ -39,9 +39,9 @@ function videoDuration(blob) {
   });
 }
 
-function CardPreview({ question, index, count }) {
+function CardPreview({ question, index, count, plain }) {
   const ref = useRef(null);
-  useEffect(() => { if (ref.current) drawQuestionPreview(ref.current, { question, index, count }); }, [question, index, count]);
+  useEffect(() => { if (ref.current) drawQuestionPreview(ref.current, { question, index, count, bgSrc: plain ? "" : QUESTION_BG }); }, [question, index, count, plain]);
   return <canvas ref={ref} width={640} height={360} className="qa-card-preview" title="The question card (shown fully written; in the video it writes itself out)" />;
 }
 
@@ -135,6 +135,12 @@ export default function QaIntro({ projectId, tl, setTimeline, campusSessionId })
         <label className="row" style={{ gap: 6, fontSize: 13 }}>Question card
           <select value={cardSec} onChange={(e) => setQa({ cardSec: Number(e.target.value) })}>{[3, 4, 5, 6, 8].map((v) => <option key={v} value={v}>{v} s</option>)}</select>
         </label>
+        <label className="row" style={{ gap: 6, fontSize: 13 }}>Card background
+          <select value={qa.background === "plain" ? "plain" : "art"} onChange={(e) => setQa({ background: e.target.value })}>
+            <option value="art">Temple at sunrise (artwork)</option>
+            <option value="plain">Plain navy with the logo</option>
+          </select>
+        </label>
         <label className="row" style={{ gap: 6, fontSize: 13 }}>Card → answer crossfade
           <select value={qa.fade || 0.8} onChange={(e) => { const f = Number(e.target.value); setQa((cur) => ({ fade: f, items: (cur.items || []).map((x) => ({ ...x, fade: f })) })); }}>{[0.5, 0.8, 1, 1.5, 2].map((v) => <option key={v} value={v}>{v} s</option>)}</select>
         </label>
@@ -153,7 +159,7 @@ export default function QaIntro({ projectId, tl, setTimeline, campusSessionId })
           </div>
           <div className="qa-item-grid">
             <div>
-              <CardPreview question={it.question} index={i} count={items.length} />
+              <CardPreview question={it.question} index={i} count={items.length} plain={qa.background === "plain"} />
               <label className="field-label" style={{ display: "block", marginTop: 6 }}>Question on the card</label>
               <textarea value={it.question || ""} maxLength={200} onChange={(e) => setItem(it.id, { question: e.target.value })} style={{ width: "100%", minHeight: 54, boxSizing: "border-box" }} />
             </div>

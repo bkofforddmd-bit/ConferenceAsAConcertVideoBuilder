@@ -404,21 +404,82 @@ export function questionTypeSeconds(question, cardSec = 4) {
   const n = String(question || "").length;
   return Math.max(0.8, Math.min(cardSec * 0.6, n * 0.045));
 }
-// Lines of the question at the card's text size (layout never shifts while typing).
-function questionLines(ctx, question, W, H) {
+// Lines of the question at the card's text size (layout never shifts while
+// typing): the biggest size that fits maxLines lines inside the width and height.
+function questionLines(ctx, question, W, H, { width = 0.78, startPx = 0.078, maxLines = 3, maxHeight = 1 } = {}) {
   const q = String(question || "").trim() || "…";
-  let px = Math.round(H * 0.078);
-  for (let k = 0; k < 6; k++) {
+  let px = Math.round(H * startPx);
+  let lines = [];
+  for (let k = 0; k < 10; k++) {
     ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
-    const lines = wrapLines(ctx, q, W * 0.78);
-    if (lines.length <= 3) return { lines, px };
-    px = Math.round(px * 0.88);
+    lines = wrapLines(ctx, q, W * width);
+    if (lines.length <= maxLines && lines.length * px * 1.28 <= H * maxHeight) return { lines, px };
+    px = Math.round(px * 0.9);
   }
   ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
-  return { lines: wrapLines(ctx, q, W * 0.82).slice(0, 4), px };
+  return { lines: wrapLines(ctx, q, W * width).slice(0, maxLines + 1), px };
 }
-export function drawQuestionCard(ctx, { question = "", reveal = 1, index = 0, count = 1, logo = null, caret = true, t = 0 } = {}, W, H) {
-  // background: brand navy, a warm glow rising from below, a faint arc
+
+// The question typed out: whole-line layout first, then each line's prefix,
+// with a gold caret while writing (blinking once done). centerY = block middle.
+function drawTypedQuestion(ctx, { lines, px }, centerY, reveal, caret, t, W, H) {
+  const total = lines.reduce((a, l) => a + l.length, 0) + Math.max(0, lines.length - 1);
+  let shown = Math.round(Math.max(0, Math.min(1, reveal)) * total);
+  const lh = px * 1.28;
+  let ly = centerY - ((lines.length - 1) * lh) / 2 + px * 0.35;
+  ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
+  ctx.textAlign = "left"; ctx.fillStyle = "#F5F7FA";
+  ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = H * 0.014;
+  let caretX = null, caretY = ly;
+  for (const line of lines) {
+    const full = ctx.measureText(line).width;
+    const x0 = (W - full) / 2;
+    const part = line.slice(0, Math.max(0, shown));
+    if (part) ctx.fillText(part, x0, ly);
+    if (shown >= 0 && shown <= line.length) { caretX = x0 + ctx.measureText(part).width; caretY = ly; }
+    shown -= line.length + 1;
+    ly += lh;
+  }
+  ctx.shadowBlur = 0;
+  if (caret && caretX != null && (reveal < 1 || Math.floor(t * 2) % 2 === 0)) {
+    ctx.fillStyle = "#f3c969";
+    ctx.fillRect(caretX + px * 0.06, caretY - px * 0.82, Math.max(2, px * 0.06), px * 0.95);
+  }
+}
+
+function spacedText(ctx, text, x, y, spacingPx) {
+  if ("letterSpacing" in ctx) { ctx.letterSpacing = `${spacingPx}px`; ctx.fillText(text, x, y); ctx.letterSpacing = "0px"; }
+  else ctx.fillText(text, x, y);
+}
+
+export function drawQuestionCard(ctx, { question = "", reveal = 1, index = 0, count = 1, logo = null, bg = null, caret = true, t = 0 } = {}, W, H) {
+  const kicker = count > 1 ? `QUESTION ${index + 1} OF ${count}` : "WE ASKED";
+
+  // ---- with the artwork background (temple at sunrise, golden staff, navy
+  // panel, audience): the text lives inside the navy panel, ~45%–70% down ----
+  if (bg && (bg.naturalWidth || bg.width)) {
+    ctx.fillStyle = "#0b1b3f"; ctx.fillRect(0, 0, W, H);
+    drawCover(ctx, bg, W, H, 1 + 0.025 * Math.min(1, t / 10)); // a slow, gentle push-in
+    // soften the panel a touch so the words always read
+    const pg = ctx.createRadialGradient(W / 2, H * 0.575, 0, W / 2, H * 0.575, W * 0.42);
+    pg.addColorStop(0, "rgba(6,18,52,0.45)"); pg.addColorStop(1, "rgba(6,18,52,0)");
+    ctx.fillStyle = pg; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f3d9a4";
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = H * 0.008;
+    ctx.font = `400 ${Math.round(H * 0.021)}px Michroma, Inter, system-ui, sans-serif`;
+    spacedText(ctx, `CONFERENCE AS A CONCERT  ·  ${kicker}`, W / 2, H * 0.478, Math.round(H * 0.004));
+    ctx.shadowBlur = 0;
+    // a short gold rule under the kicker
+    const rw = W * 0.09, ry = H * 0.498;
+    ctx.strokeStyle = "rgba(243,217,164,0.7)"; ctx.lineWidth = Math.max(1, H * 0.0018);
+    ctx.beginPath(); ctx.moveTo(W / 2 - rw, ry); ctx.lineTo(W / 2 + rw, ry); ctx.stroke();
+    const layout = questionLines(ctx, question, W, H, { width: 0.7, startPx: 0.064, maxLines: 3, maxHeight: 0.18 });
+    drawTypedQuestion(ctx, layout, H * 0.59, reveal, caret, t, W, H);
+    return;
+  }
+
+  // ---- plain brand card (no artwork) ----
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, "#00153d"); g.addColorStop(0.55, "#0b2a5e"); g.addColorStop(1, "#1d4b8f");
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -429,7 +490,6 @@ export function drawQuestionCard(ctx, { question = "", reveal = 1, index = 0, co
   ctx.strokeStyle = "rgba(243,217,164,0.22)"; ctx.lineWidth = Math.max(1, H * 0.0016);
   ctx.beginPath(); ctx.arc(W / 2, H * 1.95, H * 1.35, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
   ctx.restore();
-
   // brand lockup at the top: the winged mark (transparent PNG) over the name in Michroma
   let y = H * 0.07;
   if (logo && (logo.naturalWidth || logo.width)) {
@@ -444,54 +504,31 @@ export function drawQuestionCard(ctx, { question = "", reveal = 1, index = 0, co
   }
   ctx.textAlign = "center"; ctx.fillStyle = "#C9D8F0";
   ctx.font = `400 ${Math.round(H * 0.028)}px Michroma, Inter, system-ui, sans-serif`;
-  if ("letterSpacing" in ctx) ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
-  ctx.fillText("CONFERENCE AS A CONCERT", W / 2, y);
-  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  spacedText(ctx, "CONFERENCE AS A CONCERT", W / 2, y, Math.round(H * 0.006));
   y += H * 0.06;
   // gold rule with a diamond
   const ry = y, rw = W * 0.16;
   ctx.strokeStyle = "rgba(243,217,164,0.75)"; ctx.lineWidth = Math.max(1, H * 0.002);
   ctx.beginPath(); ctx.moveTo(W / 2 - rw, ry); ctx.lineTo(W / 2 - H * 0.016, ry); ctx.moveTo(W / 2 + H * 0.016, ry); ctx.lineTo(W / 2 + rw, ry); ctx.stroke();
   ctx.save(); ctx.translate(W / 2, ry); ctx.rotate(Math.PI / 4); ctx.strokeRect(-H * 0.006, -H * 0.006, H * 0.012, H * 0.012); ctx.restore();
-  // "Question 1 of 3"
   ctx.textAlign = "center"; ctx.fillStyle = "#f3d9a4";
   ctx.font = `500 ${Math.round(H * 0.024)}px Inter, system-ui, sans-serif`;
-  ctx.fillText(count > 1 ? `QUESTION ${index + 1} OF ${count}` : "WE ASKED", W / 2, ry + H * 0.06);
-
-  // the question, typed out: whole-line layout first, then each line's prefix
-  const { lines, px } = questionLines(ctx, question, W, H);
-  const total = lines.reduce((a, l) => a + l.length, 0) + Math.max(0, lines.length - 1);
-  let shown = Math.round(Math.max(0, Math.min(1, reveal)) * total);
-  const lh = px * 1.28;
-  let ly = H * 0.56 - ((lines.length - 1) * lh) / 2 + px * 0.35;
-  ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
-  ctx.textAlign = "left"; ctx.fillStyle = "#F5F7FA";
-  ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = H * 0.012;
-  let caretX = null, caretY = ly;
-  for (const line of lines) {
-    const full = ctx.measureText(line).width;
-    const x0 = (W - full) / 2;
-    const part = line.slice(0, Math.max(0, shown));
-    if (part) ctx.fillText(part, x0, ly);
-    if (shown >= 0 && shown <= line.length) { caretX = x0 + ctx.measureText(part).width; caretY = ly; }
-    shown -= line.length + 1;
-    ly += lh;
-  }
-  ctx.shadowBlur = 0;
-  // a gold caret while writing, blinking once it's done
-  if (caret && caretX != null && (reveal < 1 || Math.floor(t * 2) % 2 === 0)) {
-    ctx.fillStyle = "#f3c969";
-    ctx.fillRect(caretX + px * 0.06, caretY - px * 0.82, Math.max(2, px * 0.06), px * 0.95);
-  }
+  ctx.fillText(kicker, W / 2, ry + H * 0.06);
+  drawTypedQuestion(ctx, questionLines(ctx, question, W, H), H * 0.56, reveal, caret, t, W, H);
 }
+
+// The artwork behind the question cards (public/question-bg.webp).
+export const QUESTION_BG = "/question-bg.webp";
+
 // A still of the card (fully written) for the editor's preview.
-export async function drawQuestionPreview(canvas, { question = "", index = 0, count = 1, logoSrc = "/logo-mark.png" } = {}) {
+export async function drawQuestionPreview(canvas, { question = "", index = 0, count = 1, logoSrc = "/logo-mark.png", bgSrc = QUESTION_BG } = {}) {
   const W = canvas.width || 960, H = canvas.height || 540;
   const ctx = canvas.getContext("2d", { alpha: false });
-  try { await document.fonts.load(`600 ${Math.round(H * 0.078)}px Cinzel`); } catch {}
-  let logo = null;
-  if (logoSrc) { try { logo = await loadImage(logoSrc); } catch {} }
-  drawQuestionCard(ctx, { question, reveal: 1, index, count, logo, caret: false }, W, H);
+  try { await document.fonts.load(`600 ${Math.round(H * 0.078)}px Cinzel`); await document.fonts.load(`400 ${Math.round(H * 0.022)}px Michroma`); } catch {}
+  let logo = null, bg = null;
+  if (bgSrc) { try { bg = await loadImage(bgSrc); } catch {} }
+  else if (logoSrc) { try { logo = await loadImage(logoSrc); } catch {} }
+  drawQuestionCard(ctx, { question, reveal: 1, index, count, logo, bg, caret: false }, W, H);
 }
 
 function drawWatermark(ctx, text, W, H) {
@@ -581,7 +618,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     // Q&A intro: [question card → the student's answer] × N, before everything else.
     const qaPlan = plan.qaIntro && Array.isArray(plan.qaIntro.items) ? plan.qaIntro : null;
     const qa = [];
-    let qaLogo = null;
+    let qaLogo = null, qaBg = null;
     if (qaPlan) {
       onStatus?.("Loading the Q&A clips…");
       for (const it of qaPlan.items) {
@@ -589,6 +626,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
         try { const c = await prepClip(it); if (c && c.len > 0.3) qa.push({ ...c, question: String(it.question || "").trim(), xfade: Math.max(0.2, Math.min(2, Number(it.fade) || Number(qaPlan.fade) || 0.8)) }); } catch {}
       }
       if (qaPlan.logoSrc) { try { qaLogo = await loadImage(qaPlan.logoSrc); } catch { qaLogo = null; } }
+      if (qaPlan.bgSrc) { try { qaBg = await loadImage(qaPlan.bgSrc); } catch { qaBg = null; } }
       try { await document.fonts.load(`600 ${Math.round(H * 0.078)}px Cinzel`); } catch {}
     }
     const qaCardSec = qaPlan ? Math.max(2, Math.min(10, Number(qaPlan.cardSec) || 4)) : 0;
@@ -664,7 +702,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     let qaOffset = 0;
     for (let qi = 0; qi < qa.length; qi++) {
       const item = qa[qi];
-      const card = { question: item.question, index: qi, count: qa.length, logo: qaLogo };
+      const card = { question: item.question, index: qi, count: qa.length, logo: qaLogo, bg: qaBg };
       const typeSec = questionTypeSeconds(item.question, qaCardSec);
       const label = `Question ${qi + 1} of ${qa.length}`;
       // 1) the card: fades up, the question writes itself out, then holds.
@@ -696,7 +734,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           const lt = t - inAt;
           const aIn = Math.max(0, Math.min(1, lt / xfade));
           const aOut = Math.max(0, Math.min(1, (outAt - t) / xfade));
-          if (aIn < 1) drawQuestionCard(ctx, { ...card, reveal: 1, caret: false }, W, H);
+          if (aIn < 1) drawQuestionCard(ctx, { ...card, reveal: 1, caret: false, t: qaCardSec + lt }, W, H);
           else { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); }
           ctx.save(); ctx.globalAlpha = aIn; drawCover(ctx, el, W, H); ctx.restore();
           if (item.captions && item.captions.length) {
