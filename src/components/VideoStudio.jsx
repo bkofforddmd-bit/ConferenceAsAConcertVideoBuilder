@@ -511,6 +511,15 @@ export default function VideoStudio({
     return segs.filter((x) => x.src);
   }, [ordered, tl, totalSec, hasIntro, hasOutro, clips, clipUrls, images, endcards, includeIntro, includeOutro, meta, extraUrls]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The intro card stays up at least introMinSec (default 5 s) so its gentle
+  // tilt reaches the bottom disclaimer. When the song's first scene comes
+  // sooner, the card holds in silence before the music for the difference
+  // (the renderer runs the hold and the in-song part as one continuous move).
+  const introMinSec = tl.introMinSec === undefined || tl.introMinSec === null || tl.introMinSec === "" ? 5 : Math.max(0, Math.min(30, Number(tl.introMinSec) || 0));
+  const introInSong = includeIntro ? segments.filter((sg) => sg.isCard && String(sg.label || "").startsWith("Intro")).reduce((m, sg) => Math.max(m, sg.end), 0) : 0;
+  const autoIntroLead = includeIntro && introInSong > 0 ? Math.max(0, Math.round((introMinSec - introInSong) * 10) / 10) : 0;
+  const introLead = Math.min(30, Math.max(Number(tl.introLeadSec) || 0, autoIntroLead));
+
   // Why the Render button is off, in plain words (the opening/closing clips are never required).
   const renderBlocker = !songVersion
     ? "there's no song yet — generate one or upload an MP3 on the Music step."
@@ -724,7 +733,7 @@ export default function VideoStudio({
       ? { cardSec: qaOn.cardSec || 4, fade: qaOn.fade || 0.8, logoSrc: "/logo-mark.png", bgSrc: qaOn.background === "plain" ? "" : "/question-bg.webp", items: qaOn.items.filter((it) => qaUrls[it.id]).map((it) => ({ src: qaUrls[it.id], in: it.in, out: it.out, fade: it.fade || qaOn.fade, captions: it.captions || null, question: it.question || "" })) }
       : null;
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "large", watermark, bookends, qaIntro, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "large", watermark, bookends, qaIntro, introLead, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -954,7 +963,8 @@ export default function VideoStudio({
             <div className="timeline-rows">
               {includeIntro && (<>
                 <div className="timeline-row"><span className="lbl2">Intro card length (before Scene 1)</span><input type="number" min="0" step="0.5" value={tl.introSec} onChange={(e) => setTimeline({ ...tl, introSec: Number(e.target.value) || 0 })} /> s</div>
-                <div className="timeline-row" title="The intro card holds on screen in silence for this long, THEN the music starts. Use it when the lyrics begin almost immediately and the card needs time to be read."><span className="lbl2">Hold intro before the music starts</span><input type="number" min="0" max="30" step="0.5" value={tl.introLeadSec || 0} onChange={(e) => setTimeline({ ...tl, introLeadSec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })} /> s</div>
+                <div className="timeline-row" title="The intro card is on screen at least this long so its tilt reaches the bottom disclaimer — any time the song doesn't give it is held in silence before the music"><span className="lbl2">Intro card on screen at least</span><input type="number" min="0" max="30" step="0.5" value={introMinSec} onChange={(e) => setTimeline({ ...tl, introMinSec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })} /> s</div>
+                <div className="timeline-row" title="The intro card holds on screen in silence for this long, THEN the music starts."><span className="lbl2">Hold intro before the music starts{autoIntroLead > (Number(tl.introLeadSec) || 0) ? ` (automatic: ${autoIntroLead} s)` : ""}</span><input type="number" min="0" max="30" step="0.5" value={tl.introLeadSec || 0} onChange={(e) => setTimeline({ ...tl, introLeadSec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })} /> s</div>
               </>)}
               {ordered.map((sc) => (
                 <div className="timeline-row" key={sc.sceneNumber}>
