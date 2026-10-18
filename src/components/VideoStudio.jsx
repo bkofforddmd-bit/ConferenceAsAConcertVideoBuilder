@@ -116,7 +116,13 @@ export default function VideoStudio({
   clips, setClips, timeline, setTimeline, render, setRender,
   config, onContinue, onSetCardImage, onSetSceneLyrics, talkMeta, talkText, lyricSources, onLyricSources, onFixTalk,
   onAttachVideo,
+  // Simple mode shows one part of this page per wizard step:
+  //   "reactions" (Q&A intro) · "finish" (captions, closing clip, camera paths) · "render"
+  section = "",
 }) {
+  const show = (k) => (!section
+    ? ["clips", "timeline", "qa", "bookends", "render"].includes(k)
+    : ({ reactions: ["qa"], finish: ["captions", "closing", "paths"], render: ["render"] }[section] || []).includes(k));
   const providers = (config && config.providers && config.providers.video) || [];
   const serverKeys = (config && config.serverKeys) || {};
   const [provider, setProvider] = useState("fal-kling");
@@ -532,13 +538,14 @@ export default function VideoStudio({
   function saveEndCard(next) { setEndCard(next); try { localStorage.setItem("cac-end-card", JSON.stringify(next)); } catch {} }
 
   // ---- lyric size preview ----
-  const [sizePreview, setSizePreview] = useState(false);
+  const [sizePreview, setSizePreview] = useState(section === "finish");
+  useEffect(() => { if (section === "finish") setSizePreview(true); }, [section]);
   const previewRef = useRef(null);
   useEffect(() => {
     if (!sizePreview || !previewRef.current) return;
     const first = ordered[0];
     const text = first ? (sceneLineList(((tl.phrases || {})[first.sceneNumber]) || first.lyrics)[0] || "") : "";
-    drawLyricPreview(previewRef.current, { imageSrc: first ? images[first.sceneNumber] || "" : "", text, size: tl.lyricsSize || "huge" }).catch(() => {});
+    drawLyricPreview(previewRef.current, { imageSrc: first ? images[first.sceneNumber] || "" : "", text, size: tl.lyricsSize || "large" }).catch(() => {});
   }, [sizePreview, tl.lyricsSize, tl.phrases, ordered, images]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- phrase splitting: shorter pieces so each fits bigger on screen ----
@@ -717,7 +724,7 @@ export default function VideoStudio({
       ? { cardSec: qaOn.cardSec || 4, fade: qaOn.fade || 0.8, logoSrc: "/logo-mark.png", bgSrc: qaOn.background === "plain" ? "" : "/question-bg.webp", items: qaOn.items.filter((it) => qaUrls[it.id]).map((it) => ({ src: qaUrls[it.id], in: it.in, out: it.out, fade: it.fade || qaOn.fade, captions: it.captions || null, question: it.question || "" })) }
       : null;
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "huge", watermark, bookends, qaIntro, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "large", watermark, bookends, qaIntro, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -764,12 +771,15 @@ export default function VideoStudio({
         />
       )}
       <div className="panel-head">
-        <h2>Video</h2>
+        <h2>{{ reactions: "Reactions", finish: "Finishing touches", render: "Render the video" }[section] || "Video"}</h2>
         {render && render.mediaKey && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Export</button>}
       </div>
       <p className="sub">
-        Bring the storyboard to life: animate scenes into clips, set when each scene starts in the song,
-        then render the finished music video right here.
+        {{
+          reactions: "Film the listener reacting to the lyrics and the song. Each answer opens with a Conference As A Concert question card, is transcribed automatically, and plays before the song.",
+          finish: "Pick the caption size, choose the closing words from the talk's own video, and adjust how the camera drifts over each image. Scene timing follows your lyric sync automatically.",
+          render: "Make the finished music video right here. It plays through once in real time, so keep this tab in front.",
+        }[section] || "Bring the storyboard to life: animate scenes into clips, set when each scene starts in the song, then render the finished music video right here."}
       </p>
 
       {!songVersion && (
@@ -787,6 +797,7 @@ export default function VideoStudio({
       {error && <div className="error">{error}</div>}
 
       {/* ---------------- CLIPS ---------------- */}
+      {show("clips") && (
       <div className="video-card">
         <div className="panel-head">
           <h3>1 · Clips <span className="chip">{clipsDone} of {withImages} animated</span></h3>
@@ -862,8 +873,10 @@ export default function VideoStudio({
           })}
         </div>
       </div>
+      )}
 
       {/* ---------------- TIMELINE ---------------- */}
+      {show("timeline") && (
       <div className="video-card" style={{ marginTop: 14 }}>
         <div className="panel-head">
           <h3>2 · Timeline {totalSec ? <span className="chip">{fmt(totalSec)} song</span> : <span className="chip warn">needs the song</span>}</h3>
@@ -1000,7 +1013,7 @@ export default function VideoStudio({
               {overlayOn && (
                 <label className="row" style={{ gap: 6 }} title="How big the lyrics are drawn in the finished video">
                   <span className="note" style={{ margin: 0 }}>Size</span>
-                  <select value={tl.lyricsSize || "huge"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
+                  <select value={tl.lyricsSize || "large"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
                     <option value="small">small</option>
                     <option value="medium">medium</option>
                     <option value="large">large</option>
@@ -1030,7 +1043,7 @@ export default function VideoStudio({
             </div>
             {overlayOn && sizePreview && (
               <div className="music-card" style={{ marginTop: 10 }}>
-                <h3>How the lyrics will look <span className="chip">{tl.lyricsSize || "huge"}</span></h3>
+                <h3>How the lyrics will look <span className="chip">{tl.lyricsSize || "large"}</span></h3>
                 <canvas ref={previewRef} width={960} height={540} style={{ width: "100%", maxWidth: 720, borderRadius: 10, display: "block", background: "#00205B" }} />
                 <p className="note" style={{ margin: "6px 0 0" }}>A sample frame from the first scene with its first line — the finished video draws lyrics at exactly this proportion. Change the size or split lines into phrases and this updates.</p>
               </div>
@@ -1066,27 +1079,33 @@ export default function VideoStudio({
           <p className="note">Generate the song in step 3 and the timeline appears here.</p>
         )}
       </div>
+      )}
 
       {/* ---------------- Q&A INTRO ---------------- */}
+      {show("qa") && (
       <div className="video-card" style={{ marginTop: 14 }}>
         <div className="panel-head">
           <h3>Q&amp;A intro <span className="chip">optional</span></h3>
         </div>
         <QaIntro projectId={projectId} tl={tl} setTimeline={setTimeline} campusSessionId={tl.campusSessionId || ""} />
       </div>
+      )}
 
       {/* ---------------- OPENING / CLOSING CLIPS ---------------- */}
+      {show("bookends") && (
       <div className="video-card" style={{ marginTop: 14 }}>
         <div className="panel-head">
           <h3>3 · Opening & closing clips <span className="chip">optional</span></h3>
         </div>
         <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={lyricSources} onSources={onLyricSources} onFixTalk={onFixTalk} />
       </div>
+      )}
 
       {/* ---------------- RENDER ---------------- */}
+      {show("render") && (
       <div className="video-card" style={{ marginTop: 14 }}>
         <div className="panel-head">
-          <h3>4 · Render the music video</h3>
+          <h3>{section ? "" : "4 · "}Render the music video</h3>
           <div className="row" style={{ gap: 8 }}>
             <select value={quality} onChange={(e) => setQuality(e.target.value)} disabled={rendering} title="Picture size and file size. 'Web' is plenty for the library and YouTube; 'high' for archiving.">
               {QUALITIES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
@@ -1160,6 +1179,74 @@ export default function VideoStudio({
           )}
         </div>
       </div>
+      )}
+
+      {/* ---------------- (simple) CAPTIONS ---------------- */}
+      {show("captions") && (
+        <div className="video-card">
+          <div className="panel-head">
+            <h3>Captions — the lyrics on screen <span className="chip">{tl.lyricsSize || "large"}</span></h3>
+          </div>
+          <div className="row" style={{ gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <label className="row" style={{ gap: 6 }}>
+              <input type="checkbox" checked={overlayOn} onChange={(e) => { setOverlayOn(e.target.checked); setTimeline({ ...tl, lyricsOverlay: e.target.checked }); }} />
+              <span className="note" style={{ margin: 0 }}>Show the lyrics on screen</span>
+            </label>
+            {overlayOn && (
+              <label className="row" style={{ gap: 6 }}>
+                <span className="note" style={{ margin: 0 }}>Size</span>
+                <select value={tl.lyricsSize || "large"} onChange={(e) => setTimeline({ ...tl, lyricsSize: e.target.value })}>
+                  <option value="medium">medium</option>
+                  <option value="large">large (default)</option>
+                  <option value="xl">extra large</option>
+                  <option value="huge">huge</option>
+                </select>
+              </label>
+            )}
+          </div>
+          {overlayOn && <canvas ref={previewRef} width={960} height={540} style={{ width: "100%", maxWidth: 640, borderRadius: 10, display: "block", background: "#00205B", marginTop: 10 }} />}
+          <p className="note" style={{ marginBottom: 0 }}>A sample frame at the chosen size. The closing clip's captions and the reaction captions use the same size.</p>
+        </div>
+      )}
+
+      {/* ---------------- (simple) CLOSING CLIP ---------------- */}
+      {show("closing") && (
+        <div className="video-card" style={{ marginTop: 14 }}>
+          <div className="panel-head">
+            <h3>Closing clip — the speaker's own words</h3>
+          </div>
+          <Bookends projectId={projectId} tl={tl} setTimeline={setTimeline} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={lyricSources} onSources={onLyricSources} onFixTalk={onFixTalk} closingOnly />
+        </div>
+      )}
+
+      {/* ---------------- (simple) CAMERA PATHS ---------------- */}
+      {show("paths") && (
+        <div className="video-card" style={{ marginTop: 14 }}>
+          <div className="panel-head">
+            <h3>Camera moves — pan & zoom</h3>
+          </div>
+          <p className="note" style={{ marginTop: 0 }}>Every image drifts along a gentle default path. Use <strong>Edit path</strong> to draw where the camera starts, travels and ends over an image.</p>
+          <div className="clip-grid">
+            {[
+              ...(includeIntro ? [{ key: "intro", label: "Intro card", img: hasIntro ? endcards.intro.image : "" }] : []),
+              ...ordered.map((sc) => ({ key: sc.sceneNumber, label: `Scene ${sc.sceneNumber}`, img: images[sc.sceneNumber] || "", lyric: sc.lyrics })),
+              ...(includeOutro ? [{ key: "outro", label: "Outro card", img: hasOutro ? endcards.outro.image : "" }] : []),
+            ].map((it) => (
+              <div className="clip-card" key={it.key}>
+                <div className="clip-media">
+                  {it.img ? <img src={it.img} alt="" /> : <div className="scene-image placeholder" style={{ margin: 0, border: 0, borderRadius: 0 }}>{typeof it.key === "string" ? "text card" : "no image yet"}</div>}
+                </div>
+                <div className="clip-body">
+                  <div className="clip-name">{it.label}</div>
+                  {it.lyric && <div className="clip-lyric">♪ {it.lyric}</div>}
+                  <ShotsEditor {...shotsProps(it.key)} primaryTitle="Camera motion over this image" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </section>
   );
 }

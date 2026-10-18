@@ -306,7 +306,7 @@ function TalkChooser({ current, onPick, busy }) {
 }
 
 // ---- the talk's own video: find the moment, mark it, capture it ----
-function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSources, onCaptured, onFixTalk }) {
+function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSources, onCaptured, onFixTalk, autoLoad = false }) {
   const [media, setMedia] = useState(null); // { audioUrl, video:{p360,p720,p1080} }
   const [quality, setQuality] = useState("p720");
   const [msg, setMsg] = useState("");
@@ -404,6 +404,8 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
     setBusy(false);
   }
   const src = media && media.video && media.video[quality] ? proxiedMediaUrl(media.video[quality]) : "";
+  useEffect(() => { if (autoLoad && !media && !busy && talkMeta && talkMeta.sourceUrl) load(); }, [autoLoad, talkMeta && talkMeta.sourceUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (autoLoad && media && media.audioUrl && !times && !timing) pinTimes(); }, [autoLoad, media]); // eslint-disable-line react-hooks/exhaustive-deps
   async function pickTalk(uri) {
     if (!onFixTalk) return;
     setBusy(true);
@@ -476,10 +478,19 @@ function TalkClipPicker({ projectId, talkMeta, talkText, lyrics, sources, onSour
       if (lv.ok && lv.rms < SILENT) throw new Error("The capture came out silent. Make sure the video actually played with sound (press play once in the player above, then capture again).");
       const mediaKey = `${projectId}:bookend:post`;
       await putMedia(mediaKey, blob, { ext, source: "talk", segments: list });
+      // Captions are ON by default, timed by AI listening to the clip; if that
+      // isn't available the talk's own words are spread across the clip instead.
+      const quoteText = list.map((g) => g.quote).filter(Boolean).join(" … ");
+      let captions = { on: true, text: quoteText };
+      try {
+        setCapMsg("Writing the captions — AI is listening to the clip…");
+        const phrases = await autoCaptionClip(blob, { hint: quoteText, onStep: (s) => setCapMsg(`Captions: ${s}`) });
+        captions = { on: true, text: phrases.map((p) => p.text).join("\n"), marks: phrases.map((p) => p.start), auto: true };
+      } catch { /* keep the talk's words, spread by length */ }
       const name = list.length > 1
         ? `${talkMeta.speaker || "Speaker"} · ${list.length} sections · ${list.map((g) => `${fmtS(g.from)}–${fmtS(g.to)}`).join(" + ")}`
         : `${talkMeta.speaker || "Speaker"} · ${fmtS(list[0].from)}–${fmtS(list[0].to)}`;
-      onCaptured({ mediaKey, kind: "talk", name, in: 0, out: total, duration: total, quote: list.map((g) => g.quote).filter(Boolean).join(" … "), sourceUrl: media.video[quality], segments: list, fade: fadeSec });
+      onCaptured({ mediaKey, kind: "talk", name, in: 0, out: total, duration: total, quote: quoteText, sourceUrl: media.video[quality], segments: list, fade: fadeSec, captions });
       setCapMsg("");
       setSegs([]);
     } catch (e) { setCapMsg(`Capture failed: ${e.message || e}`); }
@@ -678,7 +689,7 @@ function CampusClipsPicker({ projectId, sessionId, fade, onCaptured }) {
   );
 }
 
-export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics, sources, onSources, onFixTalk }) {
+export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkText, lyrics, sources, onSources, onFixTalk, closingOnly = false }) {
   const bookends = tl.bookends || {};
   const [busy, setBusy] = useState("");
   const [closingMode, setClosingMode] = useState(talkMeta && talkMeta.sourceUrl ? "talk" : "upload");
@@ -708,6 +719,18 @@ export default function Bookends({ projectId, tl, setTimeline, talkMeta, talkTex
     const next = { ...(tl.bookends || {}) };
     delete next[kind];
     setTimeline({ ...tl, bookends: next });
+  }
+
+  if (closingOnly) {
+    return (
+      <div className="bookends">
+        <p className="note" style={{ marginTop: 0 }}>End with the speaker's own voice. Click a lyric line (or search the talk) to jump to that moment, mark a start and an end, and capture it — captions are added and timed by AI automatically.</p>
+        {bookends.post
+          ? <ClipCard clip={bookends.post} title="Closing clip" onChange={(c) => setBookend("post", c)} onRemove={() => remove("post")} />
+          : <TalkClipPicker projectId={projectId} talkMeta={talkMeta} talkText={talkText} lyrics={lyrics} sources={sources || null} onSources={onSources} onFixTalk={onFixTalk} onCaptured={(c) => setBookend("post", c)} autoLoad />}
+        {err && <p className="note" style={{ color: "var(--danger)" }}>{err}</p>}
+      </div>
+    );
   }
 
   return (

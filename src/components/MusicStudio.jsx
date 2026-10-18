@@ -32,7 +32,7 @@ function fmtDur(sec) {
   return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 }
 
-export default function MusicStudio({ projectId, lyrics, styleBible, styleReference, title, song, setSong, config, onContinue }) {
+export default function MusicStudio({ projectId, lyrics, styleBible, styleReference, title, song, setSong, config, onContinue, simple = false }) {
   const providers = (config && config.providers && config.providers.music) || [];
   const serverKeys = (config && config.serverKeys) || {};
   const [provider, setProvider] = useState("lyria");
@@ -208,12 +208,13 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
         />
       )}
       <div className="panel-head">
-        <h2>Music</h2>
-        {active && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Video</button>}
+        <h2>{simple ? "Song" : "Music"}</h2>
+        {active && <button className="btn btn-primary btn-sm" onClick={onContinue}>{simple ? "Continue → Reactions" : "Continue → Video"}</button>}
       </div>
       <p className="sub">
-        Lift the lyrics into a sung song. Choose a studio, describe the sound, and generate — the song
-        stays with this project and sets the timing for the video.
+        {simple
+          ? "1 · Copy the title and lyrics into the MelodyCraft AI app (with the genre and mood below) and make the song. 2 · Import the finished MP3 here. 3 · Sync the lyrics — by AI, or by tapping along."
+          : "Lift the lyrics into a sung song. Choose a studio, describe the sound, and generate — the song stays with this project and sets the timing for the video."}
       </p>
       <div className="music-card" style={{ marginBottom: 14 }}>
         <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -236,7 +237,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
       ) : null}
 
       <div className="music-grid">
-        <div className="music-card">
+        {!simple && <div className="music-card">
           <h3>Direction</h3>
           <div className="provider-pick">
             {providers.map((p) => {
@@ -300,13 +301,13 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
             Generation runs on the provider's servers; you can switch tabs but keep this page open. Lyrics
             are sent exactly as finalized — labels like [Verse 1] and [Chorus] guide the structure.
           </p>
-        </div>
+        </div>}
 
         <div className="music-card">
           <h3>MelodyCraft AI settings <span className="chip">for songs made in MelodyCraft</span></h3>
           <p className="note" style={{ marginTop: 0 }}>
             Making the song in the MelodyCraft AI app instead? Copy the title and lyrics, tell it what to sound like and get the
-            genre + mood combination to select there — drawn only from MelodyCraft's own list. Then upload the finished MP3 above.
+            genre + mood combination to select there — drawn only from MelodyCraft's own list. Then import the finished MP3 under "Your song".
           </p>
           <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "0 0 10px", alignItems: "center" }}>
             <button className="btn btn-ghost btn-sm" onClick={() => copyText(`${title || ""}\n\n${lyrics || ""}`.trim(), "both")} disabled={!lyrics} title="One paste: the title on the first line, then the lyrics — for apps with a single text box">{copied === "both" ? "Copied ✓" : "📋 Copy title + lyrics"}</button>
@@ -340,8 +341,13 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
               </div>
             </div>
           ) : (
-            <p className="note">No song yet. Set the direction and generate — the player appears here.</p>
+            <p className="note">{simple ? "No song yet. When MelodyCraft has made it, save the MP3 and import it here." : "No song yet. Set the direction and generate — the player appears here."}</p>
           )}
+          <label className={`btn ${active ? "btn-ghost btn-sm" : "btn-primary"}`} style={{ cursor: "pointer", marginTop: 8 }} title="Bring in the song made in MelodyCraft (.mp3, .wav, .m4a)">
+            {uploadBusy ? "Adding…" : active ? "⬆ Import a different song file" : "⬆ Import the finished song (MP3)"}
+            <input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg" style={{ display: "none" }} onChange={(e) => { uploadSong(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+          </label>
+          {simple && error && <div className="error">{error}</div>}
           {versions.length > 1 && (
             <div className="song-versions">
               {versions.slice().reverse().map((v, i) => (

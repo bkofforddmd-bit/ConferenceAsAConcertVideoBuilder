@@ -30,6 +30,8 @@ import { campusSessionIdFromUrl, campusSessionToProject } from "./lib/campus-imp
 import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
 import { isRendering } from "./lib/video-render.js";
 import { newPipeId, pipelineStart, pipelineStatus, pipelineStop, pipelineResume, fetchJobImage, mergePipeline } from "./lib/scene-pipeline.js";
+import SimpleTalkPicker from "./components/SimpleTalkPicker.jsx";
+import YouTubeCard from "./components/YouTubeCard.jsx";
 
 const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -48,10 +50,41 @@ const STEPS = [
   { id: "video", n: "05", name: "Video", sub: "Clips, timing, render" },
   { id: "export", n: "06", name: "Export", sub: "Download & share" },
 ];
+// The streamlined wizard (Simple mode): the house workflow, start to YouTube.
+// Expert mode keeps every option (the STEPS above).
+const SIMPLE_STEPS = [
+  { id: "talk", name: "Talk", sub: "Newest conference first" },
+  { id: "lyrics", name: "Lyrics", sub: "In a modern artist's style" },
+  { id: "scenes", name: "Scenes", sub: "Painted on the server" },
+  { id: "music", name: "Song", sub: "MelodyCraft → import → sync" },
+  { id: "reactions", name: "Reactions", sub: "Film the listener" },
+  { id: "finish", name: "Finishing", sub: "Captions · closing · camera" },
+  { id: "render", name: "Render", sub: "Make the video" },
+  { id: "share", name: "Share", sub: "Publish · save · YouTube" },
+].map((s, i) => ({ ...s, n: String(i + 1).padStart(2, "0") }));
+const VIDEO_PARTS = ["reactions", "finish", "render"];
+// The same place in the other mode's steps.
+function stepFor(step, mode) {
+  if (mode === "simple") return step === "video" ? "render" : step === "export" ? "share" : step;
+  return VIDEO_PARTS.includes(step) ? "video" : step === "share" ? "export" : step;
+}
+const MODE_KEY = "cac-mode";
 
 export default function App() {
-  const [view, setView] = useState("library"); // library | create | projects | settings
+  // Simple (the streamlined wizard, default) or Expert (every option).
+  const [mode, setModeRaw] = useState(() => { try { return localStorage.getItem(MODE_KEY) === "expert" ? "expert" : "simple"; } catch { return "simple"; } });
+  const [view, setView] = useState(() => { try { return localStorage.getItem(MODE_KEY) === "expert" ? "library" : "create"; } catch { return "create"; } }); // library | create | projects | settings
   const [step, setStep] = useState("talk");
+  const simple = mode === "simple";
+  const steps = simple ? SIMPLE_STEPS : STEPS;
+  function setMode(m) {
+    try { localStorage.setItem(MODE_KEY, m); } catch {}
+    setModeRaw(m);
+    setStep((s) => stepFor(s, m));
+    if (m === "simple" && view === "library") setView("create");
+  }
+  // Keep the current step valid for the mode (e.g. a project that opens on "video" in Simple mode).
+  useEffect(() => { const s = stepFor(step, mode); if (s !== step) setStep(s); }, [step, mode]);
 
   const [projectId, setProjectId] = useState(() => newProjectId());
   const [talkText, setTalkText] = useState("");
@@ -548,6 +581,10 @@ export default function App() {
     scenes: Boolean(sc.scenes && sc.scenes.length && Object.keys(sc.images || {}).length),
     video: Boolean(render && render.mediaKey),
     export: false,
+    reactions: Boolean(timeline && timeline.qaIntro && (timeline.qaIntro.items || []).length),
+    finish: Boolean(timeline && timeline.bookends && timeline.bookends.post),
+    render: Boolean(render && render.mediaKey),
+    share: false,
   };
   const enabled = {
     talk: true,
@@ -556,13 +593,17 @@ export default function App() {
     scenes: Boolean(finalLyrics),
     video: Boolean(finalLyrics),
     export: Boolean(finalLyrics),
+    reactions: Boolean(finalLyrics),
+    finish: Boolean(finalLyrics),
+    render: Boolean(finalLyrics),
+    share: Boolean(finalLyrics),
   };
 
   // Every step or view change starts at the top of the new page (the Next bar
   // lives at the bottom of the previous one).
   useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [step, view]);
   function goStep(id) {
-    if (id === "talk") { setView("library"); return; }
+    if (id === "talk" && !simple) { setView("library"); return; }
     setView("create");
     setStep(id);
   }
@@ -648,12 +689,15 @@ export default function App() {
         </button>
         <button className={`topnav-btn${view === "create" ? " active" : ""}`} onClick={() => setView("create")}>
           <span className="topnav-icon">✦</span> Create
-          {hasContent && <span className="topnav-badge">{STEPS.find((s) => s.id === step)?.name}</span>}
+          {hasContent && <span className="topnav-badge">{steps.find((s) => s.id === step)?.name}</span>}
         </button>
         <button className={`topnav-btn${view === "projects" ? " active" : ""}`} onClick={() => { setView("projects"); setProjectsRefresh((n) => n + 1); }}>
           <span className="topnav-icon">▦</span> Projects
         </button>
         <span className="topnav-spacer" />
+        <button className={`topnav-btn mode-switch${simple ? "" : " expert"}`} onClick={() => setMode(simple ? "expert" : "simple")} title={simple ? "Show every option: song generators, animation, timeline, opening clips, storyboard exports…" : "Back to the streamlined wizard"}>
+          {simple ? "🧰 Expert mode" : "✨ Simple mode"}
+        </button>
         <button className="topnav-btn" onClick={startNewProject} title="Save this project and start a fresh one">
           {confirmNew ? "Click again to start fresh" : "+ New concert"}
         </button>
@@ -697,7 +741,7 @@ export default function App() {
       {view === "create" && (
         <>
           <div className="stepper" role="tablist">
-            {STEPS.map((s) => (
+            {steps.map((s) => (
               <button
                 key={s.id}
                 className={`step${step === s.id ? " active" : ""}`}
@@ -712,14 +756,14 @@ export default function App() {
             ))}
           </div>
 
-          {talkMeta.title ? (
+          {simple && step === "talk" ? null : talkMeta.title ? (
             <div className="talk-banner">
               <div className="talk-banner-text">
                 <div className="talk-banner-title">{talkMeta.title}</div>
                 <div className="talk-banner-meta">{talkMeta.speaker}{talkMeta.conferenceMonthYear ? ` · ${talkMeta.conferenceMonthYear}` : ""}{talkMeta.session ? ` · ${talkMeta.session}` : ""}</div>
               </div>
               {talkMeta.sourceUrl && <a className="btn btn-ghost btn-sm" href={talkMeta.sourceUrl} target="_blank" rel="noopener noreferrer">Read ↗</a>}
-              <button className="btn btn-ghost btn-sm" onClick={() => setView("library")}>Change talk</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => (simple ? goStep("talk") : setView("library"))}>Change talk</button>
             </div>
           ) : (
             <div className="talk-banner empty">
@@ -731,8 +775,13 @@ export default function App() {
             </div>
           )}
 
+          {simple && step === "talk" && (
+            <SimpleTalkPicker onTalkLoaded={handleTalkLoaded} onOpenLibrary={() => setView("library")} current={talkMeta} />
+          )}
+
           <div style={{ display: step === "lyrics" ? "block" : "none" }}>
             <LyricCreator
+              simple={simple}
               onSources={setLyricSources}
               talkText={talkText}
               setTalkText={setTalkText}
@@ -755,7 +804,8 @@ export default function App() {
               song={song}
               setSong={setSong}
               config={config}
-              onContinue={() => setStep("video")}
+              onContinue={() => setStep(simple ? "reactions" : "video")}
+              simple={simple}
             />
           )}
 
@@ -773,16 +823,18 @@ export default function App() {
               pipeline={scenePipeline}
               onStartPipeline={startScenePipeline}
               onStopPipeline={stopScenePipeline}
+              simple={simple}
             />
-            {done.scenes && (
+            {(done.scenes || (simple && scenePipeline && !scenePipeline.finished)) && (
               <div className="row end" style={{ marginBottom: 20 }}>
-                <button className="btn btn-primary" onClick={() => setStep("music")}>Continue → Music</button>
+                <button className="btn btn-primary" onClick={() => setStep("music")}>Continue → {simple ? "Song" : "Music"}</button>
               </div>
             )}
           </div>
 
-          {step === "video" && (
+          {(step === "video" || (simple && VIDEO_PARTS.includes(step))) && (
             <VideoStudio
+              section={simple ? step : ""}
               projectId={projectId}
               scenes={sc.scenes || []}
               images={{ ...(sc.images || {}), ...(sc.saved || {}) }}
@@ -798,7 +850,7 @@ export default function App() {
               setRender={setRender}
               onAttachVideo={attachVideoFile}
               config={config}
-              onContinue={() => setStep("export")}
+              onContinue={() => setStep(simple ? "share" : "export")}
               onSetCardImage={setCardImage}
               onSetSceneLyrics={setSceneLyrics}
               talkMeta={talkMeta}
@@ -809,10 +861,12 @@ export default function App() {
             />
           )}
 
-          {step === "export" && (
+          {(step === "export" || step === "share") && (
             <ExportPanel
+              simple={simple}
+              youtube={<YouTubeCard talkMeta={talkMeta} meta={sc.meta || {}} lyrics={finalLyrics} render={render} missingVideo={mediaMissing.video} />}
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
-              onGo={setStep}
+              onGo={(id) => setStep(stepFor(id, mode))}
               onDownloadJson={downloadProject}
               concertPublish={<ConcertPublish song={song} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
               missing={mediaMissing}
@@ -829,7 +883,7 @@ export default function App() {
           )}
 
           {/* Work down the page, then move on: the next step waits at the bottom. */}
-          <StepNav step={step} enabled={enabled} done={done} onGo={goStep} />
+          <StepNav steps={steps} step={step} enabled={enabled} done={done} onGo={goStep} />
         </>
       )}
 
@@ -858,14 +912,14 @@ export default function App() {
 }
 
 // ---------------- bottom step navigation ----------------
-function StepNav({ step, enabled, done, onGo }) {
-  const i = STEPS.findIndex((s) => s.id === step);
+function StepNav({ steps = STEPS, step, enabled, done, onGo }) {
+  const i = steps.findIndex((s) => s.id === step);
   if (i < 0) return null;
-  const prev = i > 0 ? STEPS[i - 1] : null;
-  const next = i + 1 < STEPS.length ? STEPS[i + 1] : null;
+  const prev = i > 0 ? steps[i - 1] : null;
+  const next = i + 1 < steps.length ? steps[i + 1] : null;
   const nextOk = next ? Boolean(enabled[next.id]) : false;
-  const hint = next && !nextOk ? (step === "lyrics" ? "Finalize the lyrics first" : "Finish this step first") : "";
-  const reminder = next && nextOk && !done[step] ? { music: "No song yet — you can still go on.", scenes: "No scene images yet — you can still go on.", video: "Not rendered yet — you can still go on.", lyrics: "" }[step] || "" : "";
+  const hint = next && !nextOk ? (step === "lyrics" || step === "talk" ? "Finalize the lyrics first" : "Finish this step first") : "";
+  const reminder = next && nextOk && !done[step] ? { music: "No song yet — you can still go on.", scenes: "Images still painting? Go on — they'll be waiting.", video: "Not rendered yet — you can still go on.", reactions: "No reactions yet — they're optional.", finish: "No closing clip yet — it's optional.", render: "Not rendered yet.", lyrics: "" }[step] || "" : "";
   return (
     <div className="step-nav">
       {prev ? <button className="btn btn-ghost" onClick={() => onGo(prev.id)}>← {prev.name}</button> : <span />}
@@ -880,7 +934,7 @@ function StepNav({ step, enabled, done, onGo }) {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong, youtube = null, simple = false }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
   const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
@@ -925,10 +979,10 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Export</h2>
+        <h2>{simple ? "Share" : "Export"}</h2>
         <button className="btn btn-ghost btn-sm" onClick={onDownloadJson}>Download project .json</button>
       </div>
-      <p className="sub">Everything this concert produced, in one place. {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
+      <p className="sub">{simple ? "Three last things: publish to Conference Concert, save the images, MP3 and MP4 to your folder, and post to YouTube." : "Everything this concert produced, in one place."} {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
 
       {concertPublish}
 
@@ -961,6 +1015,8 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
           </div>
         )}
       </div>
+
+      {youtube}
 
       <div className="export-grid">
         {items.map((it) => (

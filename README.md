@@ -107,6 +107,33 @@ the position shifts that adding a conference causes in `talks-index.json`
 `talk-text/` bundles all refer to talks by position and must be regenerated
 together with `talks-index.json`).
 
+## Simple and Expert modes
+
+The Studio opens in **Simple mode**: the house workflow as an eight-step wizard.
+The top bar's **🧰 Expert mode** button switches to the full toolset (and back);
+the choice is remembered in this browser (`cac-mode`).
+
+1. **Talk** — the newest conference's sessions and talks (any other conference
+   from the list; the full Library is one click away).
+2. **Lyrics** — name a modern artist or song; lyrics are written from the talk
+   in that style; revise; finalize.
+3. **Scenes** — the storyboard and every image build on the server (see below).
+4. **Song** — copy the title and lyrics (plus MelodyCraft genre/mood picks) into
+   the MelodyCraft AI app, import the finished MP3, sync the lyrics (AI or tap-along).
+5. **Reactions** — film the listener in the app (or add campus clips / files);
+   each answer is transcribed and opens with a question card.
+6. **Finishing** — caption size (large by default), the closing clip from the
+   talk's own video (loads itself; captions on and timed by AI on capture), and
+   the camera paths over each image.
+7. **Render**.
+8. **Share** — publish to Conference Concert, save images/MP3/MP4 to a folder,
+   and post to YouTube (@ConferenceAsAConcert): ready title, description and
+   tags with Copy buttons, the MP4 download, and YouTube's upload page. Direct
+   API upload would need a Google Cloud OAuth setup and YouTube's API review.
+
+Expert mode keeps every option: song generators, scene animation, the full
+timeline, opening clips, storyboard exports, and so on. Same project either way.
+
 ## Storyboard builds on the server
 
 Arriving at the Storyboard step with finalized lyrics and no scenes starts the

@@ -12,6 +12,7 @@ export default function LyricCreator({
   setStyleReference,
   onFinalize,
   finalized,
+  simple = false,
 }) {
   const [revisionRequest, setRevisionRequest] = useState("");
   const [copied, setCopied] = useState(""); // "all" | "plain" while the confirmation shows
@@ -100,13 +101,19 @@ export default function LyricCreator({
 
   return (
     <section className="panel">
-      <h2>Lyric Creator</h2>
+      <h2>{simple ? "Write the song" : "Lyric Creator"}</h2>
       <p className="sub">
-        Upload or paste a General Conference talk, choose a musical style, and
-        generate original lyrics that teach its principles — then revise until
-        it sings.
+        {simple
+          ? "Name a modern artist or song to sound like, and the lyrics are written from the talk in that style. Revise until it sings, then finalize."
+          : "Upload or paste a General Conference talk, choose a musical style, and generate original lyrics that teach its principles — then revise until it sings."}
       </p>
 
+      {simple ? (
+        <details className="music-card" style={{ marginBottom: 14 }}>
+          <summary className="note" style={{ cursor: "pointer" }}>The talk's text is loaded ({String(talkText || "").split(/\s+/).filter(Boolean).length.toLocaleString()} words) — show it</summary>
+          <textarea className="tall" value={talkText} onChange={(e) => setTalkText(e.target.value)} style={{ marginTop: 8 }} />
+        </details>
+      ) : (<>
       <label className="field">
         <span className="lbl">Conference talk</span>
         <textarea
@@ -122,12 +129,13 @@ export default function LyricCreator({
           .txt or .md upload fills the box above.
         </span>
       </div>
+      </>)}
 
       <label className="field">
-        <span className="lbl">Style / artist reference</span>
+        <span className="lbl">{simple ? "Sound like this modern artist or song" : "Style / artist reference"}</span>
         <input
           type="text"
-          placeholder="e.g. contemplative piano ballad, or 'in the style of a worship anthem'"
+          placeholder={simple ? 'e.g. "Forrest Frank", "Oceans" by Hillsong, Coldplay, Lauren Daigle' : "e.g. contemplative piano ballad, or 'in the style of a worship anthem'"}
           value={styleReference}
           onChange={(e) => setStyleReference(e.target.value)}
         />
@@ -140,7 +148,7 @@ export default function LyricCreator({
         </button>
       </div>
 
-      <div className="paste-lyrics">
+      {!simple && <div className="paste-lyrics">
         <span className="lbl">Already have finished lyrics? Paste them here</span>
         <textarea
           placeholder="Paste finalized lyrics to skip generation. Include section labels like [Verse 1], [Chorus]…"
@@ -158,7 +166,7 @@ export default function LyricCreator({
             richer, more accurate scenes.
           </span>
         </div>
-      </div>
+      </div>}
 
       {error && <div className="error">{error}</div>}
 
@@ -201,13 +209,13 @@ export default function LyricCreator({
               Apply revision
             </button>
             <button className="btn btn-primary" onClick={onFinalize} disabled={busy}>
-              {finalized ? "Lyrics finalized ✓" : "Finalize lyrics → Music"}
+              {finalized ? "Lyrics finalized ✓" : simple ? "Finalize lyrics → Scenes" : "Finalize lyrics → Storyboard"}
             </button>
           </div>
 
           <p className="note">
             You can keep editing directly in the box, ask for AI revisions, or
-            finalize to carry these lyrics into the Music and Storyboard steps.
+            finalize to carry these lyrics into the Storyboard (the images start painting right away) and then the Music step.
           </p>
         </>
       )}

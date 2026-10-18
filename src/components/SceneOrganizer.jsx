@@ -16,7 +16,7 @@ import { downloadFullPortrait, fullPortraitUrlFor, loadPortraits } from "./Speak
 import { cardBackgroundPrompt as sharedCardPrompt } from "../lib/card-prompts.js";
 import { lyricsKey } from "../lib/scene-pipeline.js";
 
-export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, liveState, onStateChange, onRenumber, active = false, pipeline = null, onStartPipeline = null, onStopPipeline = null }) {
+export default function SceneOrganizer({ talkText, lyrics, styleReference, talkMeta, restoreState, liveState, onStateChange, onRenumber, active = false, pipeline = null, onStartPipeline = null, onStopPipeline = null, simple = false }) {
   const [portraitAvail, setPortraitAvail] = useState(false);
   const [portraitMsg, setPortraitMsg] = useState("");
   const [portraitBusy, setPortraitBusy] = useState(false);
@@ -1377,10 +1377,11 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
 
   return (
     <section className="panel">
-      <h2>Movie Scene Organizer</h2>
+      <h2>{simple ? "Scenes" : "Movie Scene Organizer"}</h2>
       <p className="sub">
-        Break the finalized song into a visual story. A shared style bible keeps
-        characters, palette, and style consistent across every scene.
+        {simple
+          ? "The scenes and their images are being made on the server from your lyrics — one consistent style, each image building on the last. Head on to the Song step while they paint; they'll be waiting."
+          : "Break the finalized song into a visual story. A shared style bible keeps characters, palette, and style consistent across every scene."}
       </p>
 
       <div className="row">
@@ -1388,6 +1389,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
           {busy && <span className="spinner" />}
           {pipeline && pipeline.status === "running" && !pipeline.finished ? "Building on the server…" : scenes.length ? "Rebuild scene breakdown" : "Generate scene breakdown"}
         </button>
+        {!simple && <>
         <label className="row" style={{ gap: 6 }}>
           <input
             type="checkbox"
@@ -1420,6 +1422,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             <option value="talk">Follow the talk (more scenes, looser sync)</option>
           </select>
         </label>
+        </>}
         {scenes.length > 0 && !autoGenRunning && (
           <button
             className="btn btn-ghost"
@@ -1429,6 +1432,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             Generate all images
           </button>
         )}
+        {!simple && <>
         <label className="btn btn-ghost" style={{ cursor: "pointer" }} title="Upload finished images; AI builds the scene outline from your lyrics + images (one scene per image)">
           Build outline from images
           <input
@@ -1464,6 +1468,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
             {portraitBusy ? "Fetching…" : "Download Portrait"}
           </button>
         )}
+        </>}
       </div>
 
       {portraitMsg && <p className="note" style={{ marginTop: 12 }}>{portraitMsg}</p>}

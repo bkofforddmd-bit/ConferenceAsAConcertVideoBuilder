@@ -19,6 +19,7 @@ import { autoCaptionClip } from "../lib/clip-audio.js";
 import { mediaApi } from "../campus/campus-api.js";
 import { STAGE_LABEL, DEFAULT_QUESTIONS } from "../campus/questions.js";
 import { ClipCard } from "./Bookends.jsx";
+import ReactionRecorder from "./ReactionRecorder.jsx";
 
 const newId = () => "qa_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const fmtS = (t) => { t = Math.max(0, Math.round(Number(t) || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
@@ -117,6 +118,12 @@ export default function QaIntro({ projectId, tl, setTimeline, campusSessionId })
     } catch (e) { setMsg(e.message || String(e)); }
   }
 
+  // A reaction filmed right here in the Studio.
+  async function addRecording(blob, question) {
+    const { item } = await addBlob(blob, { kind: "upload", name: "Filmed in the Studio", question: question || DEFAULT_QUESTIONS[3] });
+    transcribe(item, blob);
+  }
+
   async function remove(item) {
     try { await deleteMedia(item.mediaKey); } catch {}
     setQa((cur) => ({ items: (cur.items || []).filter((x) => x.id !== item.id) }));
@@ -146,6 +153,7 @@ export default function QaIntro({ projectId, tl, setTimeline, campusSessionId })
         </label>
         {items.length > 0 && <span className="note" style={{ margin: 0 }}>{items.length} question{items.length === 1 ? "" : "s"} · about {fmtS(total)} before the song</span>}
       </div>
+      <div style={{ margin: "10px 0" }}><ReactionRecorder onKeep={addRecording} /></div>
       <p className="note">Each answer opens with a Conference As A Concert card. The question writes itself out, then the card crossfades into the student answering, with captions. The answers play back to back, then the song begins.</p>
 
       {items.map((it, i) => (
