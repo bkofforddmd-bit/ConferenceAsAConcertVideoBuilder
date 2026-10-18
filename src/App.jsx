@@ -789,6 +789,9 @@ export default function App() {
           <div style={{ display: step === "lyrics" ? "block" : "none" }}>
             <LyricCreator
               simple={simple}
+              songTitle={(sc.meta && sc.meta.songTitle) || talkMeta.title || ""}
+              melodyInstructions={(song && song.melodyCraft && song.melodyCraft.instructions) || ""}
+              setMelodyInstructions={(t) => setSong((p) => ({ ...(p || {}), melodyCraft: { ...((p && p.melodyCraft) || {}), instructions: t } }))}
               onSources={setLyricSources}
               talkText={talkText}
               setTalkText={setTalkText}

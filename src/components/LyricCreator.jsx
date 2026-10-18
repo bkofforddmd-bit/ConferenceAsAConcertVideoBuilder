@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { generateLyrics } from "../lib/api.js";
 import ArtistInspirationSelector, { artistFor } from "./ArtistInspirationSelector.jsx";
+import MelodyInstructions from "./MelodyInstructions.jsx";
 
 export default function LyricCreator({
   onSources,
@@ -14,6 +15,9 @@ export default function LyricCreator({
   onFinalize,
   finalized,
   simple = false,
+  songTitle = "",
+  melodyInstructions = "",
+  setMelodyInstructions = null,
 }) {
   const [revisionRequest, setRevisionRequest] = useState("");
   const [copied, setCopied] = useState(""); // "all" | "plain" while the confirmation shows
@@ -195,6 +199,9 @@ export default function LyricCreator({
               onChange={(e) => setLyrics(e.target.value)}
             />
           </label>
+          {setMelodyInstructions && (
+            <MelodyInstructions artist={styleReference} title={songTitle} lyrics={lyrics} value={melodyInstructions} onChange={setMelodyInstructions} />
+          )}
 
           <p className="note" style={{ margin: "4px 0 8px" }}>
             <strong style={{ color: lyricChars > 1500 ? "var(--warning)" : "var(--cloud)" }}>{lyricChars.toLocaleString()} characters</strong> of lyric

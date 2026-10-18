@@ -11,6 +11,7 @@
 
 import MelodyCraftPicker from "./MelodyCraftPicker.jsx";
 import { artistFor } from "./ArtistInspirationSelector.jsx";
+import MelodyInstructions from "./MelodyInstructions.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { musicStart, musicStatus, pollJob, fetchMediaBlob } from "../lib/api.js";
 import { putMedia, getMedia } from "../lib/project-store.js";
@@ -318,6 +319,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
           <div className="row" style={{ gap: 8, flexWrap: "wrap", margin: "0 0 10px", alignItems: "center" }}>
             <button className="btn btn-ghost btn-sm" onClick={() => copyText(`${title || ""}\n\n${lyrics || ""}`.trim(), "both")} disabled={!lyrics} title="One paste: the title on the first line, then the lyrics — for apps with a single text box">{copied === "both" ? "Copied ✓" : "📋 Copy title + lyrics"}</button>
           </div>
+          <MelodyInstructions compact artist={styleReference} title={title || ""} lyrics={lyrics} value={(song && song.melodyCraft && song.melodyCraft.instructions) || ""} onChange={(t) => setSong((p) => ({ ...p, melodyCraft: { ...((p && p.melodyCraft) || {}), instructions: t } }))} />
           <MelodyCraftPicker
             reference={(song && song.melodyCraft && song.melodyCraft.reference) || styleReference || ""}
             onReference={(r) => setSong((p) => ({ ...p, melodyCraft: { ...((p && p.melodyCraft) || {}), reference: r } }))}
