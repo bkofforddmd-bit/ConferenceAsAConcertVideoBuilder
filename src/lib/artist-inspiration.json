@@ -1,0 +1,1906 @@
+{
+  "artists": [
+    {
+      "name": "Frank Sinatra",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Louis Armstrong",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Ella Fitzgerald",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Nat King Cole",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hank Williams",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Elvis Presley",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Johnny Cash",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": "Plainspoken storytelling, moral themes, restrained rhyme"
+    },
+    {
+      "name": "Chuck Berry",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Ray Charles",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Sam Cooke",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Buddy Holly",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Patsy Cline",
+      "categories": [
+        "Classics & Early Rock"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Beatles",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": "Melodic simplicity, playful imagery, memorable refrains"
+    },
+    {
+      "name": "The Rolling Stones",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bob Dylan",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": "Poetic metaphors, complex verses, social and spiritual reflection"
+    },
+    {
+      "name": "The Beach Boys",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Simon & Garfunkel",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Aretha Franklin",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Stevie Wonder",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Marvin Gaye",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Temptations",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Doors",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jimi Hendrix",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Led Zeppelin",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Pink Floyd",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Queen",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": "Theatrical structure, dramatic contrasts, triumphant refrains"
+    },
+    {
+      "name": "Elton John",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Billy Joel",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": "Conversational narratives, vivid characters, strong rhyme"
+    },
+    {
+      "name": "ABBA",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": "Direct emotional lyrics, memorable hooks, polished repetition"
+    },
+    {
+      "name": "Bee Gees",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Fleetwood Mac",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Eagles",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "John Denver",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Carole King",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "James Taylor",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "David Bowie",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bob Marley",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Dolly Parton",
+      "categories": [
+        "1960s & 1970s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Michael Jackson",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Madonna",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Prince",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Whitney Houston",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tina Turner",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Phil Collins",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Genesis",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "U2",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": "Spiritual imagery, earnest declarations, anthemic choruses"
+    },
+    {
+      "name": "Bon Jovi",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Journey",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bruce Springsteen",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Cyndi Lauper",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "George Michael",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Duran Duran",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Depeche Mode",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tears for Fears",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Police",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Metallica",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Guns N’ Roses",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Lionel Richie",
+      "categories": [
+        "1980s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Nirvana",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Pearl Jam",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Radiohead",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Oasis",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Green Day",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Red Hot Chili Peppers",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Mariah Carey",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Céline Dion",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Boyz II Men",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Backstreet Boys",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "NSYNC",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Spice Girls",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Britney Spears",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Christina Aguilera",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Alanis Morissette",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Shania Twain",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Garth Brooks",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tupac Shakur",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Eminem",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": "Dense multisyllabic rhyme, internal rhyme, rhythmic wordplay"
+    },
+    {
+      "name": "Daft Punk",
+      "categories": [
+        "1990s"
+      ],
+      "lyricProfile": "Minimal lyrics, hypnotic repetition, short phrases and vocoder-friendly hooks"
+    },
+    {
+      "name": "Coldplay",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": "Hopeful imagery, simple emotional declarations, expansive repeated choruses"
+    },
+    {
+      "name": "Beyoncé",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Rihanna",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Lady Gaga",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Alicia Keys",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Usher",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Justin Timberlake",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Kanye West",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jay-Z",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Linkin Park",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Maroon 5",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Killers",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Avril Lavigne",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Kelly Clarkson",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "P!nk",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Katy Perry",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Shakira",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Amy Winehouse",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Carrie Underwood",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Taylor Swift",
+      "categories": [
+        "2000s"
+      ],
+      "lyricProfile": "Detailed storytelling, clever rhymes, emotional bridges"
+    },
+    {
+      "name": "Adele",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": "Vulnerable confessions, powerful emotional crescendos"
+    },
+    {
+      "name": "Ed Sheeran",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bruno Mars",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Weeknd",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Drake",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Kendrick Lamar",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Ariana Grande",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Justin Bieber",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Billie Eilish",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Lana Del Rey",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Dua Lipa",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Olivia Rodrigo",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Sabrina Carpenter",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Chappell Roan",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Harry Styles",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "One Direction",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Imagine Dragons",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Twenty One Pilots",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "BTS",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "BLACKPINK",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bad Bunny",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Post Malone",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hozier",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Chris Stapleton",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Morgan Wallen",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Zach Bryan",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "SZA",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Doja Cat",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Avicii",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Chainsmokers",
+      "categories": [
+        "2010s & 2020s"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Amy Grant",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Personal storytelling, warmth, everyday spiritual struggles"
+    },
+    {
+      "name": "Michael W. Smith",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Reverent, uplifting, simple declarations of faith"
+    },
+    {
+      "name": "Steven Curtis Chapman",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Narrative-driven, family, faith, discipleship"
+    },
+    {
+      "name": "Chris Tomlin",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Repetitive, congregational worship, declarations of praise"
+    },
+    {
+      "name": "Matthew West",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Storytelling, encouragement, personal transformation"
+    },
+    {
+      "name": "Jeremy Camp",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Casting Crowns",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Scriptural lessons, introspection, practical Christian living"
+    },
+    {
+      "name": "MercyMe",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Hope, grace, eternity, emotionally powerful choruses"
+    },
+    {
+      "name": "Third Day",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Newsboys",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "TobyMac",
+      "categories": [
+        "Contemporary Christian Music (CCM)",
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": "Energetic, conversational, motivational lyrics"
+    },
+    {
+      "name": "DC Talk",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jars of Clay",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "For KING & COUNTRY",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": "Cinematic, rhythmic, uplifting anthems"
+    },
+    {
+      "name": "Big Daddy Weave",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tenth Avenue North",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Building 429",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Sanctus Real",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Brandon Heath",
+      "categories": [
+        "Contemporary Christian Music (CCM)",
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Josh Wilson",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Danny Gokey",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jordan Feliz",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Colton Dixon",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Cochren & Co.",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "CAIN",
+      "categories": [
+        "Contemporary Christian Music (CCM)"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hillsong Worship",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hillsong UNITED",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Elevation Worship",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bethel Music",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Phil Wickham",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": "Majestic imagery, worship anthems, soaring refrains"
+    },
+    {
+      "name": "Brandon Lake",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": "Passionate, raw, testimony-centered lyrics"
+    },
+    {
+      "name": "Lauren Daigle",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": "Soulful, vulnerable, intimate conversations with God"
+    },
+    {
+      "name": "Kari Jobe",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Cody Carnes",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Brooke Ligertwood",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Maverick City Music",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jesus Culture",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Passion",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Matt Redman",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tim Hughes",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "CeCe Winans",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tasha Cobbs Leonard",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Charity Gayle",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Shane & Shane",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "CityAlight",
+      "categories": [
+        "Modern Worship"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Skillet",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Switchfoot",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Relient K",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Needtobreathe",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "RED",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Thousand Foot Krutch",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Disciple",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Kutless",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "P.O.D.",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Anberlin",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hawk Nelson",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Afters",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "David Crowder Band",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Crowder",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Audio Adrenaline",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Stryper",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Petra",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Delirious?",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Leeland",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Fray",
+      "categories": [
+        "Christian Rock & Alternative"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Lecrae",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "NF",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Andy Mineo",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "KB",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Trip Lee",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tedashii",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Hulvey",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tauren Wells",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Kirk Franklin",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Tye Tribbett",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Flame",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Social Club Misfits",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "WHATUPRG",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jon Keith",
+      "categories": [
+        "Christian Hip-Hop & Urban"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Gaither Vocal Band",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Bill Gaither",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "David Phelps",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Cathedrals",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Isaacs",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Hoppers",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Oak Ridge Boys",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Booth Brothers",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Ernie Haase & Signature Sound",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Martins",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Sandi Patty",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Larnelle Harris",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Andraé Crouch",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Mahalia Jackson",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Clark Sisters",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Donnie McClurkin",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Shirley Caesar",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Winans",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Brooklyn Tabernacle Choir",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Collingsworth Family",
+      "categories": [
+        "Southern Gospel & Traditional Gospel"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Anne Wilson",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Zach Williams",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Rhett Walker",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Mac Powell",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Josh Garrels",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Andrew Peterson",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": "Literary storytelling, symbolism, reflective spirituality"
+    },
+    {
+      "name": "Rend Collective",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Gray Havens",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Ellie Holcomb",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "J.J. Heller",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Fernando Ortega",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Rich Mullins",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": "Poetic theology, vivid metaphors, humble reflection"
+    },
+    {
+      "name": "Keith Green",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Keith & Kristyn Getty",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Michael Card",
+      "categories": [
+        "Christian Country, Folk & Acoustic"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Tabernacle Choir at Temple Square",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Michael McLean",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Intimate spiritual narratives, reassurance, belonging"
+    },
+    {
+      "name": "Kenneth Cope",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Christ-centered testimony, contemplative spiritual imagery"
+    },
+    {
+      "name": "Janice Kapp Perry",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Direct doctrinal teaching, accessible melodies, heartfelt devotion"
+    },
+    {
+      "name": "Hilary Weeks",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Personal faith, hope through adversity, uplifting messages"
+    },
+    {
+      "name": "Jenny Oaks Baker",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "David Archuleta",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Alex Boyé",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "The Piano Guys",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "BYU Vocal Point",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "BYU Noteworthy",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jericho Road",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Mercy River",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Paul Cardall",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Jon Schmidt",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Lindsey Stirling",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Nathan Pacheco",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Calee Reed",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Julie de Azevedo",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Katherine Nelson",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Afterglow",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "EFY Music Artists",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Peter Breinholt",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Acoustic storytelling, introspection, poetic imagery"
+    },
+    {
+      "name": "Ryan Shupe & the RubberBand",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Cherie Call",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    },
+    {
+      "name": "Shawna Edwards",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": "Simple, memorable gospel-centered lyrics"
+    },
+    {
+      "name": "Sally DeFord",
+      "categories": [
+        "Latter-day Saint Artists"
+      ],
+      "lyricProfile": ""
+    }
+  ],
+  "categories": [
+    "Classics & Early Rock",
+    "1960s & 1970s",
+    "1980s",
+    "1990s",
+    "2000s",
+    "2010s & 2020s",
+    "Contemporary Christian Music (CCM)",
+    "Modern Worship",
+    "Christian Rock & Alternative",
+    "Christian Hip-Hop & Urban",
+    "Southern Gospel & Traditional Gospel",
+    "Christian Country, Folk & Acoustic",
+    "Latter-day Saint Artists"
+  ],
+  "customArtistEnabled": true,
+  "notes": "Profiles describe general songwriting traits. Generate original lyrics; preserve source talk doctrine; do not reproduce existing songs."
+}

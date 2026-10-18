@@ -1,10 +1,10 @@
 // src/components/ArtistInspirationSelector.jsx — pick the artist whose style
-// the song should follow. 269 artists in 13 groups (src/data/artist-inspiration.json),
+// the song should follow. 269 artists in 13 groups (src/lib/artist-inspiration.json),
 // a search box, and a free-text "your own artist or song" entry. The choice is
 // the project's style reference: it shapes the lyrics, and the Music step's
 // MelodyCraft "sound like" starts from it.
 import React, { useMemo, useState } from "react";
-import catalog from "../data/artist-inspiration.json";
+import catalog from "../lib/artist-inspiration.json";
 
 export const ARTISTS = catalog.artists || [];
 export const ARTIST_CATEGORIES = catalog.categories || [];
