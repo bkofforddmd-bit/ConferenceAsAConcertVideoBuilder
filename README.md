@@ -213,6 +213,29 @@ ratings), `followup:<sessionId>`. Functions: `campus-share` (public),
 recording-remove / song-link), `campus-media` (sign-song / confirm-song),
 `campus-admin` (followups / followup-update / followup-delete / share-toggle).
 
+### Q&A intro (question cards → students' answers, before the song)
+
+On the campus phone, every recording is saved with the question the worker
+asked (picked from the administrator's question bank in Admin → Settings, or
+typed). There's a new recording moment while the lyrics are being written:
+"why is this your favorite talk?".
+
+In the Studio's Video step, **Q&A intro** builds the opening: add answers from
+the campus session (or upload video files), each is transcribed by AI
+automatically (the same auto-caption job as the closing clip; fix words or
+tap-time by hand), edit the question wording, trim, and reorder. In the
+rendered video each answer opens with a Conference As A Concert card (winged
+mark + name, gold rule, "Question 1 of 3") on which the question writes
+itself out; the card then crossfades — picture and sound — into the student
+answering, with captions; the answers play back to back, then the opening
+clip (if any), the intro card and the song. Settings: card length (3–8 s)
+and crossfade (0.5–2 s). Answer videos are copied into the browser's project
+storage (`<projectId>:qa:<id>`) so they render offline and never expire.
+
+Code: `src/components/QaIntro.jsx`, `src/campus/questions.js` (shared question
+bank), `drawQuestionCard` / Q&A phase in `src/lib/video-render.js`,
+campus-media `sign-upload { question }` and `set-question`.
+
 ### Video clips (in-app recording → private Cloudflare R2)
 
 When a student authorizes recording, the session screens show a small 🎥

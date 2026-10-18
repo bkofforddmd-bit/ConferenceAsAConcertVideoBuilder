@@ -133,6 +133,7 @@ function Settings() {
       <label className="c-field"><span className="lbl">MelodyCraft AI address (opens in a new window on the song step)</span><input value={f.melodyCraftUrl} onChange={(e) => setF({ ...f, melodyCraftUrl: e.target.value })} /></label>
       <p className="c-note">Please confirm this is the site you use — listings differ. It must start with https://.</p>
       <label className="c-field"><span className="lbl">Default campus</span><input value={f.defaultCampus} onChange={(e) => setF({ ...f, defaultCampus: e.target.value })} /></label>
+      <label className="c-field"><span className="lbl">Interview questions (one per line) — workers pick from these when recording; each appears on a card before the answer in the video</span><textarea value={Array.isArray(f.questions) ? f.questions.join("\n") : f.questions || ""} onChange={(e) => setF({ ...f, questions: e.target.value })} style={{ minHeight: 160 }} /></label>
       <label className="c-field"><span className="lbl">Mark an open session unfinished after (minutes)</span><input type="number" min="10" value={f.abandonAfterMinutes} onChange={(e) => setF({ ...f, abandonAfterMinutes: Number(e.target.value) })} /></label>
       {err && <div className="c-err">{err}</div>}
       {msg && <div className="c-ok">{msg}</div>}

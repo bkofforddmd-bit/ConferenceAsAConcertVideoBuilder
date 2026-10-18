@@ -92,7 +92,7 @@ function useMediaUrl(mediaKey) {
 }
 
 // ---- a stored clip: preview + trim + remove ----
-function ClipCard({ clip, title, onChange, onRemove }) {
+export function ClipCard({ clip, title, onChange, onRemove, alwaysCaption = false, captionLabel = "Caption the speaker's words", autoLabel = "✨ Auto-caption this clip" }) {
   const url = useMediaUrl(clip.mediaKey);
   const ref = useRef(null);
   const [t, setT] = useState(0);
@@ -183,15 +183,15 @@ function ClipCard({ clip, title, onChange, onRemove }) {
           : <div className="music-card" style={{ margin: "6px 0 0", borderColor: "var(--danger)" }}><div className="note" style={{ margin: 0 }}><strong>This clip has no sound.</strong> It was captured before the sound fix, so it will be silent in the video. Remove it and capture it again — the new capture records the speaker's voice.</div></div>
       )}
       {clip.quote && !(clip.captions && clip.captions.on) && <div className="note" style={{ margin: "4px 0 0" }}>“{clip.quote}”</div>}
-      {(clip.kind === "talk" || clip.quote || (clip.captions && clip.captions.on)) && (
+      {(alwaysCaption || clip.kind === "talk" || clip.quote || (clip.captions && clip.captions.on)) && (
         <div style={{ marginTop: 8 }}>
           <label className="row" style={{ gap: 6, fontSize: 13 }} title="Draw the speaker's words at the bottom of the clip, phrase by phrase">
             <input type="checkbox" checked={Boolean(clip.captions && clip.captions.on)} onChange={(e) => onChange({ ...clip, captions: { on: e.target.checked, text: (clip.captions && clip.captions.text) || clip.quote || "" } })} />
-            Caption the speaker's words
+            {captionLabel}
           </label>
           {!(clip.captions && clip.captions.on) && (
             <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-              <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : "✨ Auto-caption this clip"}</button>
+              <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : autoLabel}</button>
               {autoMsg && <span className="note" style={{ margin: 0 }}>{autoMsg}</span>}
             </div>
           )}
@@ -203,7 +203,7 @@ function ClipCard({ clip, title, onChange, onRemove }) {
                 Without taps, the words are spread across the clip by length, which is only a rough guess.
               </p>
               <div className="row" style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-                {capTap < 0 && <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : "✨ Auto-caption this clip"}</button>}
+                {capTap < 0 && <button className="btn btn-primary btn-sm" onClick={autoCaption} disabled={autoBusy || !url} title="Gemini listens to this clip and writes the captions with their timing — a fraction of a cent, about 15 seconds">{autoBusy ? "Listening…" : autoLabel}</button>}
                 {capTap < 0 ? (
                   <button className="btn btn-ghost btn-sm" onClick={startCapTap} disabled={!capPhrases.length || !url || autoBusy}>▶ Tap captions along{clip.captions.marks && clip.captions.marks.length === capPhrases.length ? " (re-time)" : ""}</button>
                 ) : (
@@ -233,7 +233,7 @@ function ClipCard({ clip, title, onChange, onRemove }) {
         <label className="row" style={{ gap: 6, fontSize: 13 }} title="Fade in at the start and out at the end of this clip in the finished video">
           Edge fade
           <select value={Number(clip.fade) || 0.4} onChange={(e) => onChange({ ...clip, fade: Number(e.target.value) })}>
-            {[0.25, 0.4, 0.5, 0.75, 1, 1.5, 2, 3].map((v) => <option key={v} value={v}>{v} s</option>)}
+            {[0.25, 0.4, 0.5, 0.75, 0.8, 1, 1.5, 2, 3].map((v) => <option key={v} value={v}>{v} s</option>)}
           </select>
         </label>
         {clip.segments && clip.segments.length > 1 && <span className="note" style={{ margin: 0 }}>joins were captured with a {clip.fade || 0.5}-second fade — recapture to change that</span>}

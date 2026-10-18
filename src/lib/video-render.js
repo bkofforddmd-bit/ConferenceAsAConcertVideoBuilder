@@ -397,6 +397,103 @@ function drawTextCard(ctx, card, W, H) {
   ctx.shadowBlur = 0;
 }
 
+// ---- Q&A intro: a Conference As A Concert question card, written out letter
+// by letter, that crossfades into the student's answer ----
+// How long the question takes to "write" on a card of cardSec seconds.
+export function questionTypeSeconds(question, cardSec = 4) {
+  const n = String(question || "").length;
+  return Math.max(0.8, Math.min(cardSec * 0.6, n * 0.045));
+}
+// Lines of the question at the card's text size (layout never shifts while typing).
+function questionLines(ctx, question, W, H) {
+  const q = String(question || "").trim() || "…";
+  let px = Math.round(H * 0.078);
+  for (let k = 0; k < 6; k++) {
+    ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
+    const lines = wrapLines(ctx, q, W * 0.78);
+    if (lines.length <= 3) return { lines, px };
+    px = Math.round(px * 0.88);
+  }
+  ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
+  return { lines: wrapLines(ctx, q, W * 0.82).slice(0, 4), px };
+}
+export function drawQuestionCard(ctx, { question = "", reveal = 1, index = 0, count = 1, logo = null, caret = true, t = 0 } = {}, W, H) {
+  // background: brand navy, a warm glow rising from below, a faint arc
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#00153d"); g.addColorStop(0.55, "#0b2a5e"); g.addColorStop(1, "#1d4b8f");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W / 2, H * 1.1, 0, W / 2, H * 1.1, W * 0.65);
+  glow.addColorStop(0, "rgba(243,201,105,0.30)"); glow.addColorStop(1, "rgba(243,201,105,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.strokeStyle = "rgba(243,217,164,0.22)"; ctx.lineWidth = Math.max(1, H * 0.0016);
+  ctx.beginPath(); ctx.arc(W / 2, H * 1.95, H * 1.35, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+  ctx.restore();
+
+  // brand lockup at the top: the winged mark (transparent PNG) over the name in Michroma
+  let y = H * 0.07;
+  if (logo && (logo.naturalWidth || logo.width)) {
+    const iw = logo.naturalWidth || logo.width, ih = logo.naturalHeight || logo.height;
+    const dh = H * 0.13, dw = dh * (iw / ih);
+    ctx.save(); ctx.shadowColor = "rgba(243,201,105,0.35)"; ctx.shadowBlur = H * 0.03;
+    ctx.drawImage(logo, (W - dw) / 2, y, dw, dh);
+    ctx.restore();
+    y += dh + H * 0.045;
+  } else {
+    y += H * 0.03;
+  }
+  ctx.textAlign = "center"; ctx.fillStyle = "#C9D8F0";
+  ctx.font = `400 ${Math.round(H * 0.028)}px Michroma, Inter, system-ui, sans-serif`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = `${Math.round(H * 0.006)}px`;
+  ctx.fillText("CONFERENCE AS A CONCERT", W / 2, y);
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  y += H * 0.06;
+  // gold rule with a diamond
+  const ry = y, rw = W * 0.16;
+  ctx.strokeStyle = "rgba(243,217,164,0.75)"; ctx.lineWidth = Math.max(1, H * 0.002);
+  ctx.beginPath(); ctx.moveTo(W / 2 - rw, ry); ctx.lineTo(W / 2 - H * 0.016, ry); ctx.moveTo(W / 2 + H * 0.016, ry); ctx.lineTo(W / 2 + rw, ry); ctx.stroke();
+  ctx.save(); ctx.translate(W / 2, ry); ctx.rotate(Math.PI / 4); ctx.strokeRect(-H * 0.006, -H * 0.006, H * 0.012, H * 0.012); ctx.restore();
+  // "Question 1 of 3"
+  ctx.textAlign = "center"; ctx.fillStyle = "#f3d9a4";
+  ctx.font = `500 ${Math.round(H * 0.024)}px Inter, system-ui, sans-serif`;
+  ctx.fillText(count > 1 ? `QUESTION ${index + 1} OF ${count}` : "WE ASKED", W / 2, ry + H * 0.06);
+
+  // the question, typed out: whole-line layout first, then each line's prefix
+  const { lines, px } = questionLines(ctx, question, W, H);
+  const total = lines.reduce((a, l) => a + l.length, 0) + Math.max(0, lines.length - 1);
+  let shown = Math.round(Math.max(0, Math.min(1, reveal)) * total);
+  const lh = px * 1.28;
+  let ly = H * 0.56 - ((lines.length - 1) * lh) / 2 + px * 0.35;
+  ctx.font = `600 ${px}px Cinzel, Georgia, serif`;
+  ctx.textAlign = "left"; ctx.fillStyle = "#F5F7FA";
+  ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = H * 0.012;
+  let caretX = null, caretY = ly;
+  for (const line of lines) {
+    const full = ctx.measureText(line).width;
+    const x0 = (W - full) / 2;
+    const part = line.slice(0, Math.max(0, shown));
+    if (part) ctx.fillText(part, x0, ly);
+    if (shown >= 0 && shown <= line.length) { caretX = x0 + ctx.measureText(part).width; caretY = ly; }
+    shown -= line.length + 1;
+    ly += lh;
+  }
+  ctx.shadowBlur = 0;
+  // a gold caret while writing, blinking once it's done
+  if (caret && caretX != null && (reveal < 1 || Math.floor(t * 2) % 2 === 0)) {
+    ctx.fillStyle = "#f3c969";
+    ctx.fillRect(caretX + px * 0.06, caretY - px * 0.82, Math.max(2, px * 0.06), px * 0.95);
+  }
+}
+// A still of the card (fully written) for the editor's preview.
+export async function drawQuestionPreview(canvas, { question = "", index = 0, count = 1, logoSrc = "/logo-mark.png" } = {}) {
+  const W = canvas.width || 960, H = canvas.height || 540;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  try { await document.fonts.load(`600 ${Math.round(H * 0.078)}px Cinzel`); } catch {}
+  let logo = null;
+  if (logoSrc) { try { logo = await loadImage(logoSrc); } catch {} }
+  drawQuestionCard(ctx, { question, reveal: 1, index, count, logo, caret: false }, W, H);
+}
+
 function drawWatermark(ctx, text, W, H) {
   if (!text) return;
   ctx.save();
@@ -471,20 +568,36 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
       el.muted = false;
       el.volume = 1;
       const node = actx.createMediaElementSource(el);
-      node.connect(dest);
+      const gain = actx.createGain(); // lets the sound fade with the picture
+      node.connect(gain); gain.connect(dest);
       const inAt = Math.max(0, Number(clip.in) || 0);
       const outAt = Number(clip.out) > inAt ? Number(clip.out) : (Number.isFinite(el.duration) ? el.duration : inAt);
       const len = Math.max(0, outAt - inAt);
-      return { el, inAt, outAt, len, fade: clip.fade, captions: captionSchedule(clip, len) };
+      return { el, gain, inAt, outAt, len, fade: clip.fade, captions: captionSchedule(clip, len) };
     };
     let pre = null, post = null;
     try { pre = await prepClip(bookends.pre); } catch { pre = null; }
     try { post = await prepClip(bookends.post); } catch { post = null; }
+    // Q&A intro: [question card → the student's answer] × N, before everything else.
+    const qaPlan = plan.qaIntro && Array.isArray(plan.qaIntro.items) ? plan.qaIntro : null;
+    const qa = [];
+    let qaLogo = null;
+    if (qaPlan) {
+      onStatus?.("Loading the Q&A clips…");
+      for (const it of qaPlan.items) {
+        if (cancelled) throw new Error("Cancelled.");
+        try { const c = await prepClip(it); if (c && c.len > 0.3) qa.push({ ...c, question: String(it.question || "").trim(), xfade: Math.max(0.2, Math.min(2, Number(it.fade) || Number(qaPlan.fade) || 0.8)) }); } catch {}
+      }
+      if (qaPlan.logoSrc) { try { qaLogo = await loadImage(qaPlan.logoSrc); } catch { qaLogo = null; } }
+      try { await document.fonts.load(`600 ${Math.round(H * 0.078)}px Cinzel`); } catch {}
+    }
+    const qaCardSec = qaPlan ? Math.max(2, Math.min(10, Number(qaPlan.cardSec) || 4)) : 0;
+    const qaTotal = qa.reduce((a, c) => a + qaCardSec + c.len, 0);
     const lead = Math.max(0, Math.min(30, Number(plan.introLead) || 0)); // intro card held in silence before the music
     const endLogo = plan.endLogo && plan.endLogo.src ? { seconds: Math.max(2, Math.min(12, Number(plan.endLogo.seconds) || 4)), fade: Math.max(0.2, Math.min(3, Number(plan.endLogo.fade) || 0.8)), src: plan.endLogo.src, lines: (Array.isArray(plan.endLogo.lines) ? plan.endLogo.lines : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 3) } : null;
     let endLogoImage = null;
     if (endLogo) { try { endLogoImage = await loadImage(endLogo.src); } catch { endLogoImage = null; } }
-    const grand = (pre ? pre.len : 0) + lead + total + (post ? post.len : 0) + (endLogoImage ? endLogo.seconds : 0);
+    const grand = qaTotal + (pre ? pre.len : 0) + lead + total + (post ? post.len : 0) + (endLogoImage ? endLogo.seconds : 0);
     const stamp = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
     const canvas = previewCanvas || document.createElement("canvas");
@@ -515,6 +628,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           }
         }
         if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, a)})`; ctx.fillRect(0, 0, W, H); }
+        if (clip.gain) clip.gain.gain.value = Math.max(0, Math.min(1, a));
         const done = offset + (t - inAt);
         if (done - lastProgressAt >= 0.25) { lastProgressAt = done; onProgress?.(done / grand, `${label} · ${stamp(done)} of ${stamp(grand)}`); }
         raf = requestAnimationFrame(draw);
@@ -542,10 +656,75 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     cleanups.push(() => cancelAnimationFrame(raf));
     const fadeSec = 0.6;
     let lastProgressAt = -1;
-    const songOffset = (pre ? pre.len : 0) + lead;
+    const songOffset = qaTotal + (pre ? pre.len : 0) + lead;
+
+    // ---- Q&A intro ----
+    let qaTimer = 0;
+    cleanups.push(() => clearTimeout(qaTimer));
+    let qaOffset = 0;
+    for (let qi = 0; qi < qa.length; qi++) {
+      const item = qa[qi];
+      const card = { question: item.question, index: qi, count: qa.length, logo: qaLogo };
+      const typeSec = questionTypeSeconds(item.question, qaCardSec);
+      const label = `Question ${qi + 1} of ${qa.length}`;
+      // 1) the card: fades up, the question writes itself out, then holds.
+      // Timer-driven so it always finishes, like the intro hold and closing logo.
+      await new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const draw = () => {
+          if (cancelled) { reject(new Error("Cancelled.")); return; }
+          const t = (performance.now() - t0) / 1000;
+          if (t >= qaCardSec) { resolve(); return; }
+          drawQuestionCard(ctx, { ...card, reveal: Math.min(1, t / typeSec), t }, W, H);
+          const a = Math.min(1, t / 0.6);
+          if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - a})`; ctx.fillRect(0, 0, W, H); }
+          const done = qaOffset + t;
+          if (done - lastProgressAt >= 0.25) { lastProgressAt = done; onProgress?.(done / grand, `${label} · card · ${stamp(done)} of ${stamp(grand)}`); }
+          qaTimer = setTimeout(draw, 33);
+        };
+        draw();
+      });
+      qaOffset += qaCardSec;
+      // 2) the answer: crossfades in over the card (picture and sound), plays
+      // with its captions, and fades out at the end.
+      await new Promise((resolve, reject) => {
+        const { el, inAt, outAt, xfade } = item;
+        const draw = () => {
+          if (cancelled) { reject(new Error("Cancelled.")); return; }
+          const t = el.currentTime;
+          if (t >= outAt - 0.04 || el.ended) { el.pause(); resolve(); return; }
+          const lt = t - inAt;
+          const aIn = Math.max(0, Math.min(1, lt / xfade));
+          const aOut = Math.max(0, Math.min(1, (outAt - t) / xfade));
+          if (aIn < 1) drawQuestionCard(ctx, { ...card, reveal: 1, caret: false }, W, H);
+          else { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); }
+          ctx.save(); ctx.globalAlpha = aIn; drawCover(ctx, el, W, H); ctx.restore();
+          if (item.captions && item.captions.length) {
+            const cap = item.captions.find((c) => lt >= c.from && lt < c.to);
+            if (cap) {
+              const f = Math.min(0.3, (cap.to - cap.from) / 4);
+              const ca = Math.max(0, Math.min(1, (lt - cap.from) / f, (cap.to - lt) / f));
+              drawLyrics(ctx, cap.text, W, H, ca * aIn, lyricScale(plan.captionsSize || plan.lyricsSize) * 0.85, 3);
+            }
+          }
+          if (aOut < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - aOut})`; ctx.fillRect(0, 0, W, H); }
+          item.gain.gain.value = Math.min(aIn, aOut);
+          const done = qaOffset + lt;
+          if (done - lastProgressAt >= 0.25) { lastProgressAt = done; onProgress?.(done / grand, `${label} · answer · ${stamp(done)} of ${stamp(grand)}`); }
+          raf = requestAnimationFrame(draw);
+        };
+        const begin = () => { el.removeEventListener("seeked", begin); item.gain.gain.value = 0; el.play().then(() => { raf = requestAnimationFrame(draw); }).catch(reject); };
+        el.addEventListener("seeked", begin);
+        el.currentTime = inAt;
+      });
+      qaOffset += item.len;
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (qa.length) await new Promise((r) => setTimeout(r, 200));
 
     if (pre) {
-      await playClipPhase(pre, 0, "Opening clip");
+      await playClipPhase(pre, qaTotal, "Opening clip");
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
       await new Promise((r) => setTimeout(r, 250));
     }
@@ -555,7 +734,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     cleanups.push(() => clearTimeout(leadTimer));
     if (lead > 0) {
       const s0 = segs[0], el0 = assets[0];
-      const offset = pre ? pre.len : 0;
+      const offset = qaTotal + (pre ? pre.len : 0);
       await new Promise((resolve, reject) => {
         const t0 = performance.now();
         const draw = () => {

@@ -124,7 +124,8 @@ export const analyticsApi = {
 
 export const mediaApi = {
   status: () => call("campus-media", { action: "status" }),
-  signUpload: (sessionId, stage, mime, bytes) => call("campus-media", { action: "sign-upload", sessionId, stage, mime, bytes }),
+  signUpload: (sessionId, stage, mime, bytes, question) => call("campus-media", { action: "sign-upload", sessionId, stage, mime, bytes, question }),
+  setQuestion: (sessionId, clipId, question) => call("campus-media", { action: "set-question", sessionId, clipId, question }),
   confirm: (sessionId, clipId, bytes, durationSec) => call("campus-media", { action: "confirm", sessionId, clipId, bytes, durationSec }),
   list: (sessionId) => call("campus-media", { action: "list", sessionId }),
   remove: (sessionId, clipId) => call("campus-media", { action: "delete", sessionId, clipId }),

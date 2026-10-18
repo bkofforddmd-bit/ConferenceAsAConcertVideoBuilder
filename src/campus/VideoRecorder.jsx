@@ -4,9 +4,9 @@
 // shown when the student authorized recording.
 import React, { useEffect, useRef, useState } from "react";
 import { mediaApi } from "./campus-api.js";
+import { STAGE_LABEL, defaultQuestionFor, DEFAULT_QUESTIONS } from "./questions.js";
 
 const MAX_SEC = 180;
-const STAGE_LABEL = { "lyrics-reaction": "Reaction to the lyrics", "song-reaction": "Reaction to the song", testimony: "Closing testimony / interview", other: "Clip" };
 
 function pickMime() {
   if (typeof MediaRecorder === "undefined") return "";
@@ -16,7 +16,10 @@ function pickMime() {
   return "";
 }
 
-export default function VideoRecorder({ sessionId, stage, clips = [], onClips, compact = false }) {
+export default function VideoRecorder({ sessionId, stage, clips = [], onClips, compact = false, questions }) {
+  const bank = questions && questions.length ? questions : DEFAULT_QUESTIONS;
+  const [question, setQuestion] = useState(() => defaultQuestionFor(stage, bank));
+  const [custom, setCustom] = useState(false);
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | live | recording | review | uploading
   const [err, setErr] = useState("");
@@ -96,7 +99,7 @@ export default function VideoRecorder({ sessionId, stage, clips = [], onClips, c
     if (!blob) return;
     setPhase("uploading"); setPct(0); setErr("");
     try {
-      const { clip, uploadUrl } = await mediaApi.signUpload(sessionId, stage, blob.type, blob.size);
+      const { clip, uploadUrl } = await mediaApi.signUpload(sessionId, stage, blob.type, blob.size, question);
       await putWithProgress(uploadUrl, blob, blob.type, setPct);
       const r = await mediaApi.confirm(sessionId, clip.id, blob.size, secs);
       onClips && onClips([...clips, r.clip]);
@@ -130,13 +133,27 @@ export default function VideoRecorder({ sessionId, stage, clips = [], onClips, c
           {mine.map((c) => (
             <div key={c.id} className="vr-saved-row">
               <video src={c.url} controls playsInline preload="metadata" />
-              <div className="c-note" style={{ margin: 0 }}>{c.durationSec ? fmt(Math.round(c.durationSec)) : ""} · {(c.bytes / 1048576).toFixed(1)} MB <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(c)}>Delete</button></div>
+              <div className="c-note" style={{ margin: 0 }}>{c.question ? <>“{c.question}”<br /></> : null}{c.durationSec ? fmt(Math.round(c.durationSec)) : ""} · {(c.bytes / 1048576).toFixed(1)} MB <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(c)}>Delete</button></div>
             </div>
           ))}
         </div>
       )}
       {open && (
         <div className="vr-window">
+          <div className="vr-question">
+            <span className="c-note" style={{ margin: 0 }}>Ask:</span>
+            {custom ? (
+              <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={200} placeholder="Type the question you'll ask" disabled={phase === "recording" || phase === "uploading"} />
+            ) : (
+              <select value={bank.includes(question) ? question : ""} onChange={(e) => { if (e.target.value === "__custom") { setCustom(true); setQuestion(""); } else setQuestion(e.target.value); }} disabled={phase === "recording" || phase === "uploading"}>
+                {!bank.includes(question) && <option value="">{question || "Choose a question"}</option>}
+                {bank.map((q) => <option key={q} value={q}>{q}</option>)}
+                <option value="__custom">✏️ Ask something else…</option>
+              </select>
+            )}
+            <div className="vr-question-big">“{question || "…"}”</div>
+            <span className="c-note" style={{ margin: 0 }}>This question appears on a card before the student's answer in the music video.</span>
+          </div>
           <video ref={videoRef} playsInline autoPlay className="vr-video" />
           {phase === "recording" && <div className="vr-rec">● REC {fmt(secs)}</div>}
           {phase === "uploading" && <div className="vr-rec" style={{ background: "rgba(46,95,169,0.85)" }}>Saving… {Math.round(pct * 100)}%</div>}

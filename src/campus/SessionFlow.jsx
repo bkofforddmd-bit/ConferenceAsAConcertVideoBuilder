@@ -40,7 +40,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
     mediaApi.list(id).then((r) => setClips(r.clips || [])).catch(() => {});
   }, [s && s.participation, mediaOk, id]); // eslint-disable-line react-hooks/exhaustive-deps
   const canRecord = Boolean(s && s.participation === "recorded" && mediaOk);
-  const recorder = (stage, compact) => (canRecord ? <VideoRecorder sessionId={id} stage={stage} clips={clips} onClips={setClips} compact={compact} /> : null);
+  const recorder = (stage, compact) => (canRecord ? <VideoRecorder sessionId={id} stage={stage} clips={clips} onClips={setClips} compact={compact} questions={config && config.settings && config.settings.questions} /> : null);
   const [mc, setMc] = useState({ genres: [], moods: [] });
   const [talkText, setTalkText] = useState("");
   const [firstNameOf, setFirstNameOf] = useState("");
@@ -161,6 +161,7 @@ export default function SessionFlow({ id, config, onLeave, onConfigRefresh }) {
         await patch({ lyrics: { generated: true, regenerated: (s.lyrics.regenerated || 0) + (opts.regenerate ? 1 : 0), accepted: false, mood: opts.mood || "", genre: opts.genre || "", message: opts.message || "", title, text: r.lyrics || "", reference: opts.reference || "" } });
       })}
       recorder={recorder("lyrics-reaction")}
+      recorderFirst={recorder("favorite-talk")}
       onBack={() => patch({ step: "talk" })}
       onAccept={(edited) => guard("accept", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "song" }))}
       onFinish={(edited) => guard("finish", () => patch({ lyrics: { accepted: true, edited: Boolean(edited), text: lyricsText }, step: "outcome" }))}
@@ -352,7 +353,7 @@ function ConsentScreen({ s, config, busy, err, onBack, onSubmit }) {
   );
 }
 
-function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference, recorder, onBack }) {
+function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onAccept, onFinish, reference, setReference, recorder, recorderFirst, onBack }) {
   const [mood, setMood] = useState("");
   const [genre, setGenre] = useState("");
   const [message, setMessage] = useState("");
@@ -376,6 +377,7 @@ function LyricsScreen({ s, busy, err, lyricsText, setLyricsText, onGenerate, onA
         <label className="c-field"><span className="lbl">Sound like a song or artist (optional)</span><input value={reference || ""} onChange={(e) => setReference(e.target.value)} placeholder='e.g. "Forrest Frank" or "Oceans by Hillsong"' /></label>
         {err && <div className="c-err">{err}</div>}
         <button className="c-btn primary big" disabled={Boolean(busy)} onClick={() => onGenerate({ mood, genre, message, reference })}>{busy ? <><span className="c-spinner" />Writing your lyrics… (about 30 seconds)</> : "✨ Write my lyrics"}</button>
+        {recorderFirst && <div style={{ marginTop: 10 }}><p className="c-note" style={{ margin: "0 0 4px" }}>While the lyrics are being written (about 30 seconds) is a great moment to ask why it's their favorite talk.</p>{recorderFirst}</div>}
       </div>
     );
   }

@@ -171,3 +171,8 @@ code.c-code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px;
 .c-song-player { margin: 8px auto 0; max-width: 520px; }
 .c-modal { position: fixed; inset: 0; z-index: 60; background: rgba(4,10,24,0.82); display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 24px 12px; }
 .c-modal-box { width: 100%; max-width: 520px; background: var(--navy, #0f1f3d); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+
+/* recorder: the question being asked */
+.vr-question { display: grid; gap: 6px; margin: 0 0 8px; }
+.vr-question select, .vr-question input { width: 100%; box-sizing: border-box; font-size: 15px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,0.3); color: var(--cloud); }
+.vr-question-big { font-size: 19px; line-height: 1.35; font-weight: 600; color: #f3d9a4; }

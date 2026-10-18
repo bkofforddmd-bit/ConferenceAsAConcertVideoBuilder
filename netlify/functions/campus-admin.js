@@ -28,6 +28,7 @@ import { authFrom, normEmail, publicUser, listUsers } from "../lib/campus-auth.j
 import { CONSENT_TEXT, CONSENT_VERSION } from "../lib/campus-consent-default.js";
 import { r2Configured, presign } from "../lib/r2.js";
 import { normRef, resolveSong } from "../lib/campus-share.js";
+import { DEFAULT_QUESTIONS, cleanQuestions } from "../../src/campus/questions.js";
 
 // A session id ("cs_…") or a reference code ("K7Q-4MX") → the session id.
 async function resolveSid(input) {
@@ -47,7 +48,7 @@ export async function currentConsent() {
 }
 export async function currentSettings() {
   const s = (await docGet("settings:general")) || {};
-  return { melodyCraftUrl: s.melodyCraftUrl || "https://melodycraft.app", defaultCampus: s.defaultCampus || "BYU Provo", abandonAfterMinutes: s.abandonAfterMinutes || 120 };
+  return { melodyCraftUrl: s.melodyCraftUrl || "https://melodycraft.app", defaultCampus: s.defaultCampus || "BYU Provo", abandonAfterMinutes: s.abandonAfterMinutes || 120, questions: Array.isArray(s.questions) && s.questions.length ? s.questions : DEFAULT_QUESTIONS };
 }
 
 export default async (req) => {
@@ -114,7 +115,7 @@ export default async (req) => {
       const cur = await currentSettings();
       const url = String(body.melodyCraftUrl || cur.melodyCraftUrl).trim();
       if (!/^https?:\/\//i.test(url)) return json({ error: "The MelodyCraft address must start with https://" }, 400);
-      const next = { ...cur, melodyCraftUrl: url, defaultCampus: String(body.defaultCampus || cur.defaultCampus).trim() || "BYU Provo", abandonAfterMinutes: Number(body.abandonAfterMinutes) > 0 ? Number(body.abandonAfterMinutes) : cur.abandonAfterMinutes, updatedAt: now(), updatedBy: admin.id };
+      const next = { ...cur, melodyCraftUrl: url, defaultCampus: String(body.defaultCampus || cur.defaultCampus).trim() || "BYU Provo", abandonAfterMinutes: Number(body.abandonAfterMinutes) > 0 ? Number(body.abandonAfterMinutes) : cur.abandonAfterMinutes, questions: body.questions !== undefined ? (cleanQuestions(body.questions).length ? cleanQuestions(body.questions) : DEFAULT_QUESTIONS) : cur.questions, updatedAt: now(), updatedBy: admin.id };
       await docSet("settings:general", next);
       return json(next);
     }

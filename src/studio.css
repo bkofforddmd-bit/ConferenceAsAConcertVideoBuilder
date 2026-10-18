@@ -765,3 +765,10 @@ select {
 .step-nav .step-nav-next { justify-self: end; font-size: 16px; padding: 12px 22px; }
 .step-nav > :first-child { justify-self: start; }
 @media (max-width: 640px) { .step-nav { grid-template-columns: 1fr; } .step-nav .step-nav-next { justify-self: stretch; } }
+
+/* Q&A intro editor */
+.qa-item { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 10px 0; background: rgba(255,255,255,0.03); }
+.qa-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.qa-item-grid { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 14px; align-items: start; }
+@media (max-width: 760px) { .qa-item-grid { grid-template-columns: 1fr; } }
+.qa-card-preview { width: 100%; height: auto; border-radius: 10px; display: block; background: #00153d; }

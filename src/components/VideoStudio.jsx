@@ -16,6 +16,7 @@ import { hasKey } from "../lib/keys.js";
 import { DEFAULT_PATH, drawLyricPreview, renderMusicVideo, autoTimeline, cropTo16x9, pickRenderMime, MOTIONS, textCardToDataUrl } from "../lib/video-render.js";
 import { parseSync, deriveSceneTiming, deriveScenePhraseTiming, sceneLineList, lyricBalance, partitionLyrics } from "../lib/lyric-sync.js";
 import Bookends from "./Bookends.jsx";
+import QaIntro from "./QaIntro.jsx";
 import AttachFile from "./AttachFile.jsx";
 import PathEditor from "./PathEditor.jsx";
 
@@ -169,6 +170,26 @@ export default function VideoStudio({
     })();
     return () => { for (const u of urls) URL.revokeObjectURL(u); };
   }, [bookendKeys]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Q&A intro answer videos (IndexedDB blobs → object urls for the renderer)
+  const qaItems = (timeline && timeline.qaIntro && timeline.qaIntro.items) || [];
+  const qaKeys = qaItems.map((x) => x.mediaKey).join("|");
+  const [qaUrls, setQaUrls] = useState({});
+  useEffect(() => {
+    const urls = [];
+    let alive = true;
+    (async () => {
+      const out = {};
+      for (const it of qaItems) {
+        if (!it || !it.mediaKey) continue;
+        const rec = await getMedia(it.mediaKey);
+        if (!rec) continue;
+        const u = URL.createObjectURL(rec.blob); urls.push(u); out[it.id] = u;
+      }
+      if (alive) setQaUrls(out); else urls.forEach((u) => URL.revokeObjectURL(u));
+    })();
+    return () => { alive = false; for (const u of urls) URL.revokeObjectURL(u); };
+  }, [qaKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // clip object urls
   const ordered = useMemo(() => (scenes || []).slice().sort((a, b) => a.sceneNumber - b.sceneNumber), [scenes]);
@@ -673,8 +694,12 @@ export default function VideoStudio({
       pre: be.pre && bookendUrls.pre ? { src: bookendUrls.pre, in: be.pre.in, out: be.pre.out, fade: be.pre.fade, captions: be.pre.captions || null, segments: be.pre.segments || null } : null,
       post: be.post && bookendUrls.post ? { src: bookendUrls.post, in: be.post.in, out: be.post.out, fade: be.post.fade, captions: be.post.captions || null, segments: be.post.segments || null } : null,
     };
+    const qaOn = tl.qaIntro && tl.qaIntro.on ? tl.qaIntro : null;
+    const qaIntro = qaOn && (qaOn.items || []).some((it) => qaUrls[it.id])
+      ? { cardSec: qaOn.cardSec || 4, fade: qaOn.fade || 0.8, logoSrc: "/logo-mark.png", items: qaOn.items.filter((it) => qaUrls[it.id]).map((it) => ({ src: qaUrls[it.id], in: it.in, out: it.out, fade: it.fade || qaOn.fade, captions: it.captions || null, question: it.question || "" })) }
+      : null;
     const job = renderMusicVideo(
-      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "huge", watermark, bookends, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
+      { width: q.w, height: q.h, fps: 30, bitrate: q.bps, audioUrl, totalSec, segments, lyricsOverlay: overlayOn, lyricsMode: tl.lyricsMode || "one", lyricsSize: tl.lyricsSize || "huge", watermark, bookends, qaIntro, introLead: tl.introLeadSec || 0, endLogo: tl.endLogo === false ? null : { src: "/end-logo.webp", seconds: tl.endLogoSec || 4, fade: 0.8, lines: [endCard.site, endCard.youtube ? `▶ ${endCard.youtube}` : ""] } },
       { previewCanvas: canvasRef.current, onProgress: (p, m) => { setRenderPct(p); setRenderMsg(m); }, onStatus: setRenderMsg }
     );
     renderRef.current = job;
@@ -1018,6 +1043,14 @@ export default function VideoStudio({
         ) : (
           <p className="note">Generate the song in step 3 and the timeline appears here.</p>
         )}
+      </div>
+
+      {/* ---------------- Q&A INTRO ---------------- */}
+      <div className="video-card" style={{ marginTop: 14 }}>
+        <div className="panel-head">
+          <h3>Q&amp;A intro <span className="chip">optional</span></h3>
+        </div>
+        <QaIntro projectId={projectId} tl={tl} setTimeline={setTimeline} campusSessionId={tl.campusSessionId || ""} />
       </div>
 
       {/* ---------------- OPENING / CLOSING CLIPS ---------------- */}

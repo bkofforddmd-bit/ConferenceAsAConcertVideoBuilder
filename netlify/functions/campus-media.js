@@ -6,7 +6,8 @@
 // links. Clip records live on the session document (no participant names).
 //
 //   status                                   -> { configured }
-//   sign-upload { sessionId, stage, mime, bytes } -> { clip, uploadUrl }   (session must be the worker's own, and recorded-consented)
+//   sign-upload { sessionId, stage, mime, bytes, question } -> { clip, uploadUrl }   (session must be the worker's own, and recorded-consented;
+//                                            question = what the student was asked — shown on a card before the answer in the Q&A intro)
 //   confirm     { sessionId, clipId, bytes, durationSec } -> { clip }
 //   list        { sessionId }                -> { clips: [{ …, url }] }    (worker: own sessions; admin: any)
 //   delete      { sessionId, clipId }        -> { ok }
@@ -20,7 +21,7 @@ import { docGet, docSet, newId, now } from "../lib/campus-store.js";
 import { authFrom } from "../lib/campus-auth.js";
 import { r2Configured, presign, deleteObject } from "../lib/r2.js";
 
-const STAGES = ["lyrics-reaction", "song-reaction", "testimony", "other"];
+const STAGES = ["favorite-talk", "lyrics-reaction", "song-reaction", "testimony", "other"];
 const MAX_BYTES = 400 * 1048576; // one clip
 const MAX_CLIPS = 12;            // per session
 
@@ -58,7 +59,7 @@ export default async (req) => {
       const clips = s.clips || [];
       if (clips.filter((c) => c.status === "ready").length >= MAX_CLIPS) return json({ error: `This session already has ${MAX_CLIPS} clips.` }, 400);
       const ext = mime.includes("webm") ? "webm" : mime.includes("quicktime") ? "mov" : "mp4";
-      const clip = { id: newId("clip_"), stage, mime, ext, key: "", bytes, durationSec: null, status: "uploading", at: now(), by: user.id };
+      const clip = { id: newId("clip_"), stage, question: String(body.question || "").replace(/\s+/g, " ").trim().slice(0, 200), mime, ext, key: "", bytes, durationSec: null, status: "uploading", at: now(), by: user.id };
       clip.key = `campus/${s.id}/${clip.id}.${ext}`;
       s.clips = [...clips, clip];
       s.updatedAt = now();
@@ -111,6 +112,18 @@ export default async (req) => {
       await docSet(`session:${s.id}`, s);
       if (replaced && replaced !== s.songFile.key) { try { await deleteObject(replaced); } catch {} }
       return json({ songFile: s.songFile });
+    }
+
+    if (action === "set-question") {
+      const r = await own(body.sessionId);
+      if (r.error) return json({ error: r.error }, r.status);
+      const s = r.s;
+      const clip = (s.clips || []).find((c) => c.id === body.clipId);
+      if (!clip) return json({ error: "No such clip." }, 404);
+      clip.question = String(body.question || "").replace(/\s+/g, " ").trim().slice(0, 200);
+      s.updatedAt = now();
+      await docSet(`session:${s.id}`, s);
+      return json({ clip: { ...clip, url: presign({ method: "GET", key: clip.key, expiresSec: 3600 }) } });
     }
 
     if (action === "list") {
