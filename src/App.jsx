@@ -29,6 +29,7 @@ import AttachFile from "./components/AttachFile.jsx";
 import { campusSessionIdFromUrl, campusSessionToProject } from "./lib/campus-import.js";
 import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportBundle } from "./lib/export-folder.js";
 import { isRendering } from "./lib/video-render.js";
+import { newPipeId, pipelineStart, pipelineStatus, pipelineStop, pipelineResume, fetchJobImage, mergePipeline } from "./lib/scene-pipeline.js";
 
 const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -65,6 +66,11 @@ export default function App() {
   const [render, setRender] = useState(null);
 
   const sceneStateRef = useRef(EMPTY_SCENE);
+  // The storyboard build running on the server (survives leaving the page):
+  // { id, startedAt, forLyrics, status, progress, applied: { images, cards }, finished }
+  const [scenePipeline, setScenePipeline] = useState(null);
+  const pipelineRef = useRef(null);
+  pipelineRef.current = scenePipeline;
   const [sceneSnap, setSceneSnap] = useState(EMPTY_SCENE); // reactive mirror for Music/Video/Export
   const [restoreState, setRestoreState] = useState(null);
   const [restoredNote, setRestoredNote] = useState(false);
@@ -139,6 +145,7 @@ export default function App() {
     setClips(p.clips && typeof p.clips === "object" ? p.clips : {});
     setTimeline(p.timeline && typeof p.timeline === "object" ? { ...EMPTY_TIMELINE, ...p.timeline } : EMPTY_TIMELINE);
     setRender(p.render || null);
+    setScenePipeline(p.scenePipeline && p.scenePipeline.id ? p.scenePipeline : null);
     const sc = p.scene || EMPTY_SCENE;
     sceneStateRef.current = sc;
     setSceneSnap(sc);
@@ -161,6 +168,7 @@ export default function App() {
       talkText, talkMeta, lyrics, finalLyrics, styleReference, lyricSources,
       scene: sceneStateRef.current,
       song, clips, timeline, render,
+      scenePipeline,
     };
   }
 
@@ -219,7 +227,7 @@ export default function App() {
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", onHide);
     return () => { clearInterval(id); window.removeEventListener("beforeunload", flush); window.removeEventListener("pagehide", flush); document.removeEventListener("visibilitychange", onHide); };
-  }, [talkText, lyrics, finalLyrics, styleReference, lyricSources, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [talkText, lyrics, finalLyrics, styleReference, lyricSources, talkMeta, song, clips, timeline, render, projectId, hasContent, sceneSnap, scenePipeline]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveNow() {
     const p = buildProject();
@@ -304,6 +312,7 @@ export default function App() {
   // Fresh project id and empty pipeline (talk, lyrics, song, scenes, video).
   function resetProjectState() {
     setProjectId(newProjectId());
+    setScenePipeline(null);
     setTalkText("");
     setTalkMeta(EMPTY_META);
     setLyrics("");
@@ -369,12 +378,68 @@ export default function App() {
 
   // Let other steps (the Video step's drawn cards) write into the storyboard's
   // state: merge, mirror, and hand SceneOrganizer the merged state to restore.
-  function patchSceneState(fn) {
+  function patchSceneState(fn, { quiet = false } = {}) {
     const merged = fn(sceneStateRef.current || EMPTY_SCENE);
     sceneStateRef.current = merged;
     setSceneSnap(merged);
-    setRestoreState({ ...merged, _loadedAt: Date.now() });
+    setRestoreState({ ...merged, _loadedAt: Date.now(), _patch: quiet });
   }
+
+  // ---- the server-side storyboard build ----
+  // Start it (SceneOrganizer asks, with its settings). The storyboard is
+  // cleared the way "Generate scene breakdown" always did; results stream in.
+  async function startScenePipeline(input, forLyrics) {
+    const old = pipelineRef.current;
+    if (old && !old.finished) { try { await pipelineStop(old.id); } catch {} }
+    const id = newPipeId();
+    await pipelineStart(id, input); // throws if the server can't take it (caller falls back)
+    const p = { id, startedAt: Date.now(), forLyrics, status: "running", progress: "Starting…", applied: { images: {}, cards: {} }, finished: false };
+    pipelineRef.current = p;
+    setScenePipeline(p);
+    return id;
+  }
+  async function stopScenePipeline() {
+    const p = pipelineRef.current;
+    if (!p) return;
+    try { await pipelineStop(p.id); } catch {}
+    setScenePipeline({ ...p, progress: "Stopping after the current step…" });
+  }
+  // Poll while a build is unfinished — on every page, and again after the
+  // project is reopened — and merge each finished piece into the project.
+  const pipeId = scenePipeline && !scenePipeline.finished ? scenePipeline.id : "";
+  useEffect(() => {
+    if (!pipeId) return undefined;
+    let alive = true, timer = 0, resumedAt = 0;
+    const tick = async () => {
+      if (!alive) return;
+      try {
+        const pipe = await pipelineStatus(pipeId);
+        if (!alive || !pipelineRef.current || pipelineRef.current.id !== pipeId) return;
+        if (!pipe) { setScenePipeline({ ...pipelineRef.current, status: "missing", progress: "The server no longer has this build.", finished: true }); return; }
+        // fetch any finished images not merged yet
+        const cur = pipelineRef.current;
+        const want = [...Object.entries(pipe.images || {}).filter(([n, j]) => cur.applied.images[n] !== j).map(([, j]) => j),
+          ...["intro", "outro"].map((k) => pipe.cards && pipe.cards[k] && pipe.cards[k].jobId).filter((j) => j && !Object.values(cur.applied.cards).includes(j))];
+        const urls = {};
+        for (const j of want) { try { urls[j] = await fetchJobImage(j); } catch {} }
+        if (!alive) return;
+        const { next, changed, applied } = mergePipeline(sceneStateRef.current || EMPTY_SCENE, pipe, urls, cur.applied);
+        if (changed) patchSceneState(() => next, { quiet: true });
+        const ended = ["done", "failed", "stopped"].includes(pipe.status);
+        const allIn = Object.keys(pipe.images || {}).every((n) => applied.images[n]) && ["intro", "outro"].every((k) => !(pipe.cards && pipe.cards[k] && pipe.cards[k].jobId) || applied.cards[k]);
+        const p = { ...cur, status: pipe.status, progress: pipe.progress || "", error: pipe.status === "failed" ? pipe.error || "an error" : "", failures: pipe.failures || [], applied, finished: ended && allIn };
+        pipelineRef.current = p;
+        setScenePipeline(p);
+        // its server run died without handing off → pick it back up (at most every 2 minutes)
+        if (pipe.stale && Date.now() - resumedAt > 120000) { resumedAt = Date.now(); pipelineResume(pipeId); }
+        if (!p.finished) timer = setTimeout(tick, document.hidden ? 15000 : 5000);
+      } catch {
+        if (alive) timer = setTimeout(tick, 10000);
+      }
+    };
+    tick();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [pipeId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Scene numbers changed (a scene was inserted or deleted): re-key every map
   // that hangs off a scene number — clips, and the timeline's starts, line
   // times, extra shots, motion, weights and camera paths (keys are "n" or
@@ -586,6 +651,13 @@ export default function App() {
       {saveMsg && (
         <div className="note" style={{ textAlign: "center", marginBottom: 12, color: "var(--sky)" }}>{saveMsg}</div>
       )}
+      {scenePipeline && scenePipeline.status === "running" && !(view === "create" && step === "scenes") && (
+        <div className="pipeline-banner">
+          <span className="spinner" />
+          <span>🎨 Building your scenes on the server — {scenePipeline.progress || "working…"} It keeps going even if you leave this page.</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => goStep("scenes")}>View scenes</button>
+        </div>
+      )}
       {restoredNote && (
         <div className="note" style={{ textAlign: "center", marginBottom: 12 }}>
           Restored your last session automatically.{" "}
@@ -683,6 +755,10 @@ export default function App() {
               liveState={sceneStateRef}
               onStateChange={onSceneStateChange}
               onRenumber={renumberScenes}
+              active={step === "scenes"}
+              pipeline={scenePipeline}
+              onStartPipeline={startScenePipeline}
+              onStopPipeline={stopScenePipeline}
             />
             {done.scenes && (
               <div className="row end" style={{ marginBottom: 20 }}>

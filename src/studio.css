@@ -772,3 +772,7 @@ select {
 .qa-item-grid { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 14px; align-items: start; }
 @media (max-width: 760px) { .qa-item-grid { grid-template-columns: 1fr; } }
 .qa-card-preview { width: 100%; height: auto; border-radius: 10px; display: block; background: #00153d; }
+
+/* server-side scene build status */
+.pipeline-banner { display: flex; align-items: center; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 0 auto 12px; max-width: 1100px; padding: 10px 14px; border: 1px solid rgba(243,217,164,0.45); border-radius: 12px; background: rgba(243,201,105,0.08); font-size: 14px; }
+.pipeline-card { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 14px; border: 1px solid rgba(143,180,230,0.5); border-radius: 12px; background: rgba(46,95,169,0.15); }

@@ -16,6 +16,7 @@
 
 import { keyFor, json, readJson } from "../lib/keys.js";
 import { jobSet, blobGetText, blobSetText, blobDelete, validJobId } from "../lib/jobs.js";
+import { applyImageRules } from "../lib/image-rules.js";
 
 const GEN_URL = "https://api.openai.com/v1/images/generations";
 const EDIT_URL = "https://api.openai.com/v1/images/edits";
@@ -27,7 +28,9 @@ export default async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const body = await readJson(req);
   if (!body || !validJobId(body.jobId)) return json({ error: "Provide a jobId." }, 400);
-  const { jobId, prompt = "", size = "1536x1024", refKey = "" } = body;
+  const { jobId, size = "1536x1024", refKey = "" } = body;
+  // House rules ride on every image, including hand-edited prompts.
+  const prompt = applyImageRules(String(body.prompt || ""));
 
   const fail = async (error, detail) => {
     await jobSet(jobId, { status: "failed", error, detail });

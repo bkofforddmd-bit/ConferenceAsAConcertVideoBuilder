@@ -107,6 +107,24 @@ the position shifts that adding a conference causes in `talks-index.json`
 `talk-text/` bundles all refer to talks by position and must be regenerated
 together with `talks-index.json`).
 
+## Storyboard builds on the server
+
+Arriving at the Storyboard step with finalized lyrics and no scenes starts the
+build automatically (once per set of lyrics); "Generate scene breakdown" does
+the same on demand. The whole build runs in `netlify/functions/scene-pipeline-background.js`:
+style bible → outline → each scene's description and image prompt → every scene
+image in order (each referencing the previous image when "Lock consistency" is
+on) → title & credits → intro and outro cards. Each step is saved to the job
+store (`pipe:<id>`) as it finishes; the function hands itself off to a fresh
+invocation before Netlify's 15-minute limit, and a lease stops two runs working
+at once. The browser polls `scene-pipeline.js` from any page (a banner shows
+progress), merges finished pieces into the project without overwriting edits,
+uploads or saved images, and picks up where it left off when the project is
+reopened — so the build continues if you change pages, close the tab, or your
+phone sleeps. If the server can't take the job, the old in-browser build runs.
+Card prompts are shared (`src/lib/card-prompts.js`). The background image job
+now applies the house image rules to every prompt.
+
 ## Campus Sessions (BYU student engagement experiment)
 
 A separate, sign-in-only mode at **/campus** (workers) and **/campus/admin**
