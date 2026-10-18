@@ -43,8 +43,8 @@ const EMPTY_TIMELINE = { starts: {}, introSec: 4, outroSec: 6, lyricsOverlay: tr
 const STEPS = [
   { id: "talk", n: "01", name: "Talk", sub: "Choose the message" },
   { id: "lyrics", n: "02", name: "Lyrics", sub: "Write the song" },
-  { id: "music", n: "03", name: "Music", sub: "Sing it" },
-  { id: "scenes", n: "04", name: "Storyboard", sub: "Scenes & images" },
+  { id: "scenes", n: "03", name: "Storyboard", sub: "Scenes & images" },
+  { id: "music", n: "04", name: "Music", sub: "Sing it" },
   { id: "video", n: "05", name: "Video", sub: "Clips, timing, render" },
   { id: "export", n: "06", name: "Export", sub: "Download & share" },
 ];
@@ -153,8 +153,8 @@ export default function App() {
     // Land on the furthest step that has content.
     if (p.render && p.render.mediaKey) setStep("export");
     else if (p.song && p.song.versions && p.song.versions.length && sc.scenes && sc.scenes.length) setStep("video");
-    else if (sc.scenes && sc.scenes.length) setStep("scenes");
-    else if (p.finalLyrics) setStep("music");
+    else if (sc.scenes && sc.scenes.length) setStep("music");
+    else if (p.finalLyrics) setStep("scenes");
     else if (p.talkText) setStep("lyrics");
     else setStep("talk");
   }
@@ -291,7 +291,8 @@ export default function App() {
 
   function finalize() {
     setFinalLyrics(lyrics);
-    setStep("music");
+    // Storyboard comes before Music: the images build on the server while the song is made.
+    setStep("scenes");
   }
 
   const [confirmNew, setConfirmNew] = useState(false);
@@ -388,7 +389,14 @@ export default function App() {
   // ---- the server-side storyboard build ----
   // Start it (SceneOrganizer asks, with its settings). The storyboard is
   // cleared the way "Generate scene breakdown" always did; results stream in.
+  const pipelineStarting = useRef(false);
   async function startScenePipeline(input, forLyrics) {
+    // one start at a time (a double tap, or the auto-start racing a tap)
+    if (pipelineStarting.current) throw Object.assign(new Error("A scene build is already starting."), { duplicate: true });
+    pipelineStarting.current = true;
+    try { return await startScenePipelineNow(input, forLyrics); } finally { pipelineStarting.current = false; }
+  }
+  async function startScenePipelineNow(input, forLyrics) {
     const old = pipelineRef.current;
     if (old && !old.finished) { try { await pipelineStop(old.id); } catch {} }
     const id = newPipeId();
@@ -406,7 +414,7 @@ export default function App() {
   }
   // Poll while a build is unfinished — on every page, and again after the
   // project is reopened — and merge each finished piece into the project.
-  const pipeId = scenePipeline && !scenePipeline.finished ? scenePipeline.id : "";
+  const pipeId = scenePipeline && (!scenePipeline.finished || scenePipeline.status === "missing") ? scenePipeline.id : "";
   useEffect(() => {
     if (!pipeId) return undefined;
     let alive = true, timer = 0, resumedAt = 0;
@@ -415,7 +423,13 @@ export default function App() {
       try {
         const pipe = await pipelineStatus(pipeId);
         if (!alive || !pipelineRef.current || pipelineRef.current.id !== pipeId) return;
-        if (!pipe) { setScenePipeline({ ...pipelineRef.current, status: "missing", progress: "The server no longer has this build.", finished: true }); return; }
+        if (!pipe) {
+          // Right after starting, the server may not have written the build yet: keep waiting.
+          const age = Date.now() - (pipelineRef.current.startedAt || 0);
+          if (age < 10 * 60 * 1000) { setScenePipeline({ ...pipelineRef.current, status: "running", progress: "Starting on the server…", finished: false }); timer = setTimeout(tick, 4000); return; }
+          setScenePipeline({ ...pipelineRef.current, status: "gone", progress: "The server no longer has this build.", finished: true });
+          return;
+        }
         // fetch any finished images not merged yet
         const cur = pipelineRef.current;
         const want = [...Object.entries(pipe.images || {}).filter(([n, j]) => cur.applied.images[n] !== j).map(([, j]) => j),
@@ -427,7 +441,7 @@ export default function App() {
         if (changed) patchSceneState(() => next, { quiet: true });
         const ended = ["done", "failed", "stopped"].includes(pipe.status);
         const allIn = Object.keys(pipe.images || {}).every((n) => applied.images[n]) && ["intro", "outro"].every((k) => !(pipe.cards && pipe.cards[k] && pipe.cards[k].jobId) || applied.cards[k]);
-        const p = { ...cur, status: pipe.status, progress: pipe.progress || "", error: pipe.status === "failed" ? pipe.error || "an error" : "", failures: pipe.failures || [], applied, finished: ended && allIn };
+        const p = { ...cur, status: pipe.status === "queued" ? "running" : pipe.status, progress: pipe.progress || "", error: pipe.status === "failed" ? pipe.error || "an error" : "", failures: pipe.failures || [], applied, finished: ended && allIn };
         pipelineRef.current = p;
         setScenePipeline(p);
         // its server run died without handing off → pick it back up (at most every 2 minutes)
@@ -741,7 +755,7 @@ export default function App() {
               song={song}
               setSong={setSong}
               config={config}
-              onContinue={() => setStep("scenes")}
+              onContinue={() => setStep("video")}
             />
           )}
 
@@ -762,7 +776,7 @@ export default function App() {
             />
             {done.scenes && (
               <div className="row end" style={{ marginBottom: 20 }}>
-                <button className="btn btn-primary" onClick={() => setStep("video")}>Continue → Video</button>
+                <button className="btn btn-primary" onClick={() => setStep("music")}>Continue → Music</button>
               </div>
             )}
           </div>

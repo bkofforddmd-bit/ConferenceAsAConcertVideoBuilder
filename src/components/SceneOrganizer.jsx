@@ -124,7 +124,7 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
     if (!active || !hydrated || !onStartPipeline) return;
     if (!lyrics || !lyrics.trim() || scenes.length || busy) return;
     const key = lyricsKey(lyrics);
-    if (pipeline && (pipeline.forLyrics === key || !pipeline.finished)) return;
+    if (pipeline && (pipeline.forLyrics === key || !pipeline.finished || pipeline.status === "missing")) return;
     buildScenes();
   }, [active, hydrated, lyrics, scenes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -232,6 +232,8 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
         setBusy(false);
         return;
       } catch (e) {
+        if (e && e.duplicate) { setBusy(false); return; }
+        if (e && e.status === 400) { setError(e.message); setBusy(false); return; }
         // the server couldn't take it (old deploy, offline) → build here in the browser
         setProgress("Building here in the browser (keep this tab open)…");
       }
@@ -1382,9 +1384,9 @@ export default function SceneOrganizer({ talkText, lyrics, styleReference, talkM
       </p>
 
       <div className="row">
-        <button className="btn btn-primary" onClick={buildScenes} disabled={busy}>
+        <button className="btn btn-primary" onClick={buildScenes} disabled={busy || Boolean(pipeline && pipeline.status === "running" && !pipeline.finished)} title={pipeline && pipeline.status === "running" && !pipeline.finished ? "A build is running on the server — Stop it first to start over" : ""}>
           {busy && <span className="spinner" />}
-          {scenes.length ? "Rebuild scene breakdown" : "Generate scene breakdown"}
+          {pipeline && pipeline.status === "running" && !pipeline.finished ? "Building on the server…" : scenes.length ? "Rebuild scene breakdown" : "Generate scene breakdown"}
         </button>
         <label className="row" style={{ gap: 6 }}>
           <input

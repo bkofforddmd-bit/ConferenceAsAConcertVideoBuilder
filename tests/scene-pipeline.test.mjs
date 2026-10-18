@@ -179,3 +179,38 @@ test("merging into the project never overwrites the person's own work", async ()
   assert.notEqual(lyricsKey("a"), lyricsKey("b"));
   assert.equal(lyricsKey("same"), lyricsKey("same"));
 });
+
+test("create-first: the build exists before the background starts, then the background runs it", async () => {
+  const pipeId = "pipe_test_create";
+  const c = await call(pipelineApi, { action: "create", pipeId, input: INPUT });
+  assert.equal(c.data.ok, true);
+  // the phone's very first status check finds it (this was the bug: it got "no such build")
+  const st = await call(pipelineApi, { action: "status", pipeId });
+  assert.equal(st.data.pipe.status, "queued");
+  assert.equal(st.data.pipe.stale, false);
+  assert.equal(st.data.pipe.input, undefined);
+  // creating twice is harmless
+  assert.equal((await call(pipelineApi, { action: "create", pipeId, input: INPUT })).data.existed, true);
+  assert.equal((await call(pipelineApi, { action: "create", pipeId: "pipe_test_create2", input: { lyrics: "" } })).status, 400);
+  // the background function gets only the id
+  await call(pipelineBg, { pipeId });
+  const doc = await jobGet(pipeId);
+  assert.equal(doc.status, "done");
+  assert.deepEqual(Object.keys(doc.images).sort(), ["1", "2", "3"]);
+});
+
+test("a queued build can be stopped, and one never picked up is reported stale (so the browser re-kicks it)", async () => {
+  await call(pipelineApi, { action: "create", pipeId: "pipe_test_q1", input: INPUT });
+  await call(pipelineApi, { action: "stop", pipeId: "pipe_test_q1" });
+  assert.equal((await jobGet("pipe_test_q1")).status, "stopped");
+  await call(pipelineBg, { pipeId: "pipe_test_q1" });
+  assert.equal(calls.length, 0, "a stopped build never runs");
+  const { isStale } = await import("../netlify/lib/scene-pipeline-input.js");
+  const now = Date.now();
+  assert.equal(isStale({ status: "queued", updatedAt: now - 10 * 1000 }, now), false);
+  assert.equal(isStale({ status: "queued", updatedAt: now - 60 * 1000 }, now), true, "queued a minute with no pickup");
+  assert.equal(isStale({ status: "running", updatedAt: now - 5 * 60 * 1000, lease: null }, now), true);
+  assert.equal(isStale({ status: "running", updatedAt: now - 5 * 60 * 1000, lease: { until: now + 60000 } }, now), false, "a live lease means it is still working (one long image)");
+  assert.equal(isStale({ status: "running", updatedAt: now - 13 * 60 * 1000, lease: { until: now + 60000 } }, now), true);
+  assert.equal(isStale({ status: "done", updatedAt: 0 }, now), false);
+});

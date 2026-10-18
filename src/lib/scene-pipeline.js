@@ -7,12 +7,19 @@ const BASE = "/.netlify/functions";
 
 export const newPipeId = () => "pipe_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
 
-// Start a build. Resolves once the server has accepted it (202).
+// Start a build. The build is stored FIRST (so the very next status check
+// finds it), then the background function is kicked. Resolves once accepted.
 export async function pipelineStart(pipeId, input) {
+  let stored = false;
+  try {
+    const c = await fetch(`${BASE}/scene-pipeline`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create", pipeId, input }) });
+    if (c.ok) stored = true;
+    else if (c.status === 400) { const d = await c.json().catch(() => ({})); throw Object.assign(new Error(d.error || "The scene build couldn't start."), { status: 400 }); }
+  } catch (e) { if (e.status === 400) throw e; }
   const resp = await fetch(`${BASE}/scene-pipeline-background`, {
     method: "POST",
     headers: { "content-type": "application/json", ...keyHeaders() },
-    body: JSON.stringify({ pipeId, input }),
+    body: JSON.stringify(stored ? { pipeId } : { pipeId, input }),
   });
   if (resp.status !== 202 && resp.status !== 200) {
     const d = await resp.json().catch(() => ({}));

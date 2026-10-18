@@ -28,6 +28,7 @@ import sceneDetailFn from "./generate-scene-detail.js";
 import extractMetaFn from "./extract-meta.js";
 import artJobFn from "./art-job-background.js";
 import { cardBackgroundPrompt } from "../../src/lib/card-prompts.js";
+import { newPipelineDoc } from "../lib/scene-pipeline-input.js";
 
 export const config = { background: true };
 
@@ -62,25 +63,17 @@ export default async (req) => {
 
   let doc = await jobGet(pipeId);
   if (!doc) {
-    // First call: the browser sends the inputs.
+    // Older browsers send the inputs here (newer ones store them first via scene-pipeline "create").
     const i = body.input || {};
     if (!String(i.lyrics || "").trim()) return json({ error: "Provide finalized lyrics." }, 400);
-    doc = {
-      id: pipeId, status: "running", phase: "style", progress: "Designing the visual style…",
-      input: {
-        lyrics: String(i.lyrics), styleReference: String(i.styleReference || ""), talkText: String(i.talkText || "").slice(0, 120000),
-        sceneBasis: ["song", "talk", "sections"].includes(i.sceneBasis) ? i.sceneBasis : "song",
-        lockReference: i.lockReference !== false, autoImages: i.autoImages !== false, meta: i.meta || {},
-      },
-      styleBible: null, scenes: null, images: {}, cards: {}, meta: null, failures: [], stop: false,
-      createdAt: Date.now(), lease: { run, until: Date.now() + LEASE_MS }, handoffs: 0,
-    };
+    doc = { ...newPipelineDoc(pipeId, i, "running"), lease: { run, until: Date.now() + LEASE_MS } };
     await jobSet(pipeId, doc);
   } else {
     if (["done", "failed", "stopped"].includes(doc.status)) return json({ ok: true, status: doc.status }, 202);
     // Someone else holds a live lease (another invocation is working) → leave it alone.
     if (doc.lease && doc.lease.until > Date.now() && doc.lease.run !== run) return json({ ok: true, busy: true }, 202);
     doc.lease = { run, until: Date.now() + LEASE_MS };
+    if (doc.status === "queued") { doc.status = "running"; doc.phase = "style"; doc.progress = "Designing the visual style…"; }
     await jobSet(pipeId, doc);
   }
 

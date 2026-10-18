@@ -209,7 +209,7 @@ export default function MusicStudio({ projectId, lyrics, styleBible, styleRefere
       )}
       <div className="panel-head">
         <h2>Music</h2>
-        {active && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Storyboard</button>}
+        {active && <button className="btn btn-primary btn-sm" onClick={onContinue}>Continue → Video</button>}
       </div>
       <p className="sub">
         Lift the lyrics into a sung song. Choose a studio, describe the sound, and generate — the song
