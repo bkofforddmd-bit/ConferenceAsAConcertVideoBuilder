@@ -839,3 +839,7 @@ select {
 .mc-instr-hint { color: #a8a8ad; font-size: 13px; margin: 10px 0 0; }
 .mc-instr-err { color: #ff9a8a; font-size: 13px; margin: 8px 0 0; }
 @media (max-width: 560px) { .mc-instr-ask { flex-direction: column; } .mc-instr-go { align-self: flex-start; } .mc-instr-foot { flex-wrap: wrap; } }
+
+/* draggable keyframe dots */
+.path-dot { cursor: grab; touch-action: none; user-select: none; }
+.path-dot:active { cursor: grabbing; }

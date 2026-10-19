@@ -458,8 +458,11 @@ export default function App() {
   useEffect(() => {
     if (!pipeId) return undefined;
     let alive = true, timer = 0, resumedAt = 0;
+    const fails = {}; // image job → failed downloads (give up after 3, so the watcher always ends)
     const tick = async () => {
       if (!alive) return;
+      // Never work while a video is recording: any main-thread stall drops frames.
+      if (isRendering()) { timer = setTimeout(tick, 5000); return; }
       try {
         const pipe = await pipelineStatus(pipeId);
         if (!alive || !pipelineRef.current || pipelineRef.current.id !== pipeId) return;
@@ -475,15 +478,18 @@ export default function App() {
         const want = [...Object.entries(pipe.images || {}).filter(([n, j]) => cur.applied.images[n] !== j).map(([, j]) => j),
           ...["intro", "outro"].map((k) => pipe.cards && pipe.cards[k] && pipe.cards[k].jobId).filter((j) => j && !Object.values(cur.applied.cards).includes(j))];
         const urls = {};
-        for (const j of want) { try { urls[j] = await fetchJobImage(j); } catch {} }
+        for (const j of want) { if ((fails[j] || 0) >= 3) continue; try { urls[j] = await fetchJobImage(j); } catch { fails[j] = (fails[j] || 0) + 1; } }
         if (!alive) return;
         const { next, changed, applied } = mergePipeline(sceneStateRef.current || EMPTY_SCENE, pipe, urls, cur.applied);
         if (changed) patchSceneState(() => next, { quiet: true });
         const ended = ["done", "failed", "stopped"].includes(pipe.status);
-        const allIn = Object.keys(pipe.images || {}).every((n) => applied.images[n]) && ["intro", "outro"].every((k) => !(pipe.cards && pipe.cards[k] && pipe.cards[k].jobId) || applied.cards[k]);
+        const gaveUp = (j) => (fails[j] || 0) >= 3;
+        const allIn = Object.entries(pipe.images || {}).every(([n, j]) => applied.images[n] || gaveUp(j)) && ["intro", "outro"].every((k) => { const j = pipe.cards && pipe.cards[k] && pipe.cards[k].jobId; return !j || applied.cards[k] || gaveUp(j); });
         const p = { ...cur, status: pipe.status === "queued" ? "running" : pipe.status, progress: pipe.progress || "", error: pipe.status === "failed" ? pipe.error || "an error" : "", failures: pipe.failures || [], applied, finished: ended && allIn };
-        pipelineRef.current = p;
-        setScenePipeline(p);
+        // Only touch app state when something actually changed (a re-render of
+        // the whole Studio every 5 seconds is itself a stutter).
+        const sig = (x) => JSON.stringify([x.status, x.progress, x.error, x.failures, x.applied, x.finished]);
+        if (sig(p) !== sig(cur)) { pipelineRef.current = p; setScenePipeline(p); }
         // its server run died without handing off → pick it back up (at most every 2 minutes)
         if (pipe.stale && Date.now() - resumedAt > 120000) { resumedAt = Date.now(); pipelineResume(pipeId); }
         if (!p.finished) timer = setTimeout(tick, document.hidden ? 15000 : 5000);

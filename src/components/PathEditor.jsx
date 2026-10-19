@@ -42,6 +42,7 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
   const [preview, setPreview] = useState(false);
   const [previewP, setPreviewP] = useState(0);
   const stageRef = useRef(null);
+  const trackRef = useRef(null);
   const dragRef = useRef(null);
   const rafRef = useRef(0);
 
@@ -159,6 +160,33 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); const a = audioRef.current; if (a) a.pause(); }, []);
   const shownLyric = lyricFor(preview ? previewP : (cur ? cur.t : 0));
 
+  // Drag a numbered dot along the strip to move that keyframe in time
+  // (snaps to a lyric-line mark when close to one). A tap just selects it.
+  function startTimeDrag(e, idx) {
+    if (preview) return;
+    e.preventDefault();
+    const track = trackRef.current;
+    if (!track) return;
+    setSel(idx);
+    const el = e.currentTarget;
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    const box = track.getBoundingClientRect();
+    const x0 = e.clientX;
+    let moved = false;
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      moved = true;
+      let t = Math.max(0, Math.min(1, (ev.clientX - box.left) / Math.max(1, box.width)));
+      const snap = lineMarks.find((m) => Math.abs(m.p - t) * box.width < 8);
+      if (snap) t = snap.p;
+      update(idx, { t: Math.round(t * 1000) / 1000 });
+    };
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+
   const zoomPct = Math.round((1 / r.w) * 100);
   const timeOf = (t) => `${(t * durationSec).toFixed(1)}s`;
 
@@ -213,14 +241,14 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
         </div>
 
         <div className="path-strip">
-          <div className="path-track">
+          <div className="path-track" ref={trackRef}>
             {lineMarks.map((m, i) => (
               <div key={i} className="path-linemark" style={{ left: `${m.p * 100}%` }} title={`♪ ${m.text} (from ${timeOf(m.p)})`} onClick={() => update(sel, { t: m.p })}>
                 <span>♪</span>
               </div>
             ))}
             {sorted.map((k, n) => (
-              <button key={k.i} className={`path-dot${k.i === sel ? " sel" : ""}`} style={{ left: `${k.t * 100}%`, "--kf": colorOf(n) }} onClick={() => setSel(k.i)} title={`Keyframe ${n + 1} at ${timeOf(k.t)}`}>{n + 1}</button>
+              <button key={k.i} className={`path-dot${k.i === sel ? " sel" : ""}`} style={{ left: `${k.t * 100}%`, "--kf": colorOf(n) }} onPointerDown={(e) => startTimeDrag(e, k.i)} title={`Keyframe ${n + 1} at ${timeOf(k.t)} — drag along the strip to change when`}>{n + 1}</button>
             ))}
             {preview && <div className="timeline-head" style={{ left: `${previewP * 100}%` }} />}
           </div>
@@ -228,7 +256,7 @@ export default function PathEditor({ src, initialPath, durationSec = 8, title, o
           {segment && segment.lyrics && (
             <div className="path-lyric-now">
               ♪ {shownLyric.text || "(no line yet)"}
-              {lineMarks.length > 1 && <span className="note" style={{ margin: "0 0 0 10px" }}>· ♪ marks on the strip show where lines change — click one to put this keyframe there</span>}
+              {lineMarks.length > 1 && <span className="note" style={{ margin: "0 0 0 10px" }}>· drag the numbered buttons along the strip; they snap to the ♪ marks where lines change</span>}
             </div>
           )}
         </div>
