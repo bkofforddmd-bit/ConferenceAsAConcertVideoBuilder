@@ -152,6 +152,17 @@ phone sleeps. If the server can't take the job, the old in-browser build runs.
 Card prompts are shared (`src/lib/card-prompts.js`). The background image job
 now applies the house image rules to every prompt.
 
+## Reels and Shorts (vertical)
+
+The Render step has a **Reel / Short** card that makes a 9:16 (1080×1920) video for Facebook Reels and YouTube Shorts:
+a piece of the speaker's closing clip (with its captions), then the song's **first chorus** with the lyrics on screen, then the logo.
+
+- **The first chorus is the song's preview.** It is found from the lyric sync: the lines under the first `[Chorus]` label (or, without labels, the stanza that repeats most), from its first word to the next section's first word (`src/lib/chorus.js`). It can be set by hand on the card (`timeline.preview`).
+- **Publishing** sends that window as `previewStart` / `previewEnd`; the Concert library plays exactly that chorus as the preview. Older songs with synced lyrics find their chorus the same way in the Concert app (`previewRange` in its `index.html`).
+- **Picture:** *Fill the screen* crops each image to vertical and follows the camera paths; *Whole picture* shows the 16:9 image in a band over a soft blurred copy.
+- The speaker piece defaults to the whole closing clip when short, else up to the end of the last caption phrase by ~15 s (`src/lib/reel.js`).
+- The card gives the MP4, a Shorts title/description and a Facebook caption (each with Copy), and links to YouTube upload and Facebook Reels. Save to folder writes `reel-vertical.mp4` too.
+
 ## Campus Sessions (BYU student engagement experiment)
 
 A separate, sign-in-only mode at **/campus** (workers) and **/campus/admin**

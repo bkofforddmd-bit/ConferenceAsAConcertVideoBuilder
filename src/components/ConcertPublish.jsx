@@ -7,16 +7,20 @@
 
 import React, { useEffect, useState } from "react";
 import { getMedia } from "../lib/project-store.js";
-import { parseSync } from "../lib/lyric-sync.js";
+import { parseSync, fmtStamp } from "../lib/lyric-sync.js";
+import { previewWindow } from "../lib/chorus.js";
 import AttachFile from "./AttachFile.jsx";
 import { publishToConcert, updateConcertEntry, uploadVideoOnly, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
 
-export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
+export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
   const hasVideo = Boolean(render && render.mediaKey);
   const [includeVideo, setIncludeVideo] = useState(true);
   const [youtube, setYoutube] = useState("");
   const active = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
   const sync = active ? parseSync(lyrics, active.sync) : null;
+  // The library's preview plays the first chorus (or the window set on the Reel card).
+  const preview = active ? previewWindow(timeline, lyrics, active.sync, active.durationSec || 0) : null;
+  const previewFields = preview ? { previewStart: Math.floor(preview.start), previewEnd: Math.ceil(preview.end) } : {};
   const [pw, setPw] = useState(loadConcertPassword);
   const [showPw, setShowPw] = useState(false);
   const [f, setF] = useState({
@@ -67,7 +71,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       const entry = await updateConcertEntry({
         password: pw.trim(),
         id: target.id,
-        song: { ...f, youtube: youtube.trim(), videoUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
+        song: { ...f, ...previewFields, youtube: youtube.trim(), videoUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
       });
       setDone(entry);
       setStep("");
@@ -112,7 +116,7 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       }
       const entry = await publishToConcert({
         password: pw.trim(),
-        song: { ...f, youtube: youtube.trim(), lyrics, duration: active.durationSec || 0, lyricTimings },
+        song: { ...f, ...previewFields, youtube: youtube.trim(), lyrics, duration: active.durationSec || 0, lyricTimings },
         audio: rec.blob,
         video: videoBlob,
         onStep: setStep,
@@ -133,6 +137,11 @@ export default function ConcertPublish({ song, lyrics, talkMeta, meta, styleBibl
       <p className="note" style={{ marginTop: 0 }}>
         Sends the finished song to the Conference Concert library at {CONCERT_SITE.replace("https://", "")}: the audio,
         the lyrics with their sung-line timing, and the talk details. Same result as the band upload form there, prefilled.
+      </p>
+      <p className="note" style={{ marginTop: 0 }}>
+        <strong>Preview:</strong> {preview
+          ? <>the library plays the {preview.source === "manual" ? "part you set on the Reel card" : "first chorus"}, {fmtStamp(preview.start)} → {fmtStamp(preview.end)}.</>
+          : <>the first 20 seconds — sync the lyrics on the Song step and the preview becomes the first chorus.</>}
       </p>
 
       <div className="settings-grid">

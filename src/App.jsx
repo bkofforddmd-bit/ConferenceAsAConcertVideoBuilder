@@ -568,6 +568,8 @@ export default function App() {
       const act = (song.versions || []).find((v) => v.id === song.activeId);
       const songRec = act && act.mediaKey ? await getMedia(act.mediaKey) : null;
       const vidRec = render && render.mediaKey ? await getMedia(render.mediaKey) : null;
+      const reelKey = timeline && timeline.reel && timeline.reel.render && timeline.reel.render.mediaKey;
+      const reelRec = reelKey ? await getMedia(reelKey) : null;
       const result = await exportBundle(folder.handle, {
         title: projectTitle(),
         projectJson: JSON.stringify(buildProject()),
@@ -575,6 +577,7 @@ export default function App() {
         images,
         song: songRec ? songRec.blob : null,
         video: vidRec ? vidRec.blob : null,
+        reel: reelRec ? reelRec.blob : null,
       }, setExportMsg);
       setExportResult(result);
       setExportMsg(`Saved to "${folder.name}/${result.folderName}" — ${result.files.length} files.`);
@@ -884,7 +887,7 @@ export default function App() {
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={(id) => setStep(stepFor(id, mode))}
               onDownloadJson={downloadProject}
-              concertPublish={<ConcertPublish song={song} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
+              concertPublish={<ConcertPublish song={song} timeline={timeline} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
               missing={mediaMissing}
               onAttachVideo={attachVideoFile}
               onAttachSong={attachSongFile}

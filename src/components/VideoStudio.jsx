@@ -19,6 +19,7 @@ import Bookends from "./Bookends.jsx";
 import QaIntro from "./QaIntro.jsx";
 import AttachFile from "./AttachFile.jsx";
 import PathEditor from "./PathEditor.jsx";
+import ReelCard from "./ReelCard.jsx";
 
 function fmt(sec) {
   if (!isFinite(sec)) return "0:00";
@@ -1189,6 +1190,11 @@ export default function VideoStudio({
           )}
         </div>
       </div>
+      )}
+
+      {/* ---------------- REEL / SHORT (vertical) ---------------- */}
+      {show("render") && (
+        <ReelCard projectId={projectId} tl={tl} setTimeline={setTimeline} lyrics={lyrics} songVersion={songVersion} audioUrl={audioUrl} totalSec={totalSec} segments={segments} bookendUrls={bookendUrls} endCard={endCard} meta={meta} talkMeta={talkMeta} />
       )}
 
       {/* ---------------- (simple) CAPTIONS ---------------- */}

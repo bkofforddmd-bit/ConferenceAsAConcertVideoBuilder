@@ -173,25 +173,42 @@ export async function drawLyricPreview(canvas, { imageSrc = "", text = "", size 
   drawLyrics(ctx, text || "Go, declare glad tidings, in the Savior's name", W, H, 1, lyricScale(size), size === "huge" ? 2 : size === "xl" ? 3 : 4);
 }
 
-function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.large, maxLines = 3) {
+// place (optional): { top } or { bottom } in pixels, band: false to skip the
+// shading. A vertical (9:16) frame sizes text by its width and keeps it above
+// the bottom quarter, where Reels / Shorts put their buttons and caption.
+function drawLyrics(ctx, text, W, H, alpha, size = LYRIC_SIZES.large, maxLines = 3, place = null) {
   if (!text || alpha <= 0) return;
+  const vertical = H > W;
   ctx.save();
   ctx.globalAlpha = Math.min(1, alpha);
-  const fontPx = Math.round(H * size);
+  const fontPx = Math.round(Math.min(W, H) * size);
   ctx.font = `600 ${fontPx}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  const lines = wrapLines(ctx, text, W * 0.84).slice(0, maxLines);
+  const lines = wrapLines(ctx, text, W * (vertical ? 0.88 : 0.84)).slice(0, maxLines + (vertical ? 1 : 0));
   const lineH = fontPx * 1.3;
   const blockH = lines.length * lineH + fontPx * 0.9;
-  const y0 = H - blockH - H * 0.06;
+  const y0 = place && place.top != null ? place.top : (place && place.bottom != null ? place.bottom : vertical ? H * 0.74 : H - H * 0.06) - blockH;
   // soft band for legibility
-  const grad = ctx.createLinearGradient(0, y0 - fontPx, 0, H);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(0.35, "rgba(0,20,60,0.55)");
-  grad.addColorStop(1, "rgba(0,20,60,0.7)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, y0 - fontPx, W, H - y0 + fontPx);
+  if (!(place && place.band === false)) {
+    if (vertical) {
+      const top = y0 - fontPx, bot = y0 + blockH + fontPx * 0.8;
+      const grad = ctx.createLinearGradient(0, top, 0, bot);
+      grad.addColorStop(0, "rgba(0,20,60,0)");
+      grad.addColorStop(0.3, "rgba(0,20,60,0.55)");
+      grad.addColorStop(0.75, "rgba(0,20,60,0.55)");
+      grad.addColorStop(1, "rgba(0,20,60,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, top, W, bot - top);
+    } else {
+      const grad = ctx.createLinearGradient(0, y0 - fontPx, 0, H);
+      grad.addColorStop(0, "rgba(0,0,0,0)");
+      grad.addColorStop(0.35, "rgba(0,20,60,0.55)");
+      grad.addColorStop(1, "rgba(0,20,60,0.7)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y0 - fontPx, W, H - y0 + fontPx);
+    }
+  }
   ctx.fillStyle = "#F5F7FA";
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = fontPx * 0.35;
@@ -290,7 +307,10 @@ export function drawViewport(ctx, el, W, H, rect) {
   const iw = el.videoWidth || el.naturalWidth || el.width;
   const ih = el.videoHeight || el.naturalHeight || el.height;
   if (!iw || !ih) return;
-  const r = clampRect(rect, iw, ih, W, H);
+  // Paths are drawn as 16:9 frames; another shape (a 9:16 Reel) shows the
+  // slice of that frame with the same height and centre, so pans and zooms carry over.
+  const k = (W / H) / (16 / 9);
+  const r = clampRect(Math.abs(k - 1) > 0.01 ? { ...rect, w: rect.w * k } : rect, iw, ih, W, H);
   const sx = (r.cx - r.w / 2) * iw, sy = (r.cy - r.h / 2) * ih;
   ctx.drawImage(el, sx, sy, r.w * iw, r.h * ih, 0, 0, W, H);
 }
@@ -535,12 +555,56 @@ function drawWatermark(ctx, text, W, H) {
   if (!text) return;
   ctx.save();
   ctx.globalAlpha = 0.55;
-  ctx.font = `500 ${Math.round(H * 0.022)}px Inter, system-ui, sans-serif`;
+  ctx.font = `500 ${Math.round(Math.min(W, H) * 0.022)}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "right";
   ctx.fillStyle = "#F5F7FA";
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = 6;
-  ctx.fillText(text, W - H * 0.03, H * 0.05);
+  ctx.fillText(text, W - Math.min(W, H) * 0.03, H * 0.05);
+  ctx.restore();
+}
+
+// Title block on a vertical Reel / Short: brand kicker, song title, talk line.
+// In "fit" framing it sits in the band above the picture; otherwise near the top.
+function drawHeader(ctx, W, H, header, bandBottom = 0) {
+  if (!header || !(header.title || header.subtitle)) return;
+  const u = Math.min(W, H);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const titlePx = Math.round(u * 0.064), subPx = Math.round(u * 0.036), kickPx = Math.round(u * 0.03);
+  ctx.font = `700 ${titlePx}px Inter, system-ui, sans-serif`;
+  const tLines = header.title ? wrapLines(ctx, header.title, W * 0.86).slice(0, 2) : [];
+  ctx.font = `500 ${subPx}px Inter, system-ui, sans-serif`;
+  const sLines = header.subtitle ? wrapLines(ctx, header.subtitle, W * 0.86).slice(0, 2) : [];
+  const blockH = kickPx * 1.8 + tLines.length * titlePx * 1.18 + (sLines.length ? subPx * 0.6 + sLines.length * subPx * 1.3 : 0);
+  let y = bandBottom > 0 ? Math.max(H * 0.1, (bandBottom - blockH) / 2 + H * 0.02) : H * 0.1;
+  if (!bandBottom) {
+    const grad = ctx.createLinearGradient(0, 0, 0, y + blockH + u * 0.08);
+    grad.addColorStop(0, "rgba(0,20,60,0.65)");
+    grad.addColorStop(0.7, "rgba(0,20,60,0.35)");
+    grad.addColorStop(1, "rgba(0,20,60,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, y + blockH + u * 0.08);
+  }
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = u * 0.012;
+  ctx.font = `700 ${kickPx}px Inter, system-ui, sans-serif`;
+  try { ctx.letterSpacing = `${Math.round(kickPx * 0.22)}px`; } catch {}
+  ctx.fillStyle = "#E6BC5C";
+  y += kickPx;
+  ctx.fillText(String(header.kicker || "CONFERENCE AS A CONCERT").toUpperCase(), W / 2, y);
+  try { ctx.letterSpacing = "0px"; } catch {}
+  y += kickPx * 0.8;
+  ctx.font = `700 ${titlePx}px Inter, system-ui, sans-serif`;
+  ctx.fillStyle = "#F5F7FA";
+  for (const ln of tLines) { y += titlePx * 1.18; ctx.fillText(ln, W / 2, y); }
+  if (sLines.length) {
+    y += subPx * 0.6;
+    ctx.font = `500 ${subPx}px Inter, system-ui, sans-serif`;
+    ctx.fillStyle = "#D5DAE3";
+    for (const ln of sLines) { y += subPx * 1.3; ctx.fillText(ln, W / 2, y); }
+  }
   ctx.restore();
 }
 
@@ -590,7 +654,13 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     const actx = new ACtx();
     const srcNode = actx.createMediaElementSource(audioEl);
     const dest = actx.createMediaStreamDestination();
-    srcNode.connect(dest);
+    const songGain = actx.createGain();
+    srcNode.connect(songGain); songGain.connect(dest);
+    // Only part of the song (a Reel's chorus): songFrom -> songTo, faded at both ends.
+    const songFrom = Math.max(0, Math.min(total - 1, Number(plan.songFrom) || 0));
+    const songTo = Number(plan.songTo) > songFrom + 1 ? Math.min(total, Number(plan.songTo)) : total;
+    const windowed = songFrom > 0.05 || songTo < total - 0.05;
+    const songLen = songTo - songFrom;
     cleanups.push(() => { try { actx.close(); } catch {} });
 
     // Opening / closing clips play with their own sound through the same
@@ -635,7 +705,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     const endLogo = plan.endLogo && plan.endLogo.src ? { seconds: Math.max(2, Math.min(12, Number(plan.endLogo.seconds) || 4)), fade: Math.max(0.2, Math.min(3, Number(plan.endLogo.fade) || 0.8)), src: plan.endLogo.src, lines: (Array.isArray(plan.endLogo.lines) ? plan.endLogo.lines : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 3) } : null;
     let endLogoImage = null;
     if (endLogo) { try { endLogoImage = await loadImage(endLogo.src); } catch { endLogoImage = null; } }
-    const grand = qaTotal + (pre ? pre.len : 0) + lead + total + (post ? post.len : 0) + (endLogoImage ? endLogo.seconds : 0);
+    const grand = qaTotal + (pre ? pre.len : 0) + lead + songLen + (post ? post.len : 0) + (endLogoImage ? endLogo.seconds : 0);
     const stamp = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
     const canvas = previewCanvas || document.createElement("canvas");
@@ -643,6 +713,33 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     const ctx = canvas.getContext("2d", { alpha: false });
     const stream = canvas.captureStream(fps);
     for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+
+    // Vertical "fit": the 16:9 picture is drawn whole into a band across the
+    // frame, over a soft blurred copy of itself (a tiny copy scaled up, cheap
+    // enough for every frame). "fill" (default) crops the picture to the frame.
+    const vertical = H > W;
+    const fit = vertical && plan.frame === "fit";
+    const PW = W, PH = fit ? Math.round(W * 9 / 16) : H;
+    const stage = fit ? document.createElement("canvas") : null;
+    if (stage) { stage.width = PW; stage.height = PH; }
+    const pc = stage ? stage.getContext("2d", { alpha: false }) : ctx;
+    const frameY = fit ? Math.round(H * 0.3) : 0;
+    const blurC = fit ? document.createElement("canvas") : null;
+    if (blurC) { blurC.width = 27; blurC.height = 48; }
+    const bctx = blurC ? blurC.getContext("2d") : null;
+    const present = () => {
+      if (!fit) return;
+      const sw = PH * (W / H);
+      bctx.drawImage(stage, (PW - sw) / 2, 0, sw, PH, 0, 0, blurC.width, blurC.height);
+      ctx.imageSmoothingEnabled = true;
+      try { ctx.imageSmoothingQuality = "high"; } catch {}
+      ctx.drawImage(blurC, 0, 0, W, H);
+      ctx.fillStyle = "rgba(5,14,38,0.5)"; ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(stage, 0, frameY);
+    };
+    const capPlace = fit ? { top: frameY + PH + Math.min(W, H) * 0.07, band: false } : null;
+    const header = vertical && plan.header ? plan.header : null;
+    const paintHeader = () => { if (header) drawHeader(ctx, W, H, header, fit ? frameY : 0); };
 
     // Play one bookend clip from in→out, drawing it full-frame with a short
     // fade at both ends. offset = seconds of output already recorded.
@@ -654,7 +751,10 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
         const t = el.currentTime;
         if (t >= outAt - 0.04 || el.ended) { el.pause(); resolve(); return; }
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-        drawCover(ctx, el, W, H);
+        if (fit) { pc.fillStyle = "#000"; pc.fillRect(0, 0, PW, PH); }
+        drawCover(pc, el, PW, PH);
+        present();
+        paintHeader();
         const a = Math.min(1, (t - inAt) / fade, (outAt - t) / fade);
         if (clip.captions && clip.captions.length) {
           const lt = t - inAt;
@@ -662,7 +762,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           if (cap) {
             const f = Math.min(0.3, (cap.to - cap.from) / 4);
             const ca = Math.max(0, Math.min(1, (lt - cap.from) / f, (cap.to - lt) / f));
-            drawLyrics(ctx, cap.text, W, H, ca, lyricScale(plan.captionsSize || plan.lyricsSize) * 0.85, 3);
+            drawLyrics(ctx, cap.text, W, H, ca, lyricScale(plan.captionsSize || plan.lyricsSize) * 0.85, 3, capPlace);
           }
         }
         if (a < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, a)})`; ctx.fillRect(0, 0, W, H); }
@@ -796,16 +896,24 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
         draw();
       });
     }
-    audioEl.currentTime = 0;
+    if (windowed) {
+      songGain.gain.value = 0;
+      await new Promise((res) => { const done = () => { audioEl.removeEventListener("seeked", done); res(); }; audioEl.addEventListener("seeked", done); audioEl.currentTime = songFrom; setTimeout(done, 3000); });
+    } else audioEl.currentTime = 0;
     await audioEl.play();
 
     await new Promise((resolve, reject) => {
       const frame = () => {
         if (cancelled) { reject(new Error("Cancelled.")); return; }
         const t = audioEl.currentTime;
-        if (t >= total - 0.05 || audioEl.ended) { resolve(); return; }
+        if (t >= songTo - 0.05 || audioEl.ended) { resolve(); return; }
+        // a slice of the song fades in and out (picture and sound)
+        const wa = windowed ? Math.max(0, Math.min(1, (t - songFrom) / 0.5, (songTo - t) / 1.2)) : 1;
+        if (windowed) songGain.gain.value = wa;
+        let lyricNow = null;
 
-        ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H);
+        if (fit) { ctx.fillStyle = "#00205B"; ctx.fillRect(0, 0, W, H); }
+        pc.fillStyle = "#00205B"; pc.fillRect(0, 0, PW, PH);
         // Which segment(s) are showing: current, plus the next during a crossfade.
         for (let i = 0; i < segs.length; i++) {
           const s = segs[i];
@@ -814,24 +922,25 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
           let alpha = 1;
           if (t < s.start) alpha = (t - (s.start - fadeSec)) / fadeSec; // fading in over the previous
           if (!el) continue;
-          ctx.save();
-          ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+          pc.save();
+          pc.globalAlpha = Math.max(0, Math.min(1, alpha));
           if (s.kind === "textcard") {
-            drawTextCard(ctx, s.card || {}, W, H);
+            drawTextCard(pc, s.card || {}, PW, PH);
           } else if (s.kind === "video") {
-            if (el.paused && !el.ended && !el._started) { el._started = true; el.currentTime = 0; el.play().catch(() => {}); }
+            // (a Reel can start partway through a clip's scene)
+            if (el.paused && !el.ended && !el._started) { el._started = true; el.currentTime = Math.max(0, t - s.start); el.play().catch(() => {}); }
             // Once the clip has played out, hold its last frame with the scene's motion.
             if (el.ended) {
               const clipEnd = s.start + (el.duration || 0);
               const p = Math.max(0, Math.min(1, (t - clipEnd) / Math.max(0.01, s.end - clipEnd)));
               if (s.motion === "custom" && s.path) {
-                drawViewport(ctx, el, W, H, pathRectAt(s.path, p));
+                drawViewport(pc, el, PW, PH, pathRectAt(s.path, p));
               } else {
                 const mv = motionAt(s.motion === "auto" || !s.motion ? "zoomIn" : s.motion, p, i, 0.6);
-                drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+                drawCover(pc, el, PW, PH, mv.zoom, mv.panX, mv.panY);
               }
             } else {
-              drawCover(ctx, el, W, H);
+              drawCover(pc, el, PW, PH);
             }
           } else {
             // Ken Burns on the still, per the shot's motion setting (or a custom path).
@@ -839,29 +948,31 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
             const held = i === 0 && lead > 0 && s.isCard ? lead : 0;
             const p = Math.max(0, Math.min(1, (held + (t - s.start)) / Math.max(0.01, held + (s.end - s.start))));
             if (s.motion === "custom" && s.path) {
-              drawViewport(ctx, el, W, H, pathRectAt(s.path, p));
+              drawViewport(pc, el, PW, PH, pathRectAt(s.path, p));
             } else {
               const mv = motionAt(s.motion || "auto", p, i, s.isCard ? 0.5 : 1);
-              drawCover(ctx, el, W, H, mv.zoom, mv.panX, mv.panY);
+              drawCover(pc, el, PW, PH, mv.zoom, mv.panX, mv.panY);
             }
           }
-          ctx.restore();
-          if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) {
-            const l = lyricAt(s, t, plan.lyricsMode || "one");
-            drawLyrics(ctx, l.text, W, H, l.alpha, lyricScale(plan.lyricsSize), (plan.lyricsSize || "large") === "huge" ? 2 : plan.lyricsSize === "xl" ? 3 : 4);
-          }
+          pc.restore();
+          if (alpha >= 1 && plan.lyricsOverlay && s.lyrics) lyricNow = lyricAt(s, t, plan.lyricsMode || "one");
         }
+        present();
+        paintHeader();
+        if (lyricNow) drawLyrics(ctx, lyricNow.text, W, H, lyricNow.alpha, lyricScale(plan.lyricsSize), (plan.lyricsSize || "large") === "huge" ? 2 : plan.lyricsSize === "xl" ? 3 : 4, capPlace);
         // Pause any clip that isn't on screen so it doesn't burn CPU.
         for (let i = 0; i < segs.length; i++) {
           const s = segs[i], el = assets[i];
           if (s.kind === "video" && el && !el.paused && (t < s.start - fadeSec || t >= s.end)) { el.pause(); el._started = false; }
         }
         drawWatermark(ctx, plan.watermark, W, H);
+        if (wa < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - wa})`; ctx.fillRect(0, 0, W, H); }
         // Progress updates re-render the studio UI, so report at most 4×/s —
         // not on every frame — to keep the capture loop smooth.
-        if (songOffset + t - lastProgressAt >= 0.25) {
-          lastProgressAt = songOffset + t;
-          onProgress?.((songOffset + t) / grand, `${stamp(t)} of ${stamp(total)} (song)${grand > total ? ` · ${stamp(songOffset + t)} of ${stamp(grand)} total` : ""}`);
+        const st = t - songFrom;
+        if (songOffset + st - lastProgressAt >= 0.25) {
+          lastProgressAt = songOffset + st;
+          onProgress?.((songOffset + st) / grand, `${stamp(st)} of ${stamp(songLen)} (song)${grand > songLen ? ` · ${stamp(songOffset + st)} of ${stamp(grand)} total` : ""}`);
         }
         raf = requestAnimationFrame(frame);
       };
@@ -875,7 +986,7 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     if (post) {
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
       await new Promise((r) => setTimeout(r, 250));
-      await playClipPhase(post, songOffset + total, "Closing clip");
+      await playClipPhase(post, songOffset + songLen, "Closing clip");
       ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
       await new Promise((r) => setTimeout(r, 300));
     }
@@ -883,12 +994,12 @@ export function renderMusicVideo(plan, { onProgress, onStatus, previewCanvas } =
     // on navy, holds, and fades back to black. Silent. Timer-driven so it
     // completes even when the tab is not in front.
     if (endLogoImage) {
-      const offset = songOffset + total + (post ? post.len : 0);
+      const offset = songOffset + songLen + (post ? post.len : 0);
       const { seconds, fade } = endLogo;
       const im = endLogoImage;
       const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
       const lines = endLogo.lines || [];
-      const linePx = Math.round(H * 0.032);
+      const linePx = Math.round(vertical ? W * 0.042 : H * 0.032);
       const textBlock = lines.length ? lines.length * linePx * 1.5 + linePx * 0.6 : 0;
       // The logo fills the frame: contained edge to edge (nothing cropped), over a
       // blurred, darkened copy of the same art that covers whatever is left.

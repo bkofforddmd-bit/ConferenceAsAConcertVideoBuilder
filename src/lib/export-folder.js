@@ -102,7 +102,7 @@ function extFor(mime, fallback) {
   return fallback;
 }
 
-// bundle = { title, projectJson, lyrics, images: [{ name, dataUrl }], song: Blob|null, video: Blob|null }
+// bundle = { title, projectJson, lyrics, images: [{ name, dataUrl }], song: Blob|null, video: Blob|null, reel: Blob|null }
 // Returns { folderName, files: [names], skipped: [names] }.
 export async function exportBundle(root, bundle, onProgress = () => {}) {
   const stamp = new Date().toISOString().slice(0, 10);
@@ -146,6 +146,13 @@ export async function exportBundle(root, bundle, onProgress = () => {}) {
     await writeFile(dir, name, bundle.video);
     files.push(name);
   } else skipped.push("video (not rendered yet)");
+
+  if (bundle.reel) {
+    onProgress("Writing the Reel / Short…");
+    const name = `reel-vertical.${extFor(bundle.reel.type, "mp4")}`;
+    await writeFile(dir, name, bundle.reel);
+    files.push(name);
+  }
 
   return { folderName, files, skipped };
 }

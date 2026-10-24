@@ -843,3 +843,14 @@ select {
 /* draggable keyframe dots */
 .path-dot { cursor: grab; touch-action: none; user-select: none; }
 .path-dot:active { cursor: grabbing; }
+
+/* Reel / Short (vertical) */
+.reel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.reel-part { margin: 0; }
+.reel-part h4 { margin: 0 0 6px; font-size: 15px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.reel-speaker { width: 100%; max-width: 360px; border-radius: 10px; background: #000; display: block; }
+.reel-stage { margin-top: 6px; }
+.reel-canvas { height: 420px; width: auto; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 12px; background: #00205B; display: block; margin: 0 auto 8px; }
+.reel-final { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 16px; align-items: start; }
+.reel-video { width: 100%; aspect-ratio: 9 / 16; border-radius: 12px; background: #000; display: block; }
+@media (max-width: 760px) { .reel-grid, .reel-final { grid-template-columns: 1fr; } .reel-video { max-width: 300px; margin: 0 auto; } }
