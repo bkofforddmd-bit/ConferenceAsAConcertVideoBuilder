@@ -256,6 +256,14 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
           <a href={CONCERT_SITE} target="_blank" rel="noopener noreferrer" style={{ color: "var(--sky)" }}>Open the library ↗</a>
         </div>
       )}
+      {(done || existing) && (
+        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <a className="btn btn-primary" href={`${CONCERT_SITE}/?song=${encodeURIComponent((done || existing).id)}`} target="_blank" rel="noopener noreferrer">
+            📣 Post it to YouTube &amp; Facebook from Conference Concert ↗
+          </a>
+          <span className="note" style={{ margin: 0 }}>Opens this song there; in band mode its Publish kit has the YouTube text, the Facebook post, the Reel poster and the paste-back boxes.</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import SceneOrganizer from "./components/SceneOrganizer.jsx";
 import MusicStudio from "./components/MusicStudio.jsx";
 import VideoStudio from "./components/VideoStudio.jsx";
 import ProjectsPanel from "./components/ProjectsPanel.jsx";
+import { CONCERT_SITE } from "./lib/concert.js";
 import ConcertPublish from "./components/ConcertPublish.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
 import { Lockup } from "./components/Logo.jsx";
@@ -31,7 +32,6 @@ import { folderSupported, getFolderState, chooseFolder, reconnectFolder, exportB
 import { isRendering } from "./lib/video-render.js";
 import { newPipeId, pipelineStart, pipelineStatus, pipelineStop, pipelineResume, fetchJobImage, mergePipeline } from "./lib/scene-pipeline.js";
 import SimpleTalkPicker from "./components/SimpleTalkPicker.jsx";
-import YouTubeCard from "./components/YouTubeCard.jsx";
 
 const PROJECT_VERSION = 3;
 const AUTOSAVE_KEY = "cmvs-autosave-v1";
@@ -60,7 +60,7 @@ const SIMPLE_STEPS = [
   { id: "reactions", name: "Reactions", sub: "Film the listener" },
   { id: "finish", name: "Finishing", sub: "Captions · closing · camera" },
   { id: "render", name: "Render", sub: "Make the video" },
-  { id: "share", name: "Share", sub: "Publish · save · YouTube" },
+  { id: "share", name: "Share", sub: "Publish · save" },
 ].map((s, i) => ({ ...s, n: String(i + 1).padStart(2, "0") }));
 const VIDEO_PARTS = ["reactions", "finish", "render"];
 // The same place in the other mode's steps.
@@ -883,7 +883,6 @@ export default function App() {
           {(step === "export" || step === "share") && (
             <ExportPanel
               simple={simple}
-              youtube={<YouTubeCard talkMeta={talkMeta} meta={sc.meta || {}} lyrics={finalLyrics} render={render} missingVideo={mediaMissing.video} />}
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={(id) => setStep(stepFor(id, mode))}
               onDownloadJson={downloadProject}
@@ -953,7 +952,7 @@ function StepNav({ steps = STEPS, step, enabled, done, onGo }) {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong, youtube = null, simple = false }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong, simple = false }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
   const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
@@ -1001,7 +1000,7 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
         <h2>{simple ? "Share" : "Export"}</h2>
         <button className="btn btn-ghost btn-sm" onClick={onDownloadJson}>Download project .json</button>
       </div>
-      <p className="sub">{simple ? "Three last things: publish to Conference Concert, save the images, MP3 and MP4 to your folder, and post to YouTube." : "Everything this concert produced, in one place."} {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
+      <p className="sub">{simple ? "Two last things: publish to Conference Concert, and save the images, MP3 and MP4 to your folder. YouTube, Facebook and the Reel are then posted from the song's Publish kit in Conference Concert." : "Everything this concert produced, in one place."} {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
 
       {concertPublish}
 
@@ -1035,7 +1034,15 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
         )}
       </div>
 
-      {youtube}
+      <div className="music-card" style={{ marginBottom: 16 }}>
+        <h3>Post to YouTube &amp; Facebook <span className="chip">from Conference Concert</span></h3>
+        <p className="note" style={{ marginTop: 0 }}>
+          Posting lives in one place now. Publish the song above, then open it in Conference Concert in band mode:
+          its <strong>Publish kit</strong> has the MP4 download, the ready YouTube title, description and tags,
+          the Facebook post text, the Reel / Short poster, and the paste-back boxes that mark it posted.
+        </p>
+        <a className="btn btn-primary" href={CONCERT_SITE} target="_blank" rel="noopener noreferrer">Open Conference Concert ↗</a>
+      </div>
 
       <div className="export-grid">
         {items.map((it) => (
