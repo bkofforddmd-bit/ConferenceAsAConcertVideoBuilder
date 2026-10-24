@@ -15,6 +15,10 @@ import { publishToConcert, updateConcertEntry, uploadVideoOnly, findLibraryEntry
 export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
   const hasVideo = Boolean(render && render.mediaKey);
   const [includeVideo, setIncludeVideo] = useState(true);
+  // The vertical Reel / Short (Render step). Sent with the song; on an update it
+  // is sent when the library doesn't have one yet (or when ticked to replace it).
+  const reel = timeline && timeline.reel && timeline.reel.render && timeline.reel.render.mediaKey ? timeline.reel.render : null;
+  const [sendReelPick, setSendReel] = useState(null);
   const [youtube, setYoutube] = useState("");
   const active = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
   const sync = active ? parseSync(lyrics, active.sync) : null;
@@ -41,6 +45,13 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
   const [existing, setExisting] = useState(null); // entry already in the library with this title/speaker
+  const libReel = Boolean((done && done.reelUrl) || (existing && existing.reelUrl));
+  const sendReel = Boolean(reel) && (sendReelPick == null ? !libReel : sendReelPick);
+  async function reelBlob() {
+    const r = await getMedia(reel.mediaKey);
+    if (!r || !r.blob) throw new Error("The Reel isn't in this browser's storage — render it again on the Render step, or untick \"Also publish the Reel\".");
+    return r.blob;
+  }
 
   // Is this song already in the library? (public catalog, no password)
   useEffect(() => {
@@ -67,11 +78,13 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
         if (!vrec || !vrec.blob) throw new Error("The music video isn't in this browser's storage. Attach the video file above, or untick \"Also publish the music video\".");
         videoUrl = await uploadVideoOnly({ password: pw.trim(), title: f.title, video: vrec.blob, onStep: setStep });
       }
+      let reelUrl = "";
+      if (sendReel) reelUrl = await uploadVideoOnly({ password: pw.trim(), title: f.title, video: await reelBlob(), suffix: "-reel", label: "Reel", onStep: setStep });
       setStep("Updating the library entry…");
       const entry = await updateConcertEntry({
         password: pw.trim(),
         id: target.id,
-        song: { ...f, ...previewFields, youtube: youtube.trim(), videoUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
+        song: { ...f, ...previewFields, youtube: youtube.trim(), videoUrl, reelUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
       });
       setDone(entry);
       setStep("");
@@ -119,6 +132,7 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
         song: { ...f, ...previewFields, youtube: youtube.trim(), lyrics, duration: active.durationSec || 0, lyricTimings },
         audio: rec.blob,
         video: videoBlob,
+        reel: sendReel ? await reelBlob() : null,
         onStep: setStep,
       });
       setDone(entry);
@@ -133,7 +147,7 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
 
   return (
     <div className="music-card" style={{ marginBottom: 16 }}>
-      <h3>Publish to Conference Concert {active ? (missing.song ? <span className="chip warn">song file missing</span> : <span className="chip ok">song ready</span>) : <span className="chip">needs a song</span>}{sync ? <span className="chip ok" style={{ marginLeft: 6 }}>lyrics synced</span> : null}{hasVideo ? (missing.video ? <span className="chip warn" style={{ marginLeft: 6 }}>video file missing</span> : <span className="chip ok" style={{ marginLeft: 6 }}>video ready</span>) : null}</h3>
+      <h3>Publish to Conference Concert {active ? (missing.song ? <span className="chip warn">song file missing</span> : <span className="chip ok">song ready</span>) : <span className="chip">needs a song</span>}{sync ? <span className="chip ok" style={{ marginLeft: 6 }}>lyrics synced</span> : null}{hasVideo ? (missing.video ? <span className="chip warn" style={{ marginLeft: 6 }}>video file missing</span> : <span className="chip ok" style={{ marginLeft: 6 }}>video ready</span>) : null}{reel ? <span className="chip ok" style={{ marginLeft: 6 }}>Reel ready</span> : null}</h3>
       <p className="note" style={{ marginTop: 0 }}>
         Sends the finished song to the Conference Concert library at {CONCERT_SITE.replace("https://", "")}: the audio,
         the lyrics with their sung-line timing, and the talk details. Same result as the band upload form there, prefilled.
@@ -160,6 +174,13 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
             <span className="note" style={{ margin: 0 }}>
               Also publish the music video{hasVideo ? ` (${render.sizeMB || "?"} MB ${String(render.ext || "mp4").toUpperCase()})` : " — no render yet"}
               {youtube.trim() ? " · skipped: the YouTube link will play instead" : ""}
+            </span>
+          </label>
+          <label className="row" style={{ gap: 8, alignSelf: "end" }} title={reel ? "Upload the vertical Reel / Short so it can be posted to Facebook and YouTube from the Conference Concert app" : "Make the Reel on the Render step first"}>
+            <input type="checkbox" checked={sendReel} disabled={!reel} onChange={(e) => setSendReel(e.target.checked)} />
+            <span className="note" style={{ margin: 0 }}>
+              {libReel ? "Replace the Reel in the library" : "Also publish the Reel / Short"}{reel ? ` (${reel.sizeMB || "?"} MB, vertical)` : " — no Reel yet (Render step)"}
+              {libReel && !sendReel ? " · the library already has one" : ""}
             </span>
           </label>
         </div>

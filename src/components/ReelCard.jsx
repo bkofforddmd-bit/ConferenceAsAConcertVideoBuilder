@@ -244,7 +244,7 @@ export default function ReelCard({ projectId, tl, setTimeline, lyrics, songVersi
                 <a className="btn btn-primary" href="https://www.youtube.com/upload" target="_blank" rel="noopener noreferrer">▶ YouTube Shorts upload</a>
                 <a className="btn btn-primary" href="https://www.facebook.com/reels/create" target="_blank" rel="noopener noreferrer">f Create a Facebook Reel</a>
               </div>
-              <p className="note">YouTube makes any vertical video under 3 minutes a Short. Upload it on the <strong>ConferenceAsAConcert</strong> channel, and on Facebook post it as a Reel from the Page.</p>
+              <p className="note">Publishing to Conference Concert (Share step) sends this Reel too, and its Publish kit there posts it straight to the Facebook Page. Or upload it by hand: YouTube makes any vertical video under 3 minutes a Short on the <strong>ConferenceAsAConcert</strong> channel.</p>
               {copyRow("st", `YouTube Shorts title (${text.shortsTitle.length}/100)`, text.shortsTitle)}
               {copyRow("sd", "YouTube Shorts description", text.shortsDescription, 7)}
               {copyRow("fb", "Facebook Reel caption", text.facebookCaption, 7)}

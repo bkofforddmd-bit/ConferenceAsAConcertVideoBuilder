@@ -102,6 +102,7 @@ export async function updateConcertEntry({ password, id, song }) {
     blurb: song.blurb || "",
   };
   if (typeof song.videoUrl === "string" && song.videoUrl) entry.videoUrl = song.videoUrl; // omitted → library keeps its current one
+  if (typeof song.reelUrl === "string" && song.reelUrl) entry.reelUrl = song.reelUrl;     // the vertical Reel / Short, same rule
   if (Array.isArray(song.lyricTimings)) entry.lyricTimings = song.lyricTimings;
   const saved = await relay(password, "update", { song: entry });
   return saved.entry || entry;
@@ -148,9 +149,9 @@ async function uploadMedia({ password, blob, contentType, filename, titleHint, l
 }
 
 // song: { title, talk, speaker, session, theme, style, talkUrl, youtube, lyrics, duration, blurb, lyricTimings }
-// audio: Blob; video: Blob|null. onStep(text) reports progress. Returns the saved catalog entry.
+// audio: Blob; video: Blob|null; reel: Blob|null (the vertical Reel / Short). onStep(text) reports progress. Returns the saved catalog entry.
 export function publishToConcert(args) { return withWakeLock(() => publishToConcertInner(args)); }
-async function publishToConcertInner({ password, song, audio, video = null, onStep = () => {} }) {
+async function publishToConcertInner({ password, song, audio, video = null, reel = null, onStep = () => {} }) {
   onStep("Checking the band password…");
   await relay(password, "verify", {});
 
@@ -163,6 +164,11 @@ async function publishToConcertInner({ password, song, audio, video = null, onSt
     const vct = video.type && /^video\//.test(video.type) ? video.type : "video/mp4";
     const vext = vct.includes("webm") ? ".webm" : ".mp4";
     videoUrl = await uploadMedia({ password, blob: video, contentType: vct, filename: `${safe}${vext}`, titleHint: song.title, label: "video", onStep });
+  }
+  let reelUrl = "";
+  if (reel) {
+    const rct = reel.type && /^video\//.test(reel.type) ? reel.type : "video/mp4";
+    reelUrl = await uploadMedia({ password, blob: reel, contentType: rct, filename: `${safe}-reel${rct.includes("webm") ? ".webm" : ".mp4"}`, titleHint: `${song.title} reel`, label: "Reel", onStep });
   }
 
   onStep("Saving the song in the Concert library…");
@@ -177,6 +183,7 @@ async function publishToConcertInner({ password, song, audio, video = null, onSt
     youtube: song.youtube || "",
     audioUrl,
     videoUrl,
+    reelUrl,
     previewStart: song.previewStart || 0,
     previewEnd: song.previewEnd || 0,
     duration: Math.round(song.duration || 0),
@@ -293,11 +300,11 @@ async function withWakeLock(fn) {
 
 // Upload just the video for a song already in the library (returns its URL).
 export function uploadVideoOnly(args) { return withWakeLock(() => uploadVideoOnlyInner(args)); }
-async function uploadVideoOnlyInner({ password, title, video, onStep = () => {} }) {
+async function uploadVideoOnlyInner({ password, title, video, suffix = "", label = "video", onStep = () => {} }) {
   onStep("Checking the band password…");
   await relay(password, "verify", {});
   const safe = (title || "song").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   const vct = video.type && /^video\//.test(video.type) ? video.type : "video/mp4";
   const vext = vct.includes("webm") ? ".webm" : ".mp4";
-  return uploadMedia({ password, blob: video, contentType: vct, filename: `${safe}${vext}`, titleHint: title, label: "video", onStep });
+  return uploadMedia({ password, blob: video, contentType: vct, filename: `${safe}${suffix}${vext}`, titleHint: `${title}${suffix ? " " + suffix.replace(/^-/, "") : ""}`, label, onStep });
 }
