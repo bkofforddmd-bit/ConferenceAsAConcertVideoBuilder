@@ -140,3 +140,54 @@ export function lineAtTime(lines, t) {
   for (let j = 0; j < lines.length; j++) if (lines[j].t != null && lines[j].t <= t + 0.05) k = j;
   return k;
 }
+
+// ---- linked highlighting (tap or select on either side) ----
+// A "focus" = { lines:[k], marks:{ paragraph:[[a,b], ...] }, paras:[p], quote }.
+
+// Lyric lines picked -> the paragraphs they came from, each echoed phrase marked.
+export function focusFromLines(comp, ks, quote = "") {
+  const marks = {}, paras = [], phrases = [];
+  for (const k of ks) {
+    const l = comp.lines[k];
+    if (!l) continue;
+    if (l.p >= 0) {
+      if (!paras.includes(l.p)) paras.push(l.p);
+      if (l.phrase) {
+        (marks[l.p] = marks[l.p] || []).push(l.phrase);
+        const text = comp.paragraphs[l.p].slice(l.phrase[0], l.phrase[1]).trim();
+        if (!phrases.includes(text)) phrases.push(text);
+      }
+    }
+  }
+  return { lines: ks, marks, paras, quote: quote || (phrases.length ? phrases.map((p) => `“${p}”`).join(" … ") : ks.map((k) => comp.lines[k] && comp.lines[k].text).filter(Boolean).join(" / ")) };
+}
+
+// Words selected in the talk ([{ p, a, b }] per paragraph touched) -> the
+// lyric lines drawn from them: by the traced phrase overlapping the
+// selection, else by shared words.
+export function focusFromTalk(comp, pieces) {
+  const ks = [], marks = {}, touched = [];
+  const words = new Set(tokens(pieces.map((x) => comp.paragraphs[x.p].slice(x.a, x.b)).join(" ")));
+  for (const x of pieces) {
+    touched.push(x.p);
+    (marks[x.p] = marks[x.p] || []).push([x.a, x.b]);
+    comp.lines.forEach((l, k) => { if (l.p === x.p && l.phrase && l.phrase[0] < x.b && l.phrase[1] > x.a && !ks.includes(k)) ks.push(k); });
+  }
+  if (!ks.length && words.size) {
+    const need = words.size <= 3 ? 1 : 2;
+    comp.lines.map((l, k) => ({ k, hits: tokens(l.text).filter((w) => words.has(w)).length, near: touched.includes(l.p) }))
+      .filter((x) => x.hits >= need || (x.near && x.hits >= 1))
+      .sort((a, b) => b.hits - a.hits).slice(0, 6).forEach((x) => ks.push(x.k));
+    ks.sort((a, b) => a - b);
+  }
+  for (const k of ks) { const l = comp.lines[k]; if (l.p >= 0 && l.phrase && touched.includes(l.p)) (marks[l.p] = marks[l.p] || []).push(l.phrase); }
+  return { lines: ks, marks, paras: touched, quote: `“${pieces.map((x) => comp.paragraphs[x.p].slice(x.a, x.b).trim()).join(" … ")}”` };
+}
+
+// Merge overlapping [a,b] ranges (for drawing several marks in one paragraph).
+export function mergeRanges(ranges, len = Infinity) {
+  const rs = (ranges || []).map((r) => [Math.max(0, r[0]), Math.min(len, r[1])]).filter((r) => r[1] > r[0]).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const r of rs) { const last = out[out.length - 1]; if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]); else out.push(r.slice()); }
+  return out;
+}
