@@ -866,7 +866,8 @@ select {
 .tl-para.has { opacity: 0.9; }
 .tl-para.on { opacity: 1; background: rgba(230,188,92,0.08); border-left-color: #E6BC5C; }
 .tl-count { float: right; margin-left: 8px; font-family: Inter, system-ui, sans-serif; font-size: 11px; color: #E6BC5C; border: 1px solid rgba(230,188,92,0.45); border-radius: 10px; padding: 0 7px; }
-.tl-mark { background: rgba(230,188,92,0.3); color: inherit; padding: 1px 2px; border-radius: 3px; }
+.tl-mark { background: rgba(230,188,92,0.3); color: inherit; padding: 1px 2px; border-radius: 3px; animation: tlGlow 1.4s ease-out; }
+@keyframes tlGlow { 0% { background: rgba(230,188,92,0.85); box-shadow: 0 0 0 3px rgba(230,188,92,0.35); } 100% { background: rgba(230,188,92,0.3); box-shadow: none; } }
 .tl-section { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #E6BC5C; margin: 12px 0 4px; }
 .tl-line { padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15.5px; line-height: 1.45; border-left: 3px solid transparent; }
 .tl-line:hover { background: rgba(255,255,255,0.04); }

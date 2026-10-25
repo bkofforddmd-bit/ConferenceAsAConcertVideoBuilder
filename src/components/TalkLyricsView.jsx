@@ -38,12 +38,35 @@ export default function TalkLyricsView({ lyrics, talkText, talkMeta = {}, source
   const linesByPara = useMemo(() => { const m = {}; lines.forEach((l, k) => { if (l.p >= 0) (m[l.p] = m[l.p] || []).push(k); }); return m; }, [lines]);
   useEffect(() => { setFocus(null); }, [comp]);
 
-  // show a focus: scroll the OTHER side to it (both when the music drives it)
-  function show(f, from) {
-    setFocus(f);
-    if (from !== "talk" && f.paras.length) scrollInside(talkBox.current, paraRefs.current[f.paras[0]]);
-    if (from !== "lyrics" && f.lines.length) scrollInside(lyricBox.current, lineRefs.current[f.lines[0]]);
-  }
+  // show a focus, then "magnetize": once the marks are drawn, slide the OTHER
+  // side so its match sits level with what was picked (side by side), or into
+  // view (stacked). If that side can scroll no further, the picked side moves
+  // the rest of the way.
+  const pending = useRef(null);
+  const seq = useRef(0);
+  function show(f, from) { const g = { ...f, seq: ++seq.current }; pending.current = { f: g, from }; setFocus(g); }
+  useEffect(() => {
+    const pd = pending.current;
+    if (!pd || !focus || pd.f.seq !== focus.seq) return;
+    pending.current = null;
+    const t = setTimeout(() => {
+      const tb = talkBox.current, lb = lyricBox.current, f = pd.f;
+      const pEl = f.paras.length ? paraRefs.current[f.paras[0]] : null;
+      const talkEl = pEl ? (pEl.querySelector(".tl-mark") || pEl) : null;
+      const lineEl = f.lines.length ? lineRefs.current[f.lines[0]] : null;
+      const side = tb && lb && (() => { const a = tb.getBoundingClientRect(), b = lb.getBoundingClientRect(); return Math.abs(a.left - b.left) > 40 && a.top < b.bottom && b.top < a.bottom; })();
+      const magnet = (box, el, anchor, other) => {
+        const d = el.getBoundingClientRect().top - anchor.getBoundingClientRect().top;
+        const want = box.scrollTop + d, max = box.scrollHeight - box.clientHeight, got = Math.max(0, Math.min(max, want)), rest = want - got;
+        box.scrollTo({ top: got, behavior: "smooth" });
+        if (other && Math.abs(rest) > 40) other.scrollTo({ top: Math.max(0, other.scrollTop - rest), behavior: "smooth" });
+      };
+      if (pd.from === "lyrics" && talkEl) { if (side && lineEl) magnet(tb, talkEl, lineEl, lb); else scrollInside(tb, talkEl); }
+      else if (pd.from === "talk" && lineEl) { const anchor = pEl && pEl.querySelector(".tl-mark"); if (side && anchor) magnet(lb, lineEl, anchor, tb); else scrollInside(lb, lineEl); }
+      else { if (lineEl) scrollInside(lb, lineEl); if (talkEl) scrollInside(tb, talkEl); }
+    }, 30);
+    return () => clearTimeout(t);
+  }, [focus]);
   function pickLine(k) { if (hasSelection()) return; show(focusFromLines(comp, [k]), "lyrics"); }
   function pickPara(p) { if (hasSelection()) return; const f = focusFromLines(comp, linesByPara[p] || [], `“${paragraphs[p]}”`); f.paras = [p]; show(f, "talk"); }
 
@@ -144,7 +167,7 @@ export default function TalkLyricsView({ lyrics, talkText, talkMeta = {}, source
     const ranges = mergeRanges(focus && focus.marks[i], p.length);
     const parts = [];
     let at = 0;
-    ranges.forEach(([a, b], j) => { if (a > at) parts.push(p.slice(at, a)); parts.push(<mark key={j} className="tl-mark">{p.slice(a, b)}</mark>); at = b; });
+    ranges.forEach(([a, b], j) => { if (a > at) parts.push(p.slice(at, a)); parts.push(<mark key={`${focus.seq}-${j}`} className="tl-mark">{p.slice(a, b)}</mark>); at = b; });
     if (at < p.length) parts.push(p.slice(at));
     return (
       <p key={i} ref={(el) => { paraRefs.current[i] = el; }} className={`tl-para${litParas.has(i) ? " on" : ""}${n ? " has" : ""}`} onClick={() => pickPara(i)}>
