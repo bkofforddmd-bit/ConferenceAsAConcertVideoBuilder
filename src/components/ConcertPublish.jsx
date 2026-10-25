@@ -5,14 +5,15 @@
 // Everything is prefilled from the project; the band password is remembered
 // in this browser.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getMedia } from "../lib/project-store.js";
 import { parseSync, fmtStamp } from "../lib/lyric-sync.js";
 import { previewWindow } from "../lib/chorus.js";
+import { buildCompanion, companionPayload } from "../lib/talk-companion.js";
 import AttachFile from "./AttachFile.jsx";
-import { publishToConcert, updateConcertEntry, uploadVideoOnly, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
+import { publishToConcert, updateConcertEntry, uploadVideoOnly, saveCompanion, findLibraryEntry, conferenceLabel, syncToLyricTimings, loadConcertPassword, saveConcertPassword, CONCERT_SITE } from "../lib/concert.js";
 
-export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
+export default function ConcertPublish({ song, timeline = null, talkText = "", sources = null, lyrics, talkMeta, meta, styleBible, styleReference, render, missing = {}, onAttachVideo, onAttachSong }) {
   const hasVideo = Boolean(render && render.mediaKey);
   const [includeVideo, setIncludeVideo] = useState(true);
   // The vertical Reel / Short (Render step). Sent with the song; on an update it
@@ -22,6 +23,19 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
   const [youtube, setYoutube] = useState("");
   const active = (song && song.versions || []).find((v) => v.id === song.activeId) || null;
   const sync = active ? parseSync(lyrics, active.sync) : null;
+  // The talk & lyrics side by side (no talk text is sent: the Concert app reads the talk itself).
+  const companion = useMemo(() => {
+    if (!talkText || !lyrics) return null;
+    const c = buildCompanion({ lyrics, talkText, sources, sync: active && active.sync });
+    const found = c.lines.filter((l) => l.p >= 0).length;
+    return found ? { found, total: c.lines.length, data: companionPayload(c, { talkUrl: (talkMeta && talkMeta.sourceUrl) || "", talkTitle: (talkMeta && talkMeta.title) || "", speaker: (talkMeta && talkMeta.speaker) || "" }) } : null;
+  }, [talkText, lyrics, sources, active && active.sync, talkMeta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [sendCompanion, setSendCompanion] = useState(true);
+  async function sendTalkView(id) {
+    if (!companion || !sendCompanion || !id) return;
+    setStep("Adding the talk & lyrics side by side…");
+    await saveCompanion({ password: pw.trim(), id, data: companion.data });
+  }
   // The library's preview plays the first chorus (or the window set on the Reel card).
   const preview = active ? previewWindow(timeline, lyrics, active.sync, active.durationSec || 0) : null;
   const previewFields = preview ? { previewStart: Math.floor(preview.start), previewEnd: Math.ceil(preview.end) } : {};
@@ -86,6 +100,7 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
         id: target.id,
         song: { ...f, ...previewFields, youtube: youtube.trim(), videoUrl, reelUrl, lyrics, duration: (active && active.durationSec) || target.duration || 0, lyricTimings },
       });
+      await sendTalkView(entry.id || target.id);
       setDone(entry);
       setStep("");
     } catch (e) {
@@ -135,6 +150,7 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
         reel: sendReel ? await reelBlob() : null,
         onStep: setStep,
       });
+      await sendTalkView(entry.id);
       setDone(entry);
       setStep("");
     } catch (e) {
@@ -181,6 +197,12 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
             <span className="note" style={{ margin: 0 }}>
               {libReel ? "Replace the Reel in the library" : "Also publish the Reel / Short"}{reel ? ` (${reel.sizeMB || "?"} MB, vertical)` : " — no Reel yet (Render step)"}
               {libReel && !sendReel ? " · the library already has one" : ""}
+            </span>
+          </label>
+          <label className="row" style={{ gap: 8, alignSelf: "end" }} title={companion ? "Adds a 'read the talk beside the lyrics' view to the song in Conference Concert" : "Needs the talk text and lyrics lines found in it (see the side-by-side card above)"}>
+            <input type="checkbox" checked={Boolean(companion) && sendCompanion} disabled={!companion} onChange={(e) => setSendCompanion(e.target.checked)} />
+            <span className="note" style={{ margin: 0 }}>
+              Also publish the talk &amp; lyrics side by side{companion ? ` (${companion.found} of ${companion.total} lines found in the talk)` : " — nothing matched yet"}
             </span>
           </label>
         </div>
@@ -262,6 +284,13 @@ export default function ConcertPublish({ song, timeline = null, lyrics, talkMeta
             📣 Post it to YouTube &amp; Facebook from Conference Concert ↗
           </a>
           <span className="note" style={{ margin: 0 }}>Opens this song there; in band mode its Publish kit has the YouTube text, the Facebook post, the Reel poster and the paste-back boxes.</span>
+        </div>
+      )}
+      {(done || existing) && companion && (
+        <div className="row" style={{ gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <a className="btn btn-ghost" href={`${CONCERT_SITE}/?song=${encodeURIComponent((done || existing).id)}&talk=1`} target="_blank" rel="noopener noreferrer">📖 Open the talk &amp; lyrics view ↗</a>
+          <button className="btn btn-ghost btn-sm" onClick={() => { try { navigator.clipboard.writeText(`${CONCERT_SITE}/?song=${encodeURIComponent((done || existing).id)}&talk=1`); setStep(""); } catch {} }}>📋 Copy the link to share</button>
+          <span className="note" style={{ margin: 0 }}>{done ? "" : "Publish or update to send the latest version."}</span>
         </div>
       )}
     </div>

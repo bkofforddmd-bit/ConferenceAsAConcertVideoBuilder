@@ -31,6 +31,12 @@ async function relay(password, action, payload) {
   return data;
 }
 
+// The talk & lyrics side-by-side map (talk-companion.js companionPayload) for a
+// song already in the library. The Concert app keeps it beside the catalog.
+export async function saveCompanion({ password, id, data }) {
+  return relay(password, "companion", { id, data });
+}
+
 // The Concert app wants one number per lyric line (seconds), aligned 1:1 with
 // lyrics.split("\n"). Our sync marks only sung lines, so: each sung line gets
 // its mark; a [Section] label or blank line takes the time of the next sung

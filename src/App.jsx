@@ -22,6 +22,7 @@ import VideoStudio from "./components/VideoStudio.jsx";
 import ProjectsPanel from "./components/ProjectsPanel.jsx";
 import { CONCERT_SITE } from "./lib/concert.js";
 import ConcertPublish from "./components/ConcertPublish.jsx";
+import TalkLyricsView from "./components/TalkLyricsView.jsx";
 import SettingsPanel from "./components/SettingsPanel.jsx";
 import { Lockup } from "./components/Logo.jsx";
 import { getConfig } from "./lib/api.js";
@@ -886,7 +887,8 @@ export default function App() {
               project={{ talkMeta, finalLyrics, sc, activeSong, render, clips }}
               onGo={(id) => setStep(stepFor(id, mode))}
               onDownloadJson={downloadProject}
-              concertPublish={<ConcertPublish song={song} timeline={timeline} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
+              talkLyrics={<TalkLyricsView lyrics={finalLyrics} talkText={talkText} talkMeta={talkMeta} sources={lyricSources} onSources={setLyricSources} songVersion={activeSong} />}
+              concertPublish={<ConcertPublish song={song} timeline={timeline} talkText={talkText} sources={lyricSources} lyrics={finalLyrics} talkMeta={talkMeta} meta={sc.meta || {}} styleBible={sc.styleBible} styleReference={styleReference} render={render} missing={mediaMissing} onAttachVideo={attachVideoFile} onAttachSong={attachSongFile} />}
               missing={mediaMissing}
               onAttachVideo={attachVideoFile}
               onAttachSong={attachSongFile}
@@ -952,7 +954,7 @@ function StepNav({ steps = STEPS, step, enabled, done, onGo }) {
 }
 
 // ---------------- Export ----------------
-function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, missing = {}, onAttachVideo, onAttachSong, simple = false }) {
+function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onReconnectFolder, onExportFolder, exportBusy, exportMsg, exportResult, concertPublish, talkLyrics = null, missing = {}, onAttachVideo, onAttachSong, simple = false }) {
   const { talkMeta, finalLyrics, sc, activeSong, render, clips } = project;
   const cardsSaved = ["intro", "outro"].filter((k) => sc?.endcards?.[k]?.image).length;
   const scenes = (sc && sc.scenes) || [];
@@ -1002,6 +1004,7 @@ function ExportPanel({ project, onGo, onDownloadJson, folder, onPickFolder, onRe
       </div>
       <p className="sub">{simple ? "Two last things: publish to Conference Concert, and save the images, MP3 and MP4 to your folder. YouTube, Facebook and the Reel are then posted from the song's Publish kit in Conference Concert." : "Everything this concert produced, in one place."} {talkMeta.title ? `Based on "${talkMeta.title}"${talkMeta.speaker ? ` by ${talkMeta.speaker}` : ""}.` : ""}</p>
 
+      {talkLyrics}
       {concertPublish}
 
       <div className="music-card" style={{ marginBottom: 16 }}>
